@@ -40,8 +40,8 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [ ] |
 | 2 | §2 | Single instance and activation | §1 | [ ] |
 | 3 | §3 | Crash handling | §1 | [ ] |
-| 4 | §4 | Tokens generated into Tokens.xaml | D00 T01 §4 | [ ] |
-| 5 | §5 | WPF application object and theme | §1, §4 | [ ] |
+| 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [ ] |
+| 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [ ] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11 | [ ] |
@@ -114,7 +114,7 @@ An unhandled exception in the tray app is logged, shown and ends the process (SP
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*CrashHandlerTests"` passes, and fails when the user name is no longer redacted.
 
-## 4. Tokens generated into Tokens.xaml
+## 4. Tokens generated into resource dictionaries
 
 `design/tokens.json` becomes a resource dictionary, and a test keeps hex colours out of the source (SPEC §1 "Tokens only", §2).
 
@@ -124,18 +124,19 @@ An unhandled exception in the tray app is logged, shown and ends the process (SP
 
 **Build order:**
 
-1. Add `scripts/build-tokens.py`. Done when: it writes `src/Berth/Theme/Tokens.xaml` with light and dark dictionaries.
+1. Add `scripts/build-tokens.py`. Done when: it writes the four `src/Berth/Theme/Tokens.*.xaml` dictionaries.
 2. Add the staleness and no-hex gates. Done when: both fail when they should.
 
-- [ ] Add `scripts/build-tokens.py` (standard library only): read `design/tokens.json` and write `src/Berth/Theme/Tokens.xaml` holding a `ResourceDictionary` with `ThemeDictionaries` for `Light`, `Dark` and `HighContrast`: a `SolidColorBrush` per colour key named `Berth.<Key>` (for example `Berth.MarkerInPlace`), and theme-independent `x:Double`, `CornerRadius`, `FontFamily` and `x:Double` font size resources for `size`, `radius` and `type`. In `HighContrast` each brush binds to the system colour SPEC §2 names. The file starts with a comment saying it is generated and from what. Done when: running it writes a file that `XamlReader.Load` parses in a test. Cheaper substitute: a hand-written dictionary that drifts from the JSON.
-- [ ] Add `--check`: write nothing and exit 1 when the file on disk differs from what would be generated. Done when: editing one colour in `Tokens.xaml` by hand makes `python scripts/build-tokens.py --check` exit 1. Cheaper substitute: trusting people to rerun the generator.
+- [ ] Add `scripts/build-tokens.py` (standard library only): read `design/tokens.json` and write four plain WPF `ResourceDictionary` files under `src/Berth/Theme/` (WPF has no `ThemeDictionaries`; that is a WinUI feature): `Tokens.Light.xaml` and `Tokens.Dark.xaml` with a `SolidColorBrush` per colour key named `Berth.<Key>` (for example `Berth.MarkerInPlace`), `Tokens.HighContrast.xaml` with the same keys as brushes on the system colours SPEC §2 names (through `DynamicResource` on `SystemColors` keys), and `Tokens.Shared.xaml` with every `size` (as `x:Double`, key `Berth.<Key>`), every `radius` (`CornerRadius`, key `Berth.Radius<Key>`), every `timing` value (`x:Double`, for example `Berth.VisiblePollSeconds`), the three font families, and for each `type` style a `Style` for `TextBlock` keyed `Berth.Type.<Name>` setting family, size and weight. Each file starts with a comment saying it is generated and from what. Done when: running it writes four files that `XamlReader.Load` parses in a test, and the three colour files hold exactly the same set of keys. Cheaper substitute: a hand-written dictionary that drifts from the JSON.
+- [ ] Add `--check`: write nothing and exit 1 when a file on disk differs from what would be generated. Done when: editing one colour in `Tokens.Dark.xaml` by hand makes `python scripts/build-tokens.py --check` exit 1. Cheaper substitute: trusting people to rerun the generator.
+- [ ] Add a test in `scripts/tests/test_build_tokens.py` that every key in `size`, `radius`, `timing` and `type` of `design/tokens.json` has a resource in `Tokens.Shared.xaml`, and a C# test `tests/Berth.Tests/Theme/TokenKeysTests.cs` that every `Berth.*` key referenced by a `StaticResource` or `DynamicResource` in any XAML under `src/Berth/` exists in the generated files. Done when: both pass, and the C# test fails when a XAML file references `Berth.NoSuchKey`. Cheaper substitute: a missing key that surfaces only as a run-time resource error.
 - [ ] Add a `tokens` step to `scripts/check-all.ps1` before `build` running `python scripts/build-tokens.py --check`. Done when: `pwsh scripts/check-all.ps1 -List` shows it. Cheaper substitute: a check nobody runs.
 - [ ] Add `scripts/tests/test_build_tokens.py`: the generator's output for a small fixture JSON matches an expected string; `--check` exits 0 on a fresh file and 1 on an edited one; every colour key in `design/tokens.json` appears in both theme dictionaries. Done when: `python -m unittest discover -s scripts/tests` passes with the new test. Cheaper substitute: testing the generator only by building the app.
-- [ ] Add `tests/Berth.Tests/Theme/NoHexColourTests.cs`: read every `.xaml` and `.cs` file under `src/Berth/` except `Theme/Tokens.xaml` and fail when one contains a hex colour literal (`#` followed by 3, 4, 6 or 8 hexadecimal digits inside a string or attribute) or a `Color.FromRgb`/`FromArgb` call. Done when: it passes now and fails when `Background="#FF0000"` is added to a XAML file. Cheaper substitute: a review convention (SPEC §1).
-- [ ] Merge `Theme/Tokens.xaml` into the application's resources in §5. Done when: §5's test finds `Berth.MarkerInPlace` through `Application.Current.FindResource`. Cheaper substitute: merging it in each window.
-- [ ] Commit: `theme: tokens generated into Tokens.xaml`
+- [ ] Add `tests/Berth.Tests/Theme/NoHexColourTests.cs`: read every `.xaml` and `.cs` file under `src/Berth/` except the generated `Theme/Tokens.*.xaml` and fail when one contains a hex colour literal (`#` followed by 3, 4, 6 or 8 hexadecimal digits inside a string or attribute) or a `Color.FromRgb`/`FromArgb` call. Done when: it passes now and fails when `Background="#FF0000"` is added to a XAML file. Cheaper substitute: a review convention (SPEC §1).
+- [ ] Merge the dictionaries into the application's resources in §5. Done when: §5's test finds `Berth.MarkerInPlace` through `Application.Current.FindResource`. Cheaper substitute: merging them in each window.
+- [ ] Commit: `theme: tokens generated into resource dictionaries`
 
-**Test checkpoint:** `python scripts/build-tokens.py --check` exits 0, and exits 1 after one colour in `src/Berth/Theme/Tokens.xaml` is changed by hand; `dotnet test --solution Berth.slnx --filter-class "*NoHexColourTests"` fails when a hex colour is added to a XAML file.
+**Test checkpoint:** `python scripts/build-tokens.py --check` exits 0, and exits 1 after one colour in `src/Berth/Theme/Tokens.Dark.xaml` is changed by hand; `dotnet test --solution Berth.slnx --filter-class "*NoHexColourTests"` fails when a hex colour is added to a XAML file.
 
 ## 5. WPF application object and theme
 
@@ -151,13 +152,13 @@ The `Application` that hosts the tray app and the window, following the Windows 
 2. Apply the Fluent theme and the tokens. Done when: a test window resolves both.
 
 - [ ] Add `BerthApplication : Application` created in code (no `App.xaml` startup object, since `Program.Main` is the entry point) with `ShutdownMode.OnExplicitShutdown` and `ThemeMode = ThemeMode.System`. Done when: `TrayApp.Run` creates it, runs it, and a call to `Shutdown(0)` from a timer in a test ends `Run` with 0. Cheaper substitute: `ShutdownMode.OnLastWindowClose`, which would end the tray app when the window hides.
-- [ ] Merge `Theme/Tokens.xaml` into `Resources.MergedDictionaries`. Done when: a test on an STA thread creates the application and `FindResource("Berth.MarkerInPlace")` returns a `SolidColorBrush`. Cheaper substitute: none needed.
+- [ ] Add `ThemeResources` in `src/Berth/App/ThemeResources.cs`: merges `Tokens.Shared.xaml` and one colour dictionary into `Resources.MergedDictionaries`, chosen by `Select(bool highContrast, bool appsUseLightTheme)` (high contrast wins, then light or dark), and replaces the colour dictionary when `SystemParameters.HighContrast` changes or the Windows app theme changes (`SettingChanged` with `ImmersiveColorSet`, wired in `D06 T01 §1`; until then through `SystemParameters.StaticPropertyChanged` and `Application.ThemeMode` changes). Surfaces refer to colours with `DynamicResource`, so open windows restyle live (SPEC §3). Done when: a test on an STA thread creates the application, `FindResource("Berth.MarkerInPlace")` returns the light brush, and after `ThemeResources.Apply(dark)` returns the dark one; unit tests cover the three outcomes of `Select`. Cheaper substitute: `StaticResource` colours, which keep the old theme until restart.
 - [ ] Add an STA application fixture in `tests/Berth.Tests/App/AppFixture.cs` that creates one `BerthApplication` for the test run on a dedicated STA thread with a running dispatcher, exposes `Invoke(Action)`, and shuts it down at the end. Done when: two test classes use it in one run without "cannot create more than one Application" errors. Cheaper substitute: a new `Application` per test, which WPF forbids.
 - [ ] Wire `SingleInstance` (§2) and `CrashHandler` (§3) in `TrayApp.Run`: a failed claim signals the first instance and returns 0 before any application object is created. Done when: a process test starts two `berth.exe` with a random `BERTH_INSTANCE` and `BERTH_DATA`, the second exits 0 within 10 seconds, and the first is then stopped by the test's tree kill. Cheaper substitute: creating the tray icon before the claim, which flashes a second icon.
 - [ ] Add `tests/Berth.Tests/App/BerthApplicationTests.cs`. Done when: all pass, and the resource test fails when the merge is removed. Cheaper substitute: checking the theme by eye.
 - [ ] Commit: `app: WPF application object and theme`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BerthApplicationTests"` passes, and fails when `Theme/Tokens.xaml` is not merged into the application resources.
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BerthApplicationTests"` passes, and fails when the token dictionaries are not merged into the application resources.
 
 ## 6. Taskbar theme detection
 
@@ -225,7 +226,7 @@ The right-click menu of SPEC §12, wired to the same operations as the window.
 2. Wire each item and its enabled state. Done when: each item does its job against fakes.
 
 - [ ] Build the menu: `Save layout`, `Restore layout`, `Restore automatically`, a separator, `Open Berth` (bold) and `Exit`, in that order. Done when: a test reads the items' text, the separator's position and the bold font of `Open Berth`. Cheaper substitute: a different order from the mockup.
-- [ ] `Save layout` calls `LayoutService.Save()` and `Restore layout` calls `LayoutService.Restore()`, both off the UI thread, each raising `OperationFinished(OperationResult)` on the UI thread. Done when: tests with `FakeDesktopIcons` click each item and see the fake desktop and the layout file change. Cheaper substitute: running the shell calls on the UI thread, freezing the menu.
+- [ ] `Save layout` calls `LayoutService.Save()` and `Restore layout` calls `LayoutService.Restore()`, both off the UI thread through `Task.Run` (the shell calls inside them run on `ShellDesktopIcons`'s own STA worker, `D02 T01 §9`), each raising `OperationFinished(OperationResult)` on the UI thread. Done when: tests with `FakeDesktopIcons` click each item and see the fake desktop and the layout file change. Cheaper substitute: running the shell calls on the UI thread, freezing the menu.
 - [ ] Before the menu opens (`Opening`), set `Restore layout` enabled only when the current arrangement has a layout and auto arrange is off, and `Restore automatically` checked from `SettingsStore`. Done when: tests cover no layout (disabled), auto arrange on (disabled), a layout with auto arrange off (enabled), and the check mark for both setting values. Cheaper substitute: computing the state once at startup.
 - [ ] `Restore automatically` toggles the setting through `SettingsStore.Save`, reads it back, and leaves the check as it was with a `FAIL` log line when the write fails. Done when: tests cover a successful toggle and a failing store. Cheaper substitute: a check mark that changes without the file changing.
 - [ ] `Open Berth` raises `OpenRequested`, and `Exit` raises `ExitRequested`, which `TrayApp` answers by disposing the tray icon and calling `Shutdown(0)`. Done when: a test clicks `Exit` and the application's run loop ends with 0. Cheaper substitute: `Environment.Exit`, which skips disposal and leaves a ghost icon.
@@ -245,7 +246,7 @@ The window's frame: title, icon, sizes, the 250 px layouts pane, the divider and
 **Fidelity:** `design/SPEC.md` §4.
 **Job:** the user opens Berth and gets a normal Windows 11 window that hides to the tray when closed.
 **Treatment:** a standard Fluent window with two panes at the token sizes; closing hides it. Cheaper substitute that fails: a window that exits the app when closed.
-**Chrome:** WPF `Window` with the Fluent theme's own title bar and backdrop; sizes from `Theme/Tokens.xaml`.
+**Chrome:** WPF `Window` with the Fluent theme's own title bar and backdrop; sizes from the generated `Theme/Tokens.Shared.xaml`.
 
 **Build order:**
 
@@ -276,8 +277,9 @@ The window remembers its size and position and never opens off screen (SPEC §4,
 2. Save on hide and apply on open. Done when: a reopened window is where it was.
 
 - [ ] Add `WindowPlacementRule.Resolve(WindowPlacement? saved, IReadOnlyList<MonitorInfo> monitors, int minWidth, int minHeight)` returning the saved placement when at least 100 by 100 px of it lies on some monitor and it is at least the minimum size, and `null` (use the default, centred on the primary monitor) otherwise. Done when: unit tests cover a visible placement, one entirely off screen, one on a disconnected monitor's coordinates, and one smaller than the minimum. Cheaper substitute: restoring any saved position, which loses the window after undocking.
-- [ ] Apply the rule when the window is first shown. Done when: a test with a stored placement shows the window at that position and size. Cheaper substitute: `WindowStartupLocation` alone.
-- [ ] When the window hides, save its restored bounds (`RestoreBounds` when maximised or minimised) to `Settings.Window` through `SettingsStore`, keeping `RestoreAutomatically` as it is. Done when: a test moves the window, hides it, and reads the new placement from `settings.json`. Cheaper substitute: saving on every move event, which writes the file hundreds of times.
+- [ ] Add `WindowPixels` in `src/Berth/Window/WindowPixels.cs` converting between WPF's device-independent units and physical pixels at the window boundary: `ToPhysical(Rect dips, double scale)` and `ToDips(WindowPlacement physical, double scale)`, where `scale` is the DPI scale of the monitor the placement lies on (`MonitorInfo.Scale / 100`). `settings.json` holds physical pixels (SPEC §14), and the rule above compares physical with physical. Done when: unit tests round-trip a placement at 100%, 150% and 200% without drift. Cheaper substitute: saving WPF units and comparing them with physical monitor bounds, which is wrong on any scaled display.
+- [ ] Apply the rule when the window is first shown, placing it with `SetWindowPos` in physical pixels (or setting `Left`, `Top`, `Width`, `Height` from `WindowPixels.ToDips` for the target monitor's scale). Done when: a test with a stored placement shows the window and `GetWindowRect` returns that placement. Cheaper substitute: `WindowStartupLocation` alone.
+- [ ] When the window hides, save its restored bounds in physical pixels (`GetWindowPlacement`'s normal position, so a maximised or minimised window saves its restored size) to `Settings.Window` through `SettingsStore`, keeping `RestoreAutomatically` as it is. Done when: a test moves the window, hides it, and reads the new placement from `settings.json`. Cheaper substitute: saving on every move event, which writes the file hundreds of times.
 - [ ] A failed settings write when hiding is logged as `WARN` and never blocks the hide. Done when: a test with a failing store hides the window and it is hidden. Cheaper substitute: an error dialog on close.
 - [ ] Add `tests/Berth.Tests/Window/WindowPlacementTests.cs`. Done when: all pass, and the off-screen test fails when the rule accepts every placement. Cheaper substitute: none needed.
 - [ ] Commit: `window: placement that persists`

@@ -21,7 +21,7 @@ Sections: 6 | Checklist items: 34
 
 ### Phase 1: Core
 
-Sections: 17 | Checklist items: 102
+Sections: 17 | Checklist items: 105
 
 | Status | Reference   | Deliverable                              | Needs | Items |
 | ------ | ----------- | ---------------------------------------- | ----- | ----- |
@@ -29,7 +29,7 @@ Sections: 17 | Checklist items: 102
 | [ ]    | D01 T01 §2  | Arrangement key                          | none  | 4     |
 | [ ]    | D01 T01 §3  | Data paths that honour BERTH_DATA        | none  | 5     |
 | [ ]    | D01 T01 §4  | Atomic JSON file with read-back          | none  | 5     |
-| [ ]    | D01 T01 §5  | Layout store                             | none  | 7     |
+| [ ]    | D01 T01 §5  | Layout store                             | none  | 8     |
 | [ ]    | D01 T01 §6  | Settings store                           | none  | 5     |
 | [ ]    | D01 T01 §7  | Layout names: defaults and validation    | none  | 5     |
 | [ ]    | D01 T01 §8  | Desktop and monitor seams with fakes     | none  | 7     |
@@ -37,58 +37,60 @@ Sections: 17 | Checklist items: 102
 | [ ]    | D01 T01 §14 | Operation lock across processes          | none  | 5     |
 | [ ]    | D01 T01 §15 | Log file with a size cap                 | none  | 6     |
 | [ ]    | D01 T01 §9  | Save operation                           | none  | 8     |
-| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot | none  | 7     |
+| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot | none  | 8     |
 | [ ]    | D01 T01 §11 | Undo operation                           | none  | 6     |
 | [ ]    | D01 T01 §12 | Rename, revert and delete operations     | none  | 6     |
 | [ ]    | D01 T01 §17 | Date, count and monitor size formats     | none  | 6     |
-| [ ]    | D01 T01 §16 | One wording for every result             | none  | 7     |
+| [ ]    | D01 T01 §16 | One wording for every result             | none  | 8     |
 
 ### Phase 2: Desktop access
 
-Sections: 8 | Checklist items: 39
+Sections: 10 | Checklist items: 48
 
-| Status | Reference  | Deliverable                                | Needs                         | Items |
-| ------ | ---------- | ------------------------------------------ | ----------------------------- | ----- |
-| [ ]    | D02 T01 §1 | Shell COM interface declarations           | none                          | 4     |
-| [ ]    | D02 T01 §2 | The desktop's folder view                  | windows-host, display-session | 5     |
-| [ ]    | D02 T01 §3 | Reading every icon's identity and position | windows-host, display-session | 6     |
-| [ ]    | D02 T01 §4 | Setting icon positions                     | windows-host, display-session | 5     |
-| [ ]    | D02 T01 §5 | Auto arrange read and clear                | windows-host, display-session | 5     |
-| [ ]    | D02 T01 §6 | Monitor bounds, scale and primary          | windows-host, display-session | 5     |
-| [ ]    | D02 T01 §7 | Real-desktop round trip on a probe icon    | windows-host, display-session | 5     |
-| [ ]    | D02 T01 §8 | One exception for an unreachable desktop   | none                          | 4     |
+| Status | Reference   | Deliverable                                | Needs                         | Items |
+| ------ | ----------- | ------------------------------------------ | ----------------------------- | ----- |
+| [ ]    | D02 T01 §1  | Shell COM interface declarations           | none                          | 4     |
+| [ ]    | D02 T01 §2  | The desktop's folder view                  | windows-host, display-session | 5     |
+| [ ]    | D02 T01 §9  | STA worker that owns every shell call      | windows-host, display-session | 5     |
+| [ ]    | D02 T01 §5  | Auto arrange read and clear                | windows-host, display-session | 5     |
+| [ ]    | D02 T01 §6  | Monitor bounds, scale and primary          | windows-host, display-session | 5     |
+| [ ]    | D02 T01 §3  | Reading every icon's identity and position | windows-host, display-session | 6     |
+| [ ]    | D02 T01 §4  | Setting icon positions                     | windows-host, display-session | 6     |
+| [ ]    | D02 T01 §10 | Desktop scoped to icons with a name prefix | none                          | 3     |
+| [ ]    | D02 T01 §7  | Real-desktop round trip on a probe icon    | windows-host, display-session | 5     |
+| [ ]    | D02 T01 §8  | One exception for an unreachable desktop   | none                          | 4     |
 
 ### Phase 3: Command line
 
-Sections: 8 | Checklist items: 40
+Sections: 8 | Checklist items: 44
 
 | Status | Reference  | Deliverable                                  | Needs                         | Items |
 | ------ | ---------- | -------------------------------------------- | ----------------------------- | ----- |
 | [ ]    | D03 T01 §1 | Argument parser                              | none                          | 5     |
-| [ ]    | D03 T01 §2 | Console behaviour proven with real processes | windows-host, display-session | 5     |
+| [ ]    | D03 T01 §2 | Console behaviour proven with real processes | windows-host, display-session | 7     |
 | [ ]    | D03 T01 §3 | The save command                             | windows-host, display-session | 6     |
-| [ ]    | D03 T01 §4 | The restore command                          | none                          | 4     |
-| [ ]    | D03 T01 §5 | The undo command                             | none                          | 4     |
+| [ ]    | D03 T01 §4 | The restore command                          | none                          | 5     |
+| [ ]    | D03 T01 §5 | The undo command                             | none                          | 5     |
 | [ ]    | D03 T01 §6 | The list command                             | none                          | 6     |
 | [ ]    | D03 T01 §7 | Help, version and usage errors               | none                          | 5     |
 | [ ]    | D03 T01 §8 | Process tests of every command and exit code | windows-host, display-session | 5     |
 
 ### Phase 4: Application shell
 
-Sections: 11 | Checklist items: 69
+Sections: 11 | Checklist items: 71
 
 | Status | Reference   | Deliverable                                   | Needs                         | Items |
 | ------ | ----------- | --------------------------------------------- | ----------------------------- | ----- |
 | [ ]    | D04 T01 §1  | Entry routing and the first-run rule          | none                          | 5     |
 | [ ]    | D04 T01 §2  | Single instance and activation                | none                          | 7     |
 | [ ]    | D04 T01 §3  | Crash handling                                | none                          | 5     |
-| [ ]    | D04 T01 §4  | Tokens generated into Tokens.xaml             | none                          | 7     |
+| [ ]    | D04 T01 §4  | Tokens generated into resource dictionaries   | none                          | 8     |
 | [ ]    | D04 T01 §5  | WPF application object and theme              | windows-host, display-session | 6     |
 | [ ]    | D04 T01 §6  | Taskbar theme detection                       | none                          | 4     |
 | [ ]    | D04 T01 §7  | Tray icon and tooltip                         | windows-host, display-session | 8     |
 | [ ]    | D04 T01 §8  | Tray menu                                     | windows-host, display-session | 8     |
 | [ ]    | D04 T01 §9  | Main window frame with two panes              | windows-host, display-session | 7     |
-| [ ]    | D04 T01 §10 | Window placement that persists                | windows-host, display-session | 6     |
+| [ ]    | D04 T01 §10 | Window placement that persists                | windows-host, display-session | 7     |
 | [ ]    | D04 T01 §11 | Off-screen rendering of the window for review | windows-host, display-session | 6     |
 
 ### Phase 5: Main window
@@ -146,6 +148,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 0/77 verified sections, 1 ready to run now.
+Progress: 0/79 verified sections, 1 ready to run now.
 
-Checklist: 0/453 items completed (includes Commit items).
+Checklist: 0/471 items completed (includes Commit items).

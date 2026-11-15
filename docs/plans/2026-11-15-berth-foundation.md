@@ -22,7 +22,7 @@ WPF was chosen over WinUI 3 because it publishes cleanly as one self-contained f
 
 ## Console and window from one executable
 
-`berth.exe` is a console program (`OutputType` `Exe`) whose application manifest sets `consoleAllocationPolicy` to `detached`. Windows 11 24H2 and later then gives it no console when it is started from the Start menu, a shortcut or the `Run` key, while a command typed in a terminal inherits that terminal, prints there and is waited for. This is why 24H2 is the minimum. `D03 T01 §2` proves both halves on the build machine with real processes. If that proof fails, the fallback is a Windows program (`WinExe`) that attaches to its parent's console, at the cost that a terminal does not wait for it: the section records which one shipped.
+`berth.exe` is a console program (`OutputType` `Exe`) whose application manifest sets `consoleAllocationPolicy` to `detached` (Microsoft Learn, "Console allocation policy"). A Windows build that honours the setting gives it no console when it is started from the Start menu, a shortcut or the `Run` key, while a command typed in a terminal inherits that terminal, prints there and is waited for. An older build ignores the setting and opens a console window. Which builds honour it was not confirmed when this plan was written: 24H2 is the stated minimum, to be confirmed. `D03 T01 §2` proves both halves on the build machine with real processes. If that proof fails, the fallback is a Windows program (`WinExe`) that attaches to its parent's console, at the cost that a terminal does not wait for it: the section records which one shipped.
 
 ## Layout of the repository
 
@@ -37,7 +37,7 @@ src/Berth/
   Cli/                argument parsing, the commands, exit codes
   App/                tray app, single instance, crash handling, automatic restore
   Window/             the main window, its view models, the position map, dialogs
-  Theme/Tokens.xaml   generated from design/tokens.json by scripts/build-tokens.py
+  Theme/Tokens.*.xaml generated from design/tokens.json by scripts/build-tokens.py
 tests/Berth.Tests/    unit, process and UI tests
 scripts/              plan tooling, check-all.ps1, build-tokens.py, start-run.ps1
 design/               SPEC.md, tokens.json, mockups
@@ -50,9 +50,11 @@ One application project, as the owner asked: the layers are folders and namespac
 
 - `IDesktopIcons` (read every icon, set positions, read and clear auto arrange) has two implementations: `ShellDesktopIcons` over `IFolderView`, and `FakeDesktopIcons` for tests.
 - `IMonitors` (the connected monitors with bounds, scale and primary) has `SystemMonitors` and a fake.
-- `BerthPaths` resolves the data and local roots and honours `BERTH_DATA`, so no test touches the user's own files.
+- `BerthPaths` resolves the data and local roots. In process a test builds one over a temporary folder (`BerthPaths.ForRoot`); a child process gets `BERTH_DATA` in its own environment. No test changes the test process's environment, since tests run in parallel.
 - `LayoutService` joins them: save, restore, undo, revert, rename and delete, each returning a result the window, tray and command line all word the same way.
-- A real-desktop test creates its own file on the desktop, moves only that icon and deletes it afterwards. No test moves an icon it did not create.
+- `ShellDesktopIcons` runs every shell call on its own STA thread (`StaWorker`), so the window, the tray menu and the automatic restore can call it from any thread.
+- `ScopedDesktopIcons` wraps an `IDesktopIcons` and shows only the icons whose display name starts with a prefix. A real-desktop test creates its own file on the desktop, scopes Berth to it, moves only that icon and deletes exactly that file afterwards. No test reads, saves or moves an icon it did not create.
+- Stored positions are physical pixels of the virtual desktop. `DesktopCoordinates` in `Desktop/` converts from and to the folder view's coordinates, and nothing outside `Desktop/` sees view coordinates.
 
 ## How icon positions are read and written
 

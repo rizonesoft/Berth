@@ -11,7 +11,7 @@ Decisions behind it were agreed with the owner on 2026-11-15: the "Grid" identit
 ## 1. Policy: how the contract binds
 
 - **Design first.** A change to how something looks or behaves is made here first, dated, naming the section that made it, and the code follows in the same commit range. Code never leads the spec, and a surface is never tuned to a value this file and `tokens.json` do not name.
-- **Tokens only.** Every colour, size, radius and type style a Berth surface sets comes from `tokens.json` through the generated resource dictionary (§2). No XAML or C# file under `src/` holds a hex colour, and the test of §2 fails when one does.
+- **Tokens only.** Every colour, size, radius and type style a Berth surface sets comes from `tokens.json` through the generated resource dictionaries (§2). No XAML or C# file under `src/` holds a hex colour, and the test of §2 fails when one does.
 - **Fluent controls stay Fluent.** Buttons, switches, text boxes, menus, dialogs, list selection and the title bar use the WPF Fluent theme as it ships, with the Windows accent colour. Berth does not restyle them. Berth's own blue is for the icon, the position map and the Active badge.
 - **Every state is drawn.** Each surface has the states listed in §19. A state this file lists and the surface lacks is a missing feature.
 - **Never colour alone.** Every status has a word, and a marker's state also changes its shape (§7).
@@ -23,14 +23,15 @@ Decisions behind it were agreed with the owner on 2026-11-15: the "Grid" identit
 
 - Icon, tray icons, wordmark, colours and type are as the README's "Brand and interface" section records, and the files are in `assets/`.
 - `assets/icon/berth.ico` is the application icon (the executable, the window, the taskbar). The tray uses `berth-tray-dark.ico` on a dark taskbar and `berth-tray-light.ico` on a light one (§12).
-- `tokens.json` is the only source of Berth's own values. A build step generates `src/Berth/Theme/Tokens.xaml` from it, with a light and a dark dictionary, and the generated file is never edited by hand. A test regenerates it and fails when the committed file differs.
+- `tokens.json` is the only source of Berth's own values. A build step generates the resource dictionaries under `src/Berth/Theme/` from it (`Tokens.Shared.xaml` for sizes, radii, type and timing, and `Tokens.Light.xaml`, `Tokens.Dark.xaml` and `Tokens.HighContrast.xaml` for colours), and the generated files are never edited by hand. Berth merges the colour dictionary that matches the Windows theme and swaps it live when the theme changes. A test regenerates the files and fails when a committed one differs.
 - High contrast: Berth's own colours are replaced by the system colours (`WindowText`, `Window`, `Highlight`, `GrayText`), so the map and badges stay legible in every high contrast theme.
 
 ## 3. Shared rules
 
 - Theme follows Windows (`ThemeMode="System"`): light, dark and high contrast, changing live with no restart.
 - Per-monitor DPI awareness version 2. Every position Berth stores or shows is in physical pixels of the virtual desktop, as the shell reports it.
-- Every interactive control is reachable by Tab in reading order, shows the theme's focus visual, has an automation name, and is at least 32 px high.
+- Every interactive control is reachable by Tab in reading order, shows the theme's focus visual, has an automation name, and is at least 32 px high. Map markers are the one exception: a marker's target is 19 px square (the 11 px marker plus 4 px on each side), because markers sit as close together as the desktop's own icon grid, and every marker is reachable with the arrow keys (§7).
+- Text wraps rather than clips. Only a layout's name may be trimmed with an ellipsis, in the layouts pane and in the detail header, and its tooltip then gives the full name.
 - Dates read "today, 09:14", "yesterday, 17:02" or "12 November", in the user's time zone and 24-hour time.
 - Monitor sizes read "2560 × 1440", joined by " and " for two monitors and by commas with a final " and " for more.
 - Berth never moves an icon except in a restore, an undo or a revert the user or the automatic restore asked for.
@@ -93,19 +94,21 @@ A card under the map with a 10 px square in `markerInPlace`, a sentence, and on 
 | When | Sentence | Right side |
 | ---- | -------- | ---------- |
 | An operation is running | "Working" | nothing |
-| A restore just finished | "Restored 42 icons." or "Restored 40 of 42 icons. 2 are no longer on the desktop." | "Undo" button |
-| An undo just finished | "Put 42 icons back where they were before the restore." | nothing |
+| A restore just finished | "Restored 42 icons.", or the partial sentence below | "Undo" button |
+| An undo just finished | "Put 42 icons back where they were before the restore.", or "Put 40 of 42 icons back. 2 did not stay where they were." | nothing, or "Undo" again when some did not stay |
 | A save just finished | "Saved 42 icons." or, over an earlier save, "Saved 42 icons. The previous save is kept." | nothing |
 | A revert just finished | "Reverted to the save from 12 November." | nothing |
 | An operation was refused or failed | The message of §18 | "Retry" button when retrying can help |
 | Active layout, nothing moved or missing | "Every icon is at its saved position." | "Checked 09:14" |
-| Active layout, icons moved | "3 icons have moved since this layout was saved." | "Checked 09:14" |
-| Active layout, icons missing | "2 saved icons are no longer on the desktop." | "Checked 09:14" |
-| Active layout, moved and missing | "3 icons have moved and 2 are no longer on the desktop." | "Checked 09:14" |
+| Active layout, some moved and some missing | "3 icons have moved and 2 are no longer on the desktop." | "Checked 09:14" |
+| Active layout, some moved, none missing | "3 icons have moved since this layout was saved." | "Checked 09:14" |
+| Active layout, some missing, none moved | "2 saved icons are no longer on the desktop." | "Checked 09:14" |
 | Unsaved arrangement | "This monitor arrangement has no saved layout yet." | nothing |
 | Another arrangement's layout | "Saved 12 November for another monitor arrangement." | nothing |
 
-One icon reads "1 icon has moved", "1 saved icon is no longer on the desktop" and "Restored 1 icon." A just-finished sentence stays until the next operation, a selection change in the layouts pane, or the next desktop read that finds a change.
+A partial restore reads "Restored 38 of 42 icons." followed by one or both of "2 did not stay where they were saved." and "2 are no longer on the desktop.", in that order. An icon "did not stay" when it is on the desktop but its position read back after the restore is not its saved position.
+
+One icon reads "1 icon has moved", "1 saved icon is no longer on the desktop", "1 did not stay where it was saved." and "Restored 1 icon." A just-finished sentence stays until the next operation, a selection change in the layouts pane, or the next desktop read that finds a change.
 
 ## 9. Notices
 
@@ -163,21 +166,23 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 
 - `berth list` prints, per layout, an asterisk for the active one, the name, the monitor count, the icon count and the save date: `* Docked        2 monitors  42 icons  2026-11-15 09:14`. With no layouts it prints `No layouts saved yet.`
 - `--name` on a new layout names it, and on an existing one renames it, under the rules of §10.
-- A partial restore prints `Restored 40 of 42 icons from "Docked". 2 are no longer on the desktop.` and still exits 0.
+- A restore where some saved icons are no longer on the desktop prints `Restored 40 of 42 icons from "Docked". 2 are no longer on the desktop.` and still exits 0.
+- A restore or undo where an icon that is on the desktop did not stay at its position prints the §8 partial sentence (with ` from "Docked"` after the count for a restore) to standard error and exits 1. An undo that ends this way keeps its snapshot, so `berth undo` can be run again.
 - Results go to standard output, and refusals and errors to standard error, each as one line.
 
 | Exit code | Meaning |
 | --------- | ------- |
 | 0 | Done |
-| 1 | An unexpected error: the message says what failed |
+| 1 | An error: a write failed, an icon did not stay where it was put, or something unexpected; the message says which |
 | 2 | Wrong usage: an unknown command or option, a missing or invalid `--name` |
 | 3 | Refused: auto arrange is on, no layout for this arrangement, nothing to undo, or the desktop cannot be reached |
 
-- The executable is a console program whose manifest sets the console allocation policy to detached, so starting it from the Start menu, a shortcut or the `Run` key opens no console window, while a command typed in a terminal prints there and the terminal waits for it. This needs Windows 11 version 24H2 or later, which is Berth's minimum.
+- The executable is a console program whose manifest sets the console allocation policy to detached, so starting it from the Start menu, a shortcut or the `Run` key opens no console window, while a command typed in a terminal prints there and the terminal waits for it. Only recent Windows 11 builds honour that policy: Berth's stated minimum is Windows 11 version 24H2, and `D03 T01 §2` proves the behaviour on the build machine and records the lowest build it was shown on.
 
 ## 14. Storage
 
 - Data root: `%APPDATA%\Berth`. Local root: `%LOCALAPPDATA%\Berth`. When the environment variable `BERTH_DATA` is set, both roots are that folder (`<BERTH_DATA>\roaming` and `<BERTH_DATA>\local`): tests set it and never touch the user's own data.
+- Test mode exists only while `BERTH_DATA` is set, so it can never touch a user's real data. In it, `BERTH_TEST_ICON_PREFIX` limits Berth to the desktop icons whose display name starts with that text (it reads, saves and moves no other icon), `BERTH_TEST_HOLD_MS` keeps a command alive that many milliseconds (at most 5000) before it exits, and `BERTH_TEST_REPORT` names a file the process writes one line to, `console=0` or `console=1`, saying whether it has a console.
 - `layouts\<key>.json` under the data root: one file per monitor arrangement.
 
 ```json
@@ -197,20 +202,22 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 ```
 
 - `id` is the icon's parsing name and `name` its display name. `previous` is `null` or `{ "savedAt": ..., "icons": [...] }`, the one save this one replaced.
-- `settings.json` under the data root: `{ "schemaVersion": 1, "restoreAutomatically": false, "window": { "x": 100, "y": 100, "width": 980, "height": 640 } }`, where `window` is `null` until the window has been closed once.
+- `settings.json` under the data root: `{ "schemaVersion": 1, "restoreAutomatically": false, "window": { "x": 100, "y": 100, "width": 980, "height": 640 } }`, where `window` is `null` until the window has been closed once. `window` is in physical pixels of the virtual desktop, like every other position Berth stores.
 - `undo.json` under the local root: the positions read just before the last restore, with the arrangement key and the time. An undo deletes it.
 - `logs\berth.log` under the local root (§18).
-- Every write goes to a temporary file in the same folder, is flushed, replaces the target in one step, and is read back and compared before the operation reports success. A failed write leaves the old file as it was.
-- A file that is not valid JSON, has another `schemaVersion`, or breaks the schema is never overwritten or deleted by Berth: it is reported (§9, §18) and skipped. A missing `settings.json` means the defaults.
+- Every write goes to a temporary file in the same folder, is flushed, is read back and compared, and only then replaces the target in one step. A write that fails at any point leaves the old file as it was.
+- A layout or settings file that is not valid JSON, has another `schemaVersion`, or breaks the schema is never overwritten or deleted by Berth: it is reported (§9, §18) and skipped, and a save that would replace it is refused with the "could not be read" message of §18. A missing `settings.json` means the defaults.
+- `undo.json` is Berth's own scratch file: one that cannot be read counts as missing and is replaced by the next restore.
 - The arrangement key is the first 16 hexadecimal characters of the SHA-256 of the monitors, each written `x,y,width,height,scale` and sorted by `x` then `y`, joined by `;`. The same monitors in the same places at the same scale always give the same key.
 
 ## 15. Save and restore rules
 
 - **Reading the desktop.** Berth reads every icon's parsing name, display name and position through the shell's folder view of the desktop (`IFolderView`), as the README's "How icon positions are read and written" says, and never through Explorer's list-view window.
 - **Save.** Reads every icon and the monitors, and writes the layout of the current arrangement. A first save of an arrangement names it "1 monitor" or "N monitors", adding " (2)", " (3)" and so on when the name is taken. A later save keeps the name and moves the earlier `icons` and `savedAt` into `previous`.
-- **Restore.** Refused while auto arrange is on, when the current arrangement has no layout, or when the desktop cannot be reached. Otherwise Berth writes `undo.json` with the positions now, sets every saved icon that is still on the desktop to its saved position, leaves icons that are not in the layout where they are, reads the desktop back, and reports how many saved icons are at their saved positions and how many are no longer on the desktop.
+- **Restore.** Refused, checked in this order, when the desktop cannot be reached, when the current arrangement has no layout, or while auto arrange is on. Otherwise Berth writes `undo.json` with the positions now, sets every saved icon that is still on the desktop to its saved position, leaves icons that are not in the layout where they are, reads the desktop back, and reports how many saved icons are at their saved positions, how many are on the desktop but did not stay there, and how many are no longer on the desktop.
 - **In place.** An icon is in place when the position read back equals the saved position exactly.
-- **Undo.** Restores the positions in `undo.json` when its arrangement key is the current one, then deletes it. Refused, with "There is nothing to undo.", when the file is missing or was written for another arrangement.
+- **Undo.** Restores the positions in `undo.json` when its arrangement key is the current one, reads the desktop back, and deletes the file only when every icon that is still on the desktop is back in place. Refused, with "There is nothing to undo.", when the file is missing, cannot be read, or was written for another arrangement.
+- **Positions.** A stored position is the icon's position in physical pixels of the virtual desktop. Berth converts from and to the folder view's own coordinates in one place, so a position read, stored and written back is the position the view reported.
 - **Matching.** Icons are matched by parsing name, compared ignoring case. A display name is never used to match.
 - Save, restore, undo and revert are one at a time across the tray app and the command line: a second one waits up to 5 seconds for the first and is then refused with the §18 message.
 
@@ -219,7 +226,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 - Runs only in the tray app, and only while "Restore automatically" is on.
 - Triggered by a display change (`WM_DISPLAYCHANGE`) and by Explorer restarting (`TaskbarCreated`). Berth waits until 3 seconds have passed with no further trigger, so Explorer finishes its own rearranging first, then restores the layout of the arrangement connected at that moment.
 - An arrangement with no layout does nothing and saves nothing.
-- A refusal or failure writes a FAIL line to the log and shows the balloon of §12, once per trigger. A success writes an INFO line and shows nothing.
+- A refusal writes a WARN line and a failure a FAIL line to the log, and either shows the balloon of §12, once per trigger. A restore where an icon did not stay at its saved position counts as a failure. A success writes an INFO line and shows nothing. Each line ends with the trigger, as in ` (automatic, display change)`.
 - When the main window is visible, its status line shows the result as for a manual restore, with "Undo".
 
 ## 17. Single instance and startup
@@ -239,6 +246,7 @@ Every refusal and failure has one message, used in the status line, on standard 
 | No layout for this arrangement | "This monitor arrangement has no saved layout." |
 | The desktop cannot be reached | "Berth cannot reach the desktop. Explorer may be restarting." |
 | Nothing to undo | "There is nothing to undo." |
+| Icons did not stay after a restore or undo | The partial sentence of §8 |
 | Another operation is running | "Berth is busy with another save or restore. Try again in a moment." |
 | A file cannot be written | "Berth could not write `<path>`: `<the system's reason>`." |
 | A file cannot be read | "The layout file `<file name>` could not be read. It was left untouched." |

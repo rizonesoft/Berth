@@ -39,12 +39,14 @@ depends_on: ["layout-core"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Shell COM interface declarations | D00 T01 §2 | [ ] |
 | 2 | §2 | The desktop's folder view | §1 | [ ] |
-| 3 | §3 | Reading every icon's identity and position | §2, D01 T01 §8 | [ ] |
-| 4 | §4 | Setting icon positions | §3 | [ ] |
-| 5 | §5 | Auto arrange read and clear | §2 | [ ] |
-| 6 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [ ] |
-| 7 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, D01 T01 §11 | [ ] |
-| 8 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
+| 3 | §9 | STA worker that owns every shell call | §2 | [ ] |
+| 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [ ] |
+| 5 | §4 | Setting icon positions | §3 | [ ] |
+| 6 | §5 | Auto arrange read and clear | §9 | [ ] |
+| 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [ ] |
+| 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [ ] |
+| 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [ ] |
+| 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
 
 ## 1. Shell COM interface declarations
 
@@ -81,7 +83,7 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 
 - [ ] Add `DesktopView.Open()` returning a disposable holder of `IFolderView` (and `IFolderView2` when the view supports it): create `ShellWindows`, call `FindWindowSW` with `CSIDL_DESKTOP`, `SWC_DESKTOP` and `SWFO_NEEDDISPATCH`, query `IServiceProvider` for `SID_STopLevelBrowser` as `IShellBrowser`, call `QueryActiveShellView`, and cast to `IFolderView` (foundation plan). Done when: a test on the real desktop calls `Open()` and `ItemCount(SVGIO_ALLVIEW)` returns a number at or above 0 without throwing. Cheaper substitute: `FindWindow("Progman")` and list-view messages, which the README forbids.
 - [ ] Release every intermediate COM object (`Marshal.ReleaseComObject` or the generated wrappers' disposal) on success and on failure. Done when: a test opens and disposes the view 500 times and the process handle count afterwards is within 50 of the count before. Cheaper substitute: leaving release to the finaliser, which a long-running tray app pays for.
-- [ ] Run the acquisition on an STA thread: `DesktopView.Open` asserts `Thread.CurrentThread.GetApartmentState() == ApartmentState.STA` and the test host runs these tests on an STA thread through a small `StaFact` helper in `tests/Berth.Tests/Sta.cs`. Done when: calling `Open` from an MTA thread throws `InvalidOperationException` with a message naming STA. Cheaper substitute: silently working on some threads and failing on others.
+- [ ] Require an STA thread (production code reaches `DesktopView` only through the `StaWorker` of §9): `DesktopView.Open` asserts `Thread.CurrentThread.GetApartmentState() == ApartmentState.STA` and the test host runs these tests on an STA thread through a small `StaFact` helper in `tests/Berth.Tests/Sta.cs`. Done when: calling `Open` from an MTA thread throws `InvalidOperationException` with a message naming STA. Cheaper substitute: silently working on some threads and failing on others.
 - [ ] Add `tests/Berth.Tests/Desktop/DesktopViewTests.cs` with those cases, marked with a trait `RealDesktop`. Done when: they pass on the build machine. Cheaper substitute: a test that is skipped everywhere.
 - [ ] Commit: `desktop: the desktop's folder view`
 
@@ -102,7 +104,7 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 
 - [ ] Implement `ReadIcons()`: get the view's `IShellFolder` with `IFolderView.GetFolder`, enumerate with `IFolderView.Items(SVGIO_ALLVIEW)` as `IEnumIDList`, and for each item read `GetItemPosition`, the parsing name with `GetDisplayNameOf(SHGDN_FORPARSING)` and the display name with `GetDisplayNameOf(SHGDN_NORMAL)`, converting the returned `STRRET` with `StrRetToBuf` or `StrRetToStr`. Done when: a test on the real desktop gets a list whose count equals `ItemCount(SVGIO_ALLVIEW)` and whose every `Id` is non-empty. Cheaper substitute: using the display name as `Id` (SPEC §15 "Matching").
 - [ ] Free each item identifier list with `CoTaskMemFree` (or `Marshal.FreeCoTaskMem`) in a `finally`. Done when: a test reads the icons 200 times and private memory afterwards is within 5 MB of the value before. Cheaper substitute: leaking one allocation per icon per read, which a 5 second poll turns into a real leak.
-- [ ] Return positions exactly as the view reports them, with no conversion (SPEC §3: physical pixels of the virtual desktop as the shell reports it). Done when: the header comment of `ShellDesktopIcons.cs` records, from a measurement on the build machine, what the origin of these coordinates is relative to the virtual screen, and `D05 T01 §4` consumes that note. Cheaper substitute: guessing a DPI conversion.
+- [ ] Add `DesktopCoordinates` in `src/Berth/Desktop/DesktopCoordinates.cs` with `ToDesktop(viewX, viewY, IReadOnlyList<MonitorInfo> monitors)` and its exact inverse `ToView(...)`, converting between the folder view's coordinates (`IFolderView.GetItemPosition` reports positions in the view, per Microsoft's documentation) and physical pixels of the virtual desktop (SPEC §15 "Positions"). First measure on the build machine where the view's origin is: read a known icon's view position and its on-screen rectangle (through UI Automation or `IFolderView.GetItemPosition` against `GetSystemMetrics(SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN)`), and record the finding and the date in the file's header comment. `ReadIcons` returns desktop coordinates. Done when: unit tests cover a primary-only arrangement, a monitor at negative `X`, and a monitor at negative `Y`, and `ToView(ToDesktop(p))` equals `p` for every tested point; and a `RealDesktop` test asserts every icon read from the live desktop lies inside the bounding box of the live monitors. Cheaper substitute: storing view coordinates and converting only when drawing, so Core's monitor numbering and off-screen checks disagree with the map.
 - [ ] When two items report the same parsing name ignoring case, keep the first and write one `WARN` log line naming it. Done when: a unit test over an internal `Deduplicate` helper asserts one icon and one warning. Cheaper substitute: returning duplicates, which `LayoutStore` refuses to load back (`D01 T01 §5`).
 - [ ] Add `tests/Berth.Tests/Desktop/ReadIconsTests.cs` (trait `RealDesktop`) asserting: the count matches the view; the Recycle Bin's `Id`, when it is on the desktop, starts with `::{`; two reads in a row return equal lists. Done when: they pass, and the count test fails when the enumeration stops one item early. Cheaper substitute: asserting only that the list is not null.
 - [ ] Commit: `desktop: reading every icon's identity and position`
@@ -122,13 +124,14 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 1. Implement `SetPositions` with one `SelectAndPositionItems` call. Done when: the probe test of §7 can move its icon.
 2. Skip icons that are not on the desktop. Done when: an unknown `Id` is ignored without error.
 
-- [ ] Implement `SetPositions(IReadOnlyList<IconPosition> icons)`: enumerate the desktop's items once, build a map from parsing name (ignoring case) to item identifier list, and call `IFolderView.SelectAndPositionItems` with the matched items, their points and `SVSI_POSITIONITEM`. Done when: the §7 probe test moves its icon by this call. Cheaper substitute: one call per icon, which is slow and repaints the desktop each time.
+- [ ] Implement `SetPositions(IReadOnlyList<IconPosition> icons)`: enumerate the desktop's items once, build a map from parsing name (ignoring case) to item identifier list, and call `IFolderView.SelectAndPositionItems` with the matched items, their points converted with `DesktopCoordinates.ToView`, and `SVSI_POSITIONITEM`. Done when: the §7 probe test moves its icon by this call. Cheaper substitute: one call per icon, which is slow and repaints the desktop each time.
 - [ ] Pass only `SVSI_POSITIONITEM`, so the user's selection on the desktop is not changed. Done when: the §7 probe test asserts the probe icon is not selected afterwards (through `IFolderView.ItemCount(SVGIO_SELECTION)` being unchanged). Cheaper substitute: adding `SVSI_SELECT`, which deselects what the user had selected.
 - [ ] Ignore, without error, an `IconPosition` whose `Id` is not on the desktop. Done when: the §7 test passes a made-up `Id` alongside the probe and the call succeeds. Cheaper substitute: throwing, which would fail every restore with a deleted file.
-- [ ] Free every item identifier list in a `finally`, as in §3. Done when: the §3 leak test, extended to call `SetPositions` with the current positions (an identity write that moves nothing), stays within its bound. Cheaper substitute: leaking per restore.
+- [ ] Free every item identifier list in a `finally`, as in §3. Done when: a unit test over the internal matching helper with a fake enumerator counts one free per allocation, on success and when the positioning call throws. Cheaper substitute: leaking per restore.
+- [ ] Do not call `SetPositions` against the real desktop in this section: the only real write is §7's, on its own probe icon. Done when: `git grep -n "SetPositions" tests/Berth.Tests/Desktop` shows real-desktop calls only in `ProbeIconTests.cs`. Cheaper substitute: an "identity write" of every icon's current position, which reverses any move the owner makes between the read and the write (`AGENTS.md`).
 - [ ] Commit: `desktop: setting icon positions`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ProbeIconTests"` (written in §7) is the proof; until §7 lands, `dotnet test --solution Berth.slnx --filter-class "*ReadIconsTests"` passes with the identity write added and the desktop's positions are equal before and after.
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SetPositionsTests"` passes (the matching, conversion and free-count unit tests), and fails when an `IconPosition` whose `Id` is not on the desktop makes the call throw; the real-desktop proof is §7's `ProbeIconTests`.
 
 ## 5. Auto arrange read and clear
 
@@ -185,10 +188,10 @@ The one test that proves reading and writing against Windows itself, touching on
 1. Add a probe fixture that creates and removes its own desktop file. Done when: the file never outlives the test.
 2. Move the probe and read it back. Done when: the read-back equals the requested position and every other icon is where it was.
 
-- [ ] Add `ProbeIcon` in `tests/Berth.Tests/Desktop/ProbeIcon.cs`: creates `berth-test-probe-<guid>.txt` in the user's desktop folder (`Environment.SpecialFolder.DesktopDirectory`), waits up to 10 seconds for an icon with that parsing name to appear in `ReadIcons`, and deletes the file in `Dispose`, also deleting any leftover `berth-test-probe-*.txt` older than one hour at start. Done when: after the test, and after a test that throws mid-way, no `berth-test-probe-*` file is on the desktop. Cheaper substitute: moving one of the owner's real icons.
-- [ ] Add `tests/Berth.Tests/Desktop/ProbeIconTests.cs` (trait `RealDesktop`): record every icon's position, skip with a clear message when `AutoArrange` is `true`, set the probe to its current position plus 200 px on `X`, read back, and assert the probe moved to the requested position (or, when the read-back differs because the desktop snaps to its grid, to within one grid cell of it, recording which happened) and every other icon's position is unchanged. Done when: the test passes on the build machine. Cheaper substitute: asserting only that `SetPositions` did not throw.
+- [ ] Add `ProbeIcon` in `tests/Berth.Tests/Desktop/ProbeIcon.cs`: creates `berth-test-probe-<guid>.txt` in the user's desktop folder (`Environment.SpecialFolder.DesktopDirectory`), waits up to 10 seconds for an icon with that display name to appear in `ReadIcons`, exposes `Prefix` (`berth-test-probe-<guid>`), and deletes exactly the file it created in `Dispose` and when its own start-up fails or times out. It deletes no other file, whatever its name or age. Done when: after the test, after a test that throws mid-way, and after a forced start-up timeout, the file it created is gone and a decoy file `berth-test-probe-decoy.txt` placed by the test in a temp folder passed as the "desktop" in a unit variant is untouched. Cheaper substitute: wildcard cleanup of old probe files, which deletes files this run did not create.
+- [ ] Add `tests/Berth.Tests/Desktop/ProbeIconTests.cs` (trait `RealDesktop`): skip with a clear message when `AutoArrange` is `true`; read the desktop through `ScopedDesktopIcons` with the probe's `Prefix` (§10), so only the probe is read; set the probe to its current position plus 200 px on `X` through the scoped desktop, read back, and assert the probe is at the requested position (or, when the desktop snaps to its grid, within one grid cell of it, recording which happened in the test output). Done when: the test passes on the build machine and the only `Id` ever passed to the real `SetPositions` is the probe's. Cheaper substitute: asserting only that `SetPositions` did not throw.
 - [ ] In the same test, pass a made-up `Id` alongside the probe and assert success (`§4`). Done when: the assertion is present and passes. Cheaper substitute: testing the unknown `Id` only against the fake.
-- [ ] Run the full `LayoutService` cycle against the real implementations with `TestData`: save, move the probe, restore, assert the probe is back and `Missing` is 0, undo, assert the probe returned to the moved position. Done when: the test passes and the temp root holds the layout and no `undo.json` after the undo. Cheaper substitute: an end-to-end test that runs only against fakes.
+- [ ] Run the full `LayoutService` cycle over `ScopedDesktopIcons` and `SystemMonitors` with a `TestData` root: save (the layout holds exactly one icon, the probe), move the probe, restore, assert the probe is back and `Missing` is 0, undo, assert the probe returned to the moved position. Done when: the test passes, the layout file lists one icon, and the temp root holds no `undo.json` after the undo. Cheaper substitute: a cycle over the unscoped desktop, which snapshots and repositions every icon the owner has.
 - [ ] Commit: `desktop: real-desktop round trip on a probe icon`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ProbeIconTests"` passes on the build machine with auto arrange off, leaves no probe file on the desktop, and fails when `SetPositions` passes the points in the wrong order.
@@ -212,6 +215,46 @@ Explorer restarting, a locked session or a COM failure all surface as `DesktopUn
 - [ ] Commit: `desktop: one exception for an unreachable desktop`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*UnavailableTests"` passes, and fails when `ReadIcons` lets a `COMException` escape.
+
+## 9. STA worker that owns every shell call
+
+The shell's folder view must be used from a single-threaded apartment, and the window, the tray menu and the automatic restore all call it from background threads. One worker thread owns every call, so no caller has to care.
+
+**Phase:** 2
+**Needs:** windows-host, display-session
+**Surface:** no
+
+**Build order:**
+
+1. Add `StaWorker` in `src/Berth/Desktop/StaWorker.cs`. Done when: work queued from any thread runs on one STA thread.
+2. Make it the only way `ShellDesktopIcons` reaches the shell. Done when: a call from a thread-pool thread succeeds.
+
+- [ ] Add `StaWorker`: a dedicated background thread set to `ApartmentState.STA` before it starts, with a blocking queue, `T Run<T>(Func<T> work)` that runs `work` on that thread and returns its result or rethrows its exception on the caller, and `Dispose` that ends the thread within 2 seconds. A call made from the worker's own thread runs inline. Done when: unit tests show `work` sees `ApartmentState.STA` and the same managed thread id for calls from three different threads, an exception reaches the caller with its type intact, and the thread is gone after `Dispose`. Cheaper substitute: `Task.Run`, whose thread-pool threads are MTA and make `DesktopView.Open` throw in production while fake-based tests pass.
+- [ ] Give `ShellDesktopIcons` one `StaWorker` and route `ReadIcons`, `SetPositions`, `AutoArrange` and `TryTurnAutoArrangeOff` through `Run` (§3 to §5 implement them inside it). Done when: a `RealDesktop` test calls `ReadIcons` from a thread-pool thread (`Task.Run`) and gets the icons. Cheaper substitute: requiring every caller to be on the UI thread, which freezes the window during a restore.
+- [ ] `ShellDesktopIcons` is disposable and disposes its worker; `Composition` (`D03 T01 §3`) owns one for the life of the process. Done when: a test disposes it and a later call throws `ObjectDisposedException`. Cheaper substitute: a thread that outlives the tray app's exit.
+- [ ] Add `tests/Berth.Tests/Desktop/StaWorkerTests.cs`. Done when: all pass, and the apartment test fails when the thread is not set to STA. Cheaper substitute: none needed.
+- [ ] Commit: `desktop: STA worker that owns every shell call`
+
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*StaWorkerTests"` passes, and fails when the worker thread's apartment state is left as MTA.
+
+## 10. Desktop scoped to icons with a name prefix
+
+A wrapper that lets Berth see and move only icons whose display name starts with a prefix. It is how every real-desktop test keeps to its own probe icon, in process and through the built executable (SPEC §14 "Test mode").
+
+**Phase:** 2
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Add `ScopedDesktopIcons` in `src/Berth/Desktop/ScopedDesktopIcons.cs`. Done when: reads and writes are limited to the prefix.
+2. Test it over a fake. Done when: an icon outside the scope is never read or passed on.
+
+- [ ] Add `ScopedDesktopIcons(IDesktopIcons inner, string prefix)` implementing `IDesktopIcons`: `ReadIcons` returns only the icons whose `Name` starts with `prefix` (ordinal, ignoring case); `SetPositions` passes on only the positions whose `Id` belongs to an icon in scope at that moment; `AutoArrange` passes through; `TryTurnAutoArrangeOff` returns `false` without calling `inner`. An empty prefix is refused with `ArgumentException`. Done when: unit tests over `FakeDesktopIcons` with three icons, one in scope, show one icon read, an out-of-scope `Id` never reaching the fake's `SetPositions`, and auto arrange never changed. Cheaper substitute: filtering in each test, which the built executable cannot use.
+- [ ] Add `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs`. Done when: all pass, and the write test fails when `SetPositions` forwards every position. Cheaper substitute: none needed.
+- [ ] Commit: `desktop: desktop scoped to icons with a name prefix`
+
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ScopedDesktopIconsTests"` passes, and fails when an out-of-scope position is forwarded to the inner desktop.
 
 ## Verification
 

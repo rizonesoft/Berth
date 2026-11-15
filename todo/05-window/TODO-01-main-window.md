@@ -17,7 +17,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 
 - `design/SPEC.md` §1 (policy), §3 (shared rules), §5 to §11, §18 (messages), §19 (states to draw).
 - `design/tokens.json`, `design/mockups/main-window-light.png`, `design/mockups/main-window-dark.png` and their HTML sources.
-- The note in the header of `src/Berth/Desktop/ShellDesktopIcons.cs` on the origin of icon coordinates (`D02 T01 §3`).
+- `DesktopCoordinates` (`D02 T01 §3`): every position this file sees is already in physical pixels of the virtual desktop.
 - -> XREF: D01 T01 §13 -- `LayoutComparison` supplies every marker's state
 - -> XREF: D02 T01 §5 -- the auto arrange notice calls `TryTurnAutoArrangeOff`
 - -> XREF: D04 T01 §9 -- the window frame and hosts this file fills
@@ -47,7 +47,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 8 | §8 | Rename dialog | §3 | [ ] |
 | 9 | §9 | Revert to previous save and delete | §8 | [ ] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [ ] |
-| 11 | §11 | Settings switches and version caption | §2, §10 | [ ] |
+| 11 | §11 | Settings switches and version caption | §2, §6, §10 | [ ] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [ ] |
 | 13 | §13 | High contrast and 150% scale | §12 | [ ] |
 | 14 | §14 | UI Automation smoke of the running window | §13 | [ ] |
@@ -85,7 +85,7 @@ The left pane: heading, one row per layout, the Active badge and the selection (
 **Fidelity:** `design/SPEC.md` §5, bullets one to six.
 **Job:** the user sees which layouts exist and which one belongs to the monitors connected now.
 **Treatment:** a list with name, a second line and the Active badge; the unsaved arrangement is its own first row. Cheaper substitute that fails: hiding the current arrangement when it has no layout, leaving nothing to save from.
-**Chrome:** a Fluent `ListBox` with the theme's selection, a 3 px accent marker, and badge colours from `Theme/Tokens.xaml`.
+**Chrome:** a Fluent `ListBox` with the theme's selection, a 3 px accent marker, and badge colours from the token dictionaries.
 
 **Build order:**
 
@@ -140,18 +140,18 @@ The map panel: the grid, each monitor to scale with its label, and one marker pe
 **Fidelity:** `design/SPEC.md` §7, bullets one to three and the last.
 **Job:** the user sees where every icon is saved, on which monitor.
 **Treatment:** monitors drawn to scale in their real arrangement with a marker per icon. Cheaper substitute that fails: a plain table of names and coordinates.
-**Chrome:** a custom `MapPanel` drawing with brushes and sizes from `Theme/Tokens.xaml` only.
+**Chrome:** a custom `MapPanel` drawing with brushes and sizes from the token dictionaries only.
 
 **Build order:**
 
 1. Add `MapGeometry` (pure) in `src/Berth/Window/Map/MapGeometry.cs`. Done when: desktop pixels map to panel points with known inputs.
 2. Add the `PositionMap` control. Done when: monitors, labels and markers render.
 
-- [ ] Add `MapGeometry.Fit(IReadOnlyList<MonitorInfo> monitors, double panelWidth, double panelHeight, double padding, double labelHeight)` returning the scale and offset that fit the monitors' bounding box into the panel, centred, keeping proportions, with `padding` on every side and `labelHeight` reserved above each monitor's top edge; and `ToPanel(int x, int y)`. Done when: unit tests cover one monitor, two side by side, a monitor at negative coordinates, a portrait monitor, and a panel taller than wide. Cheaper substitute: stretching to fill, which distorts the monitors.
-- [ ] Convert an icon's saved position to desktop pixels using the coordinate origin recorded in `ShellDesktopIcons.cs` (`D02 T01 §3`), in one method `MapGeometry.IconToDesktop`. Done when: a unit test pins the conversion to the recorded origin, and a `RealDesktop` test asserts every icon read from the live desktop falls inside the bounding box of the live monitors after conversion. Cheaper substitute: assuming the origin is the primary monitor's top-left on every arrangement.
+- [ ] Add `MapGeometry.Fit(IReadOnlyList<MonitorInfo> monitors, double panelWidth, double panelHeight, double padding, double labelHeight)` returning the scale and offset that fit the monitors' bounding box into the panel, centred, keeping proportions, with `padding` (`Berth.MapPadding`) on every side and `labelHeight` reserved above each monitor's top edge; and `ToPanel(int x, int y)`. Done when: unit tests cover one monitor, two side by side, a monitor at negative coordinates, a portrait monitor, and a panel taller than wide. Cheaper substitute: stretching to fill, which distorts the monitors.
+- [ ] Plot saved positions as they are stored: physical pixels of the virtual desktop, the same space as `MonitorInfo` bounds (`D02 T01 §3` converts at the shell boundary). The map does no coordinate conversion of its own beyond `MapGeometry.ToPanel`. Done when: a unit test with an icon at a monitor's top-left corner plots it at that rectangle's top-left corner, for a monitor at the origin and for one at negative `X`. Cheaper substitute: a second conversion in the window, which would disagree with Core's monitor numbering.
 - [ ] Add `MapGeometry.Clamp` placing an off-screen icon at the nearest point on the nearest monitor's edge (SPEC §7, last bullet). Done when: a unit test with an icon far outside gets a point on that monitor's border. Cheaper substitute: drawing off-screen markers outside the panel.
 - [ ] Add `src/Berth/Window/Map/PositionMap.xaml` and `.xaml.cs`: a panel with `Berth.MapBackground`, a 1 px `Berth.MapBorder` border with radius `Berth.RadiusCard`, a grid of `Berth.MapGrid` lines every `Berth.MapGridStep`, each monitor as a rectangle (`Berth.MonitorFill`, 1.5 px `Berth.MonitorStroke`, radius `Berth.RadiusMonitor`) and its label `1 · 2560 × 1440` in the `mono` style, with ` · primary` on the primary. Done when: a render test with two monitors shows two rectangles and both labels. Cheaper substitute: an image of a map.
-- [ ] Draw each `ComparedIcon` as a `ListBoxItem` in a `ListBox` whose items panel is a `Canvas`, positioned by `MapGeometry`, sized `Berth.Marker` with radius `Berth.RadiusMarker`, filled `Berth.MarkerNeutral` for now. Done when: a test with 42 icons finds 42 items and the first item's position equals `MapGeometry.ToPanel` of its saved position within 0.5 px. Cheaper substitute: drawing markers in `OnRender` with no elements, which assistive technology and tests cannot reach (SPEC §7 "The map is a list").
+- [ ] Draw each `ComparedIcon` as a `ListBoxItem` in a `ListBox` whose items panel is a `Canvas`, positioned by `MapGeometry`, whose hit target is `Berth.MarkerTarget` (19 px) square and transparent, with the visible marker centred in it at `Berth.Marker` (11 px) with radius `Berth.RadiusMarker`, filled `Berth.MarkerNeutral` for now (SPEC §3: the marker is the one control below 32 px). Where two targets overlap, the one later in reading order is on top. Done when: a test with 42 icons finds 42 items and the first item's position equals `MapGeometry.ToPanel` of its saved position within 0.5 px. Cheaper substitute: drawing markers in `OnRender` with no elements, which assistive technology and tests cannot reach (SPEC §7 "The map is a list").
 - [ ] Re-layout on resize, keeping the minimum height `Berth.MapMinHeight`. Done when: a test resizes the window and the markers' positions change in proportion. Cheaper substitute: a fixed-size map.
 - [ ] Add `tests/Berth.Tests/Window/MapGeometryTests.cs` and `PositionMapTests.cs`. Done when: all pass, and the negative-coordinate test fails when the offset ignores the bounding box's origin. Cheaper substitute: none needed.
 - [ ] Commit: `window: position map with monitors and markers`
@@ -168,7 +168,7 @@ What a marker says about its icon, and the readout and count under the map (SPEC
 **Fidelity:** `design/SPEC.md` §7, the state table, the selection, readout, count and automation bullets.
 **Job:** the user sees which icons have moved or gone, and can ask about any one of them.
 **Treatment:** three marker shapes with a word each, a selection ring and a readout line. Cheaper substitute that fails: three colours with no shape or word.
-**Chrome:** marker templates per state from `Theme/Tokens.xaml`; the readout in the `mono` styles.
+**Chrome:** marker templates per state from the token dictionaries; the readout in the `mono` styles.
 
 **Build order:**
 
@@ -366,7 +366,7 @@ Every control reachable and named, and the map readable as a list (SPEC §3, §7
 - [ ] Give every interactive control an `AutomationProperties.Name`, and the map list the name `Saved icon positions`. Done when: a test walks the `AutomationPeer` tree of the window and fails on any `Button`, `ListBox`, `ListBoxItem`, `TextBox` or switch with an empty name. Cheaper substitute: names only on the icon-only button.
 - [ ] Name each marker `Notes.txt, x 1436, y 702, monitor 1, in place` (the state word omitted for neutral markers, `off screen` added when flagged), and order the items in reading order. Done when: a test reads the names of three markers and the order of five. Cheaper substitute: the readout's dotted format, which a screen reader reads as "dot".
 - [ ] Arrow keys move the selection in the layouts list and in the map (up and down through reading order; left and right do the same), and `Home` and `End` go to the first and last. Done when: a test sends the keys to each list and reads the selected item. Cheaper substitute: none needed.
-- [ ] Check every interactive control is at least `Berth.ControlHeight` (32 px) high at 100% scale. Done when: a test measures them and fails on a smaller one. Cheaper substitute: none needed.
+- [ ] Check every interactive control is at least `Berth.ControlHeight` (32 px) high at 100% scale, except map markers, whose target must be exactly `Berth.MarkerTarget` (19 px) square (SPEC §3). Done when: a test measures them, fails on a smaller control, and fails on a marker target that is not 19 px. Cheaper substitute: none needed.
 - [ ] Add `tests/Berth.Tests/Window/AccessibilityTests.cs`. Done when: all pass, and the name test fails when the `More` button's name is removed. Cheaper substitute: none needed.
 - [ ] Commit: `window: keyboard order and automation names`
 
@@ -382,7 +382,7 @@ The fidelity conditions of SPEC §1 that the earlier renders did not cover.
 **Fidelity:** `design/SPEC.md` §1 "Fidelity" and §2, last bullet.
 **Job:** the window is as usable in a high contrast theme and on a scaled display as it is by default.
 **Treatment:** system colours for Berth's own elements in high contrast, and a layout that does not clip at 150%. Cheaper substitute that fails: brand blues on a high contrast background.
-**Chrome:** the `HighContrast` dictionary of `Theme/Tokens.xaml`.
+**Chrome:** `Theme/Tokens.HighContrast.xaml`.
 
 **Build order:**
 
@@ -391,7 +391,7 @@ The fidelity conditions of SPEC §1 that the earlier renders did not cover.
 
 - [ ] Extend `WindowRenderer` with a `HighContrast` theme that selects the `HighContrast` dictionary and fixed stand-in system colours for the render. Done when: a render of the data state contains none of the light or dark token colours (checked by sampling the marker and badge pixels). Cheaper substitute: a claim that it "should work".
 - [ ] Extend `WindowRenderer` with a `scale` parameter (1.0, 1.5) applied as a layout transform at render time. Done when: the 1.5 render is 1470 by 960 pixels. Cheaper substitute: none needed.
-- [ ] Add a test that lays the window out at the minimum size (760 by 520) at both scales with the longest strings (a 40 character layout name, the two-notice state, the longest SPEC §8 sentence) and fails when any `TextBlock` is trimmed or any control lies outside its parent's bounds. Done when: it passes, after fixing whatever it finds by wrapping or trimming with a tooltip. Cheaper substitute: testing only the default size.
+- [ ] Add a test that lays the window out at the minimum size (760 by 520) at both scales with the longest strings (a 40 character layout name, the two-notice state, the longest SPEC §8 sentence) and fails when any control lies outside its parent's bounds, when any text other than a layout's name is trimmed or clipped, or when a trimmed layout name (in a row or in the header) has no tooltip with the full name (SPEC §3: text wraps, and only a layout's name may trim). Done when: it passes, after fixing whatever it finds: wrapping for sentences, ellipsis plus tooltip for the two name elements. Cheaper substitute: testing only the default size.
 - [ ] Record each layout fix in the commit message, and when a fix changes a measurement that `design/SPEC.md` states, change the SPEC first with a dated line (SPEC §1 "Design first"). Done when: `git log -1` for this section names what was fixed. Cheaper substitute: tuning in code only.
 - [ ] Add render tests writing `data-high-contrast` and `data-150` (SPEC §1). Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
 - [ ] Commit: `window: high contrast and 150% scale`
@@ -411,9 +411,9 @@ The built `berth.exe`, running for real, driven through UI Automation on a probe
 1. Add a helper that starts the tray app and finds its window. Done when: it finds the window by automation.
 2. Drive save, restore and undo. Done when: the probe icon moves as each button is invoked.
 
-- [ ] Add `RunningApp` in `tests/Berth.Tests/Smoke/RunningApp.cs`: starts `berth.exe` with a `TestData` folder and a random `BERTH_INSTANCE` (first run, so the window opens), waits up to 20 seconds for a top-level window named `Berth` owned by that process through `System.Windows.Automation`, and kills the process tree in `Dispose`. Done when: a test finds the window and, after dispose, no `berth` process with that instance name remains. Cheaper substitute: driving the window in process, which misses startup, the manifest and the tray.
-- [ ] Invoke `Save current layout` through its `InvokePattern`, wait for the status sentence to start `Saved`, and assert a layout file exists in the test's data folder. Done when: the test passes with `ProbeIcon` on the desktop. Cheaper substitute: sending mouse clicks at coordinates.
-- [ ] Move the probe with `ShellDesktopIcons`, wait for the status sentence `1 icon has moved since this layout was saved.`, invoke `Restore`, wait for a sentence starting `Restored`, and assert the probe is back; then invoke `Undo` and assert the probe is at the moved position. Skip with a clear message when auto arrange is on. Done when: the test passes on the build machine and leaves no probe file. Cheaper substitute: asserting only that buttons exist.
+- [ ] Add `RunningApp` in `tests/Berth.Tests/Smoke/RunningApp.cs` with a static `Start(TestData data, string iconPrefix)`: starts `berth.exe` with `BERTH_DATA`, a random `BERTH_INSTANCE` and `BERTH_TEST_ICON_PREFIX` (the probe's prefix, so the app sees only the probe) in the child's own environment (first run, so the window opens), then waits up to 20 seconds for a top-level window named `Berth` owned by that process through `System.Windows.Automation`. Everything after the process starts is inside a `try` whose `catch` kills the process tree before rethrowing, so a failed or timed-out start-up never leaves a tray app behind; `Dispose` kills the tree too. Done when: a test finds the window; after dispose no process with that id remains; and a test that forces the window wait to time out (a 1 ms wait) also finds no process afterwards. Cheaper substitute: cleanup only in `Dispose`, which never runs when the constructor throws.
+- [ ] Invoke `Save current layout` through its `InvokePattern`, wait for the status sentence to start `Saved`, and assert the layout file in the test's data folder lists exactly one icon, the probe. Done when: the test passes with `ProbeIcon` on the desktop. Cheaper substitute: sending mouse clicks at coordinates.
+- [ ] Move the probe through `ScopedDesktopIcons` with the probe's prefix, wait for the status sentence `1 icon has moved since this layout was saved.`, invoke `Restore`, wait for a sentence starting `Restored`, and assert the probe is back; then invoke `Undo` and assert the probe is at the moved position. Skip with a clear message when auto arrange is on. Done when: the test passes on the build machine and leaves no probe file. Cheaper substitute: asserting only that buttons exist.
 - [ ] Start `berth.exe` a second time with the same `BERTH_INSTANCE` and assert it exits 0 within 10 seconds and only one process remains. Done when: the assertion passes. Cheaper substitute: none needed.
 - [ ] Add `tests/Berth.Tests/Smoke/WindowSmokeTests.cs` (traits `RealDesktop` and `Smoke`). Done when: it passes, and fails when `Restore` is wired to `Save`. Cheaper substitute: none needed.
 - [ ] Commit: `test: UI Automation smoke of the running window`
