@@ -1,0 +1,15 @@
+{
+  "title": "Berth implementation plan",
+  "acceptance": "every control, state and command in design/SPEC.md works end to end on Windows 11",
+  "phases": {
+    "0": "Repository and tooling",
+    "1": "Core",
+    "2": "Desktop access",
+    "3": "Command line",
+    "4": "Application shell",
+    "5": "Main window",
+    "6": "Automatic restore",
+    "7": "Release",
+    "99": "Manual, operator only"
+  }
+}

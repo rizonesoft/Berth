@@ -1,0 +1,26 @@
+name: Idea
+description: Something Berth could do, or do better.
+title: "[Idea]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `design/SPEC.md` section 20 lists what Berth leaves out on purpose. An idea from that list needs a reason the decision missed.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. For example "after a remote desktop session my icons are in the wrong place".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do today instead?

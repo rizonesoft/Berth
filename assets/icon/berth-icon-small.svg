@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Berth">
+  <!-- App icon for 24 px and below: no dot, larger squares. -->
+  <rect width="96" height="96" rx="21" fill="#0F6CBD"/>
+  <rect x="14" y="14" width="31" height="31" rx="7" fill="#FFFFFF" fill-opacity="0.5"/>
+  <rect x="51" y="14" width="31" height="31" rx="7" fill="#FFFFFF" fill-opacity="0.5"/>
+  <rect x="14" y="51" width="31" height="31" rx="7" fill="#FFFFFF" fill-opacity="0.5"/>
+  <rect x="51" y="51" width="31" height="31" rx="7" fill="#FFFFFF"/>
+</svg>

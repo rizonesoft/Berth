@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Berth social banner (1500 x 500)</title>
+<style>
+html, body { margin: 0; }
+body { position: relative; width: 1500px; height: 500px; overflow: hidden; background: #0F6CBD; color: #FFFFFF; font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; }
+.grid { position: absolute; left: 0; top: 0; }
+.centre { position: relative; height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+.lockup { display: flex; align-items: center; gap: 24px; }
+.word { font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-weight: 600; font-size: 128px; line-height: 1; letter-spacing: -0.025em; }
+.tagline { font-size: 28px; }
+</style>
+</head>
+<body>
+<svg class="grid" viewBox="0 0 1500 500" width="1500" height="500">
+  <defs><pattern id="tiles" x="30" y="22" width="96" height="96" patternUnits="userSpaceOnUse"><rect width="64" height="64" rx="15" fill="#FFFFFF" fill-opacity="0.13"/></pattern></defs>
+  <rect width="1500" height="500" fill="url(#tiles)"/>
+  <rect x="402" y="118" width="760" height="264" fill="#0F6CBD"/>
+  <rect x="1182" y="118" width="64" height="64" rx="15" fill="#FFFFFF"/><circle cx="1214" cy="150" r="11" fill="#0F6CBD"/>
+  <rect x="222" y="310" width="64" height="64" rx="15" fill="#FFFFFF"/><circle cx="254" cy="342" r="11" fill="#0F6CBD"/>
+</svg>
+<div class="centre">
+  <div class="lockup">
+    <svg viewBox="0 0 96 96" width="104" height="104"><rect width="96" height="96" rx="21" fill="#FFFFFF"/><rect x="17" y="17" width="28" height="28" rx="7" fill="#0F6CBD" fill-opacity="0.4"/><rect x="51" y="17" width="28" height="28" rx="7" fill="#0F6CBD" fill-opacity="0.4"/><rect x="17" y="51" width="28" height="28" rx="7" fill="#0F6CBD" fill-opacity="0.4"/><rect x="51" y="51" width="28" height="28" rx="7" fill="#0F6CBD"/><circle cx="65" cy="65" r="5.5" fill="#FFFFFF"/></svg>
+    <span class="word">Berth</span>
+  </div>
+  <div class="tagline">Your desktop icons, where you left them.</div>
+</div>
+</body>
+</html>

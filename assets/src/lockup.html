@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Berth lockup (add #dark for the white wordmark)</title>
+<style>
+html, body { margin: 0; background: transparent; }
+body { padding: 40px; }
+.lockup { display: inline-flex; align-items: center; gap: 22px; color: #1A1A1A; }
+:root:has(#dark:target) .lockup { color: #FFFFFF; }
+.word { font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-weight: 600; font-size: 104px; line-height: 1; letter-spacing: -0.025em; }
+</style>
+</head>
+<body>
+<div class="lockup" id="dark">
+  <svg viewBox="0 0 96 96" width="96" height="96"><rect width="96" height="96" rx="21" fill="#0F6CBD"/><rect x="17" y="17" width="28" height="28" rx="7" fill="#FFFFFF" fill-opacity="0.5"/><rect x="51" y="17" width="28" height="28" rx="7" fill="#FFFFFF" fill-opacity="0.5"/><rect x="17" y="51" width="28" height="28" rx="7" fill="#FFFFFF" fill-opacity="0.5"/><rect x="51" y="51" width="28" height="28" rx="7" fill="#FFFFFF"/><circle cx="65" cy="65" r="5.5" fill="#0F6CBD"/></svg>
+  <span class="word">Berth</span>
+</div>
+</body>
+</html>

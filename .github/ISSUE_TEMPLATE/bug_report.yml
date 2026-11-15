@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Berth does not work the way it should.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to private reporting, not here: see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Run `berth --version`, or `git rev-parse --short HEAD` in your clone.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      options:
+        - Main window
+        - Tray icon or menu
+        - Command line
+        - Automatic restore
+    validations:
+      required: true
+  - type: input
+    id: windows-build
+    attributes:
+      label: Windows build
+      description: Run `winver` and copy the version and OS build line.
+    validations:
+      required: true
+  - type: input
+    id: monitors
+    attributes:
+      label: Monitors
+      description: How many, their resolutions and scaling, for example "2560 x 1440 at 100% and 1920 x 1080 at 125%".
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The last lines of `%LOCALAPPDATA%\Berth\logs\berth.log`. Remove anything private, such as file names.
+      render: text
