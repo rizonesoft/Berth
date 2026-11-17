@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "counts": {
+    "assets/src/github-social-preview.html": {
+      "color-literal": 30,
+      "font-family-literal": 4,
+      "font-size-literal": 5,
+      "spacing-radius-literal": 13
+    },
+    "assets/src/lockup.html": {
+      "color-literal": 8,
+      "font-family-literal": 1,
+      "font-size-literal": 1,
+      "spacing-radius-literal": 4
+    },
+    "assets/src/social-banner.html": {
+      "color-literal": 14,
+      "font-family-literal": 2,
+      "font-size-literal": 2,
+      "spacing-radius-literal": 4
+    }
+  },
+  "history": [
+    {
+      "at": "2026-11-17T07:38:34Z",
+      "reason": "Initial shrink-only baseline on design-lint rollout",
+      "added": {
+        "assets/src/github-social-preview.html:color-literal": 30,
+        "assets/src/github-social-preview.html:font-family-literal": 4,
+        "assets/src/github-social-preview.html:font-size-literal": 5,
+        "assets/src/github-social-preview.html:spacing-radius-literal": 13,
+        "assets/src/lockup.html:color-literal": 8,
+        "assets/src/lockup.html:font-family-literal": 1,
+        "assets/src/lockup.html:font-size-literal": 1,
+        "assets/src/lockup.html:spacing-radius-literal": 4,
+        "assets/src/social-banner.html:color-literal": 14,
+        "assets/src/social-banner.html:font-family-literal": 2,
+        "assets/src/social-banner.html:font-size-literal": 2,
+        "assets/src/social-banner.html:spacing-radius-literal": 4
+      }
+    }
+  ]
+}
