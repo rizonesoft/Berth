@@ -46,7 +46,13 @@ internal sealed partial class BerthPaths
     /// the user's own <c>%APPDATA%\Berth</c> and <c>%LOCALAPPDATA%\Berth</c> otherwise. Tests pass
     /// <paramref name="getenv"/> instead of changing the process environment.
     /// </summary>
-    public static BerthPaths FromEnvironment(Func<string, string?>? getenv = null)
+    /// <exception cref="InvalidOperationException">
+    /// Windows gives no absolute AppData folder (a redirected profile that is unavailable), which must never turn
+    /// into a folder relative to wherever Berth was started.
+    /// </exception>
+    public static BerthPaths FromEnvironment(
+        Func<string, string?>? getenv = null,
+        Func<Environment.SpecialFolder, string>? folder = null)
     {
         string? data = (getenv ?? Environment.GetEnvironmentVariable)("BERTH_DATA");
         if (!string.IsNullOrWhiteSpace(data))
@@ -55,10 +61,19 @@ internal sealed partial class BerthPaths
             return new BerthPaths(redirected.DataRoot, redirected.LocalRoot, testMode: true);
         }
 
+        folder ??= special => Environment.GetFolderPath(special, Environment.SpecialFolderOption.DoNotVerify);
         return new BerthPaths(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Berth"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Berth"),
+            Path.Combine(Resolved(folder, Environment.SpecialFolder.ApplicationData), "Berth"),
+            Path.Combine(Resolved(folder, Environment.SpecialFolder.LocalApplicationData), "Berth"),
             testMode: false);
+    }
+
+    private static string Resolved(Func<Environment.SpecialFolder, string> folder, Environment.SpecialFolder special)
+    {
+        string path = folder(special);
+        return Path.IsPathFullyQualified(path)
+            ? path
+            : throw new InvalidOperationException($"Windows gives no folder for {special}, so Berth has nowhere to keep its files.");
     }
 
     /// <summary>The layout file of an arrangement key, which must be 16 lowercase hexadecimal characters.</summary>
@@ -73,15 +88,19 @@ internal sealed partial class BerthPaths
         return Path.Combine(LayoutsFolder, key + ".json");
     }
 
-    /// <summary>Creates the layouts and log folders, and so both roots. Every writer calls it before writing.</summary>
-    /// <exception cref="IOException">A folder cannot be created.</exception>
-    /// <exception cref="UnauthorizedAccessException">A folder may not be created.</exception>
-    public void EnsureFolders()
+    /// <summary>
+    /// Creates the folder that holds <paramref name="file"/>, and its parents. Each writer calls it for its own
+    /// destination only, so a log folder that cannot be made never stops a layout save, nor the reverse.
+    /// </summary>
+    /// <exception cref="IOException">The folder cannot be created.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder may not be created.</exception>
+    public static void EnsureFolderFor(string file)
     {
-        Directory.CreateDirectory(LayoutsFolder);
-        Directory.CreateDirectory(LogFolder);
+        string folder = Path.GetDirectoryName(Path.GetFullPath(file))
+            ?? throw new ArgumentException($"'{file}' has no folder.", nameof(file));
+        Directory.CreateDirectory(folder);
     }
 
-    [GeneratedRegex("^[0-9a-f]{16}$")]
+    [GeneratedRegex(@"^[0-9a-f]{16}\z")]
     private static partial Regex KeyPattern();
 }

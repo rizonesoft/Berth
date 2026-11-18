@@ -58,8 +58,36 @@ public sealed class BerthPathsTests
     [Fact]
     public void ARelativeOverrideIsMadeAbsolute()
     {
-        BerthPaths paths = BerthPaths.ForRoot("relative-root");
-        Assert.True(Path.IsPathFullyQualified(paths.DataRoot));
+        BerthPaths paths = BerthPaths.FromEnvironment(name => name == "BERTH_DATA" ? "relative-root" : null);
+        string root = Path.GetFullPath("relative-root");
+
+        AssertPaths(paths, Path.Combine(root, "roaming"), Path.Combine(root, "local"));
+        Assert.True(paths.TestMode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("relative")]
+    public void AnUnresolvedAppDataFolderIsRefusedNotMadeRelative(string given)
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => BerthPaths.FromEnvironment(
+            _ => null,
+            special => special == Environment.SpecialFolder.ApplicationData ? given : @"C:\Users\x\AppData\Local"));
+        Assert.Contains("ApplicationData", error.Message, StringComparison.Ordinal);
+
+        Assert.Throws<InvalidOperationException>(() => BerthPaths.FromEnvironment(
+            _ => null,
+            special => special == Environment.SpecialFolder.LocalApplicationData ? given : @"C:\Users\x\AppData\Roaming"));
+    }
+
+    [Fact]
+    public void TheDefaultRootsComeFromTheGivenFolders()
+    {
+        BerthPaths paths = BerthPaths.FromEnvironment(
+            _ => null,
+            special => special == Environment.SpecialFolder.ApplicationData ? @"C:\Users\x\AppData\Roaming" : @"C:\Users\x\AppData\Local");
+
+        AssertPaths(paths, @"C:\Users\x\AppData\Roaming\Berth", @"C:\Users\x\AppData\Local\Berth");
     }
 
     [Theory]
@@ -69,6 +97,8 @@ public sealed class BerthPathsTests
     [InlineData("0123456789ABCDEF")]
     [InlineData("0123456789abcdeg")]
     [InlineData("")]
+    [InlineData("0123456789abcdef\n")]
+    [InlineData("0123456789abcdef\r\n")]
     public void AKeyThatIsNotSixteenLowercaseHexIsRefused(string key)
     {
         using var data = new TestData();
@@ -76,24 +106,28 @@ public sealed class BerthPathsTests
     }
 
     [Fact]
-    public void EnsureFoldersCreatesTheLayoutsAndLogFoldersAndCanRunTwice()
+    public void EnsureFolderForCreatesOnlyThatFilesFolderAndCanRunTwice()
     {
         using var data = new TestData();
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
 
-        paths.EnsureFolders();
-        paths.EnsureFolders();
+        BerthPaths.EnsureFolderFor(paths.LayoutFile(KeyA));
+        BerthPaths.EnsureFolderFor(paths.LayoutFile(KeyA));
 
         Assert.True(Directory.Exists(paths.LayoutsFolder));
-        Assert.True(Directory.Exists(paths.LogFolder));
+        Assert.False(Directory.Exists(paths.LocalRoot));
     }
 
     [Fact]
-    public void EnsureFoldersFailsWhenARootIsAFile()
+    public void ABrokenLogFolderDoesNotStopTheLayoutsFolder()
     {
         using var data = new TestData();
-        File.WriteAllText(Path.Combine(data.Root, "roaming"), "not a folder");
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        Directory.CreateDirectory(paths.LocalRoot);
+        File.WriteAllText(paths.LogFolder, "a file where the log folder should be");
 
-        Assert.ThrowsAny<IOException>(() => BerthPaths.ForRoot(data.Root).EnsureFolders());
+        BerthPaths.EnsureFolderFor(paths.LayoutFile(KeyA));
+        Assert.True(Directory.Exists(paths.LayoutsFolder));
+        Assert.ThrowsAny<IOException>(() => BerthPaths.EnsureFolderFor(paths.LogFile));
     }
 }
