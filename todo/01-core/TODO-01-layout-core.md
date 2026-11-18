@@ -587,6 +587,8 @@ Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's bl
 
 ## 21. The reverse adjacency names its owner
 
+> **Started:** 2026-11-18T08:11:39Z
+
 Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocking levels): the Outcome's `reverse=applicable` names no owner, while the rationale gives undo of a restore to §11 and revert and delete of a save to §12. The adjacency format takes one owner per key.
 
 **Phase:** 1
