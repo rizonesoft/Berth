@@ -232,6 +232,8 @@ Loads every layout, saves one, deletes one, and reports files it cannot read wit
 
 ## 7. Layout names: defaults and validation
 
+> **Started:** 2026-11-18T05:56:00Z
+
 The default name of a first save and the three naming rules of SPEC §10, in one place for the dialog and `--name`.
 
 **Phase:** 1
