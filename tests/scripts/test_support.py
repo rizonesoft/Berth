@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -50,7 +51,7 @@ class SupportTests(unittest.TestCase):
 
 class ScratchRootTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.base = Path(tempfile.mkdtemp(prefix="berth-scratch-root-"))
+        self.base = make_scratch("berth-scratch-root-")
         self.addCleanup(remove_scratch, self.base)
         self.candidate = self.base / "candidate"
         self.local = self.base / "local.toml"
@@ -81,6 +82,20 @@ class ScratchRootTests(unittest.TestCase):
         result = scratch_root(environ={}, local_file=self.local, candidate=self.candidate)
         self.assertEqual(result, Path(tempfile.gettempdir()))
         self.assertFalse(self.candidate.exists())
+
+    def test_a_default_caller_honours_the_session_scratchpad(self) -> None:
+        # In a child process, so BERTH_SCRATCH is set in its own environment and never in this one.
+        session = self.base / "session-for-child"
+        env = {**os.environ, "BERTH_SCRATCH": str(session)}
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); from support import make_scratch, remove_scratch; "
+            "made = make_scratch('berth-child-'); print(made.parent); remove_scratch(made)"
+        )
+        result = run_bounded(
+            [sys.executable, "-c", code, str(Path(__file__).resolve().parent)], timeout=30, cwd=self.base, env=env
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(result.stdout.strip()), session)
 
     def test_production_defaults(self) -> None:
         # Expected without asking scratch_root: R:\scratch when this machine has it, else the temporary folder.
