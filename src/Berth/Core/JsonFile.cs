@@ -271,11 +271,16 @@ internal static partial class JsonFile
 
     private const int SettleAttempts = 5;
 
+    /// <summary>False only for a file that is there but cannot be opened for reading; a missing one is not unreadable.</summary>
     private static bool CanRead(string path)
     {
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return true;
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

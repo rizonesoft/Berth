@@ -287,6 +287,27 @@ public sealed class SettingsStoreTests
         }
     }
     [Fact]
+    public void AFileMovedAwayAfterTheLastCheckIsAWriteFailureNotAnUnreadableFile()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            string aside = Path.Combine(data.Root, "moved-aside.json");
+
+            Exception error = Assert.ThrowsAny<Exception>(() => store.Save(
+                Settings.Default, beforeReplace: null,
+                afterCheck: () => File.Move(paths.SettingsFile, aside),
+                afterReplace: null));
+
+            Assert.True(error is IOException, error.GetType().FullName);
+            Assert.False(error is TargetChangedException);
+            Assert.IsNotType<UnreadableSettingsException>(error);
+            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+            Assert.Equal(Good, File.ReadAllText(aside));
+        }
+    }
+    [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
