@@ -62,7 +62,7 @@ internal sealed class LayoutService(
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return OperationResult.Failed(paths.LayoutsFolder, error.Message);
+            return OperationResult.Failed(FailureKind.ReadFailed, paths.LayoutsFolder, error.Message);
         }
 
         // A layout another program holds may carry the very name: no name is chosen past it.
@@ -110,21 +110,36 @@ internal sealed class LayoutService(
         }
         catch (TargetChangedException)
         {
-            return OperationResult.Failed(file, "The layout file changed while it was being saved. It was left as it is.", layoutName);
+            return OperationResult.Failed(FailureKind.WriteFailed, file, "The layout file changed while it was being saved. It was left as it is.", layoutName);
         }
         catch (TargetAppearedException)
         {
-            return OperationResult.Failed(file, "A layout file appeared while it was being saved. It was left as it is.", layoutName);
+            return OperationResult.Failed(FailureKind.WriteFailed, file, "A layout file appeared while it was being saved. It was left as it is.", layoutName);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return OperationResult.Failed(file, error.Message, layoutName);
+            return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, layoutName);
         }
 
         return OperationResult.Saved(layoutName, icons.Count, replacedEarlierSave: snapshot.Layout is not null);
     }
 
     private OperationResult RestoreLocked(string? origin)
+    {
+        // The arrangement is checked again before the way back is written; a change there starts over.
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (RestoreOnce(origin) is { } result)
+            {
+                return result;
+            }
+        }
+
+        return OperationResult.Refused(Refusal.DesktopUnavailable);
+    }
+
+    /// <summary>One restore, or null when the displays changed before anything was written, to start over.</summary>
+    private OperationResult? RestoreOnce(string? origin)
     {
         if (Capture() is not ({ } arrangement, { } icons))
         {
@@ -143,7 +158,7 @@ internal sealed class LayoutService(
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return OperationResult.Failed(paths.LayoutsFolder, error.Message);
+            return OperationResult.Failed(FailureKind.ReadFailed, paths.LayoutsFolder, error.Message);
         }
 
         if (layout is null)
@@ -163,6 +178,11 @@ internal sealed class LayoutService(
             return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
         }
 
+        if (!StillThe(key))
+        {
+            return null;
+        }
+
         // The way back is on disk before anything moves, so `berth undo` in another process has it.
         try
         {
@@ -171,11 +191,17 @@ internal sealed class LayoutService(
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return OperationResult.Failed(paths.UndoFile, error.Message, layout.Name);
+            return OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message, layout.Name);
         }
 
-        var live = new HashSet<string>(icons.Select(i => i.Id), StringComparer.OrdinalIgnoreCase);
-        IconPosition[] wanted = [.. layout.Icons.Where(saved => live.Contains(saved.Id))];
+        // A change after the way back was written: nothing has moved; stop rather than place another arrangement's icons.
+        if (!StillThe(key))
+        {
+            return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, "The displays changed before any icon was moved.", layout.Name);
+        }
+
+        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
+        IconPosition[] wanted = [.. layout.Icons.Where(saved => live.ContainsKey(saved.Id))];
         IReadOnlyList<IconPosition> after;
         try
         {
@@ -186,33 +212,28 @@ internal sealed class LayoutService(
         {
             // Some icons may have moved and none can be counted: the snapshot stays, so undo still works.
             return OperationResult.Failed(
-                path: null, "The desktop could not be reached while the icons were being placed. Undo puts back what was there.", layout.Name);
+                FailureKind.DesktopUnavailable, path: null, "The desktop could not be reached while the icons were being placed. Undo puts back what was there.", layout.Name);
         }
 
-        var now = new Dictionary<string, IconPosition>(StringComparer.OrdinalIgnoreCase);
-        foreach (IconPosition icon in after)
-        {
-            now.TryAdd(icon.Id, icon);
-        }
-
-        int inPlace = 0, notPlaced = 0, missing = 0;
-        foreach (IconPosition saved in layout.Icons)
-        {
-            if (!now.TryGetValue(saved.Id, out IconPosition? read))
-            {
-                missing++;
-            }
-            else if (read.X == saved.X && read.Y == saved.Y)
-            {
-                inPlace++;
-            }
-            else
-            {
-                notPlaced++;
-            }
-        }
+        IReadOnlyDictionary<string, IconPosition> now = LayoutComparison.ById(after);
+        IconState[] states = [.. layout.Icons.Select(saved => LayoutComparison.StateOf(saved, now.GetValueOrDefault(saved.Id)))];
+        int inPlace = states.Count(s => s == IconState.InPlace), notPlaced = states.Count(s => s == IconState.Moved), missing = states.Count(s => s == IconState.Missing);
 
         return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin);
+    }
+
+    /// <summary>Whether the monitors still give <paramref name="key"/>; an unreachable desktop counts as a change.</summary>
+    private bool StillThe(string key)
+    {
+        try
+        {
+            return ArrangementKey.From(monitors.Read()) == key;
+        }
+        catch (DesktopUnavailableException)
+        {
+            // Unreachable now: the next capture says so as a refusal.
+            return false;
+        }
     }
 
     /// <summary>
@@ -258,7 +279,7 @@ internal sealed class LayoutService(
         }
         catch (Exception error)
         {
-            result = OperationResult.Failed(path: null, error.Message, error: error);
+            result = OperationResult.Failed(FailureKind.Unexpected, path: null, error.Message, error: error);
         }
 
         // An automatic operation's trigger rides on every result, a refusal or failure included.

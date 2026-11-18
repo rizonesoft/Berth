@@ -256,7 +256,7 @@ public sealed class SaveTests
 
             OperationResult result = rig.Service().Save();
 
-            Assert.Equal((OperationKind.Failed, rig.File), (result.Kind, result.Path));
+            Assert.Equal((OperationKind.Failed, FailureKind.WriteFailed, rig.File), (result.Kind, result.Failure, result.Path));
             Assert.NotNull(result.Detail);
         }
         finally
@@ -280,7 +280,7 @@ public sealed class SaveTests
 
         OperationResult result = rig.Service().Save();
 
-        Assert.Equal((OperationKind.Failed, rig.Paths.LayoutsFolder), (result.Kind, result.Path));
+        Assert.Equal((OperationKind.Failed, FailureKind.ReadFailed, rig.Paths.LayoutsFolder), (result.Kind, result.Failure, result.Path));
         Assert.Equal("a file where the layouts folder belongs", System.IO.File.ReadAllText(rig.Paths.LayoutsFolder));
         Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed, " + rig.Paths.LayoutsFolder + ": ", Assert.Single(rig.LogLines()), StringComparison.Ordinal);
     }
@@ -439,9 +439,11 @@ public sealed class OperationResultTests
         OperationResult refused = OperationResult.Refused(Refusal.InvalidName, "D", NameError.Taken, "p", "d");
         Assert.Equal((OperationKind.Refused, Refusal.InvalidName, NameError.Taken, "p", "d"), (refused.Kind, refused.Refusal, refused.NameError, refused.Path, refused.Detail));
         var error = new InvalidOperationException("x");
-        OperationResult failed = OperationResult.Failed("p", "d", "D", error);
-        Assert.Equal((OperationKind.Failed, "p", "d", "D"), (failed.Kind, failed.Path, failed.Detail, failed.LayoutName));
+        OperationResult failed = OperationResult.Failed(FailureKind.Unexpected, "p", "d", "D", error);
+        Assert.Equal((OperationKind.Failed, FailureKind.Unexpected, "p", "d", "D"), (failed.Kind, failed.Failure, failed.Path, failed.Detail, failed.LayoutName));
         Assert.Same(error, failed.Error);
+        Assert.Throws<ArgumentException>(() => OperationResult.Failed(FailureKind.None, null, "d"));
+        Assert.Equal(FailureKind.None, OperationResult.Saved("D", 1, false).Failure);
         Assert.Throws<ArgumentException>(() => OperationResult.Refused(Refusal.None));
     }
 
@@ -452,7 +454,7 @@ public sealed class OperationResultTests
         Assert.Equal((OperationKind.Restored, 10, 6, 0, 4, "automatic, display change"), (restored.Kind, restored.Total, restored.InPlace, restored.NotPlaced, restored.Missing, restored.Origin));
 
         OperationResult partial = OperationResult.Restored("D", 10, 6, 3, 1);
-        Assert.Equal((OperationKind.Failed, "D", 10, 6, 3, 1), (partial.Kind, partial.LayoutName, partial.Total, partial.InPlace, partial.NotPlaced, partial.Missing));
+        Assert.Equal((OperationKind.Failed, FailureKind.NotPlaced, "D", 10, 6, 3, 1), (partial.Kind, partial.Failure, partial.LayoutName, partial.Total, partial.InPlace, partial.NotPlaced, partial.Missing));
 
         Assert.Equal(OperationKind.Undone, OperationResult.Undone(5, 5, 0, 0).Kind);
         OperationResult undo = OperationResult.Undone(5, 3, 2, 0);

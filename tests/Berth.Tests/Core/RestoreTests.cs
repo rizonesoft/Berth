@@ -134,6 +134,66 @@ public sealed class RestoreTests
     }
 
     [Fact]
+    public void ADisplayChangeBeforeTheWayBackIsWrittenStartsOver()
+    {
+        // Undocked after the capture and before the undo write: the restore starts over on the new arrangement.
+        using var rig = new Rig(A);
+        rig.Service().Save("Docked");
+        rig.Monitors.Monitors = [Rig.Main];
+        rig.Desktop = new FakeDesktopIcons(B);
+        rig.Service().Save("Laptop");
+        rig.Monitors.Monitors = [Rig.Left, Rig.Main];
+        rig.Desktop = new FakeDesktopIcons(A with { X = 5 }, B with { X = 5 });
+        int reads = rig.Monitors.Reads;
+        rig.Monitors.AfterRead = read =>
+        {
+            if (read == reads + 2)
+            {
+                rig.Monitors.Monitors = [Rig.Main];
+            }
+        };
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal(("Laptop", OperationKind.Restored), (result.LayoutName, result.Kind));
+        Assert.Equal([B], Assert.Single(rig.Desktop.Calls));
+        Assert.Equal(ArrangementKey.From([Rig.Main]), ReadUndo(rig).Key);
+    }
+
+    [Fact]
+    public void ADisplayChangeAfterTheWayBackIsWrittenMovesNothing()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        rig.Desktop.BeforeSet = () => throw new InvalidOperationException("nothing may move");
+        int reads = rig.Monitors.Reads;
+        rig.Monitors.AfterRead = read =>
+        {
+            if (read == reads + 3)
+            {
+                rig.Monitors.Monitors = [Rig.Main];
+            }
+        };
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, FailureKind.DisplaysChanged, "2 monitors"), (result.Kind, result.Failure, result.LayoutName));
+        Assert.Empty(rig.Desktop.Calls);
+    }
+
+    [Fact]
+    public void AFolderThatCannotBeReadIsAReadFailure()
+    {
+        using var rig = new Rig(A);
+        Directory.CreateDirectory(rig.Paths.DataRoot);
+        File.WriteAllText(rig.Paths.LayoutsFolder, "a file where the layouts folder belongs");
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, FailureKind.ReadFailed, rig.Paths.LayoutsFolder), (result.Kind, result.Failure, result.Path));
+        Assert.Empty(rig.Desktop.Calls);
+    }
+
+    [Fact]
     public void DisplaysThatKeepChangingAreRefusedAndKeepTheEarlierUndo()
     {
         using Rig rig = Saved([A], A with { X = 1 });
@@ -171,9 +231,10 @@ public sealed class RestoreTests
         IconPosition unsaved = new(@"C:\Desk\other.txt", "c.txt", 800, 800);
         using Rig rig = Saved([A, B, C], liveA, liveB, unsaved);
 
-        rig.Service().Restore();
+        OperationResult result = rig.Service().Restore();
 
         Assert.Equal([A, B], Assert.Single(rig.Desktop.Calls));
+        Assert.Equal((3, 2, 0, 1), (result.Total, result.InPlace, result.NotPlaced, result.Missing));
     }
 
     [Fact]
@@ -192,7 +253,7 @@ public sealed class RestoreTests
 
         OperationResult result = rig.Service().Restore();
 
-        Assert.Equal((OperationKind.Failed, 3, 0, 3, 0), (result.Kind, result.Total, result.InPlace, result.NotPlaced, result.Missing));
+        Assert.Equal((OperationKind.Failed, FailureKind.NotPlaced, 3, 0, 3, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
     }
 
     [Fact]
@@ -241,7 +302,7 @@ public sealed class RestoreTests
             result = rig.Service().Restore();
         }
 
-        Assert.Equal((OperationKind.Failed, rig.Paths.UndoFile), (result.Kind, result.Path));
+        Assert.Equal((OperationKind.Failed, FailureKind.WriteFailed, rig.Paths.UndoFile), (result.Kind, result.Failure, result.Path));
         Assert.False(string.IsNullOrWhiteSpace(result.Detail));
         Assert.Empty(rig.Desktop.Calls);
         Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
@@ -255,7 +316,7 @@ public sealed class RestoreTests
 
         OperationResult result = rig.Service().Restore();
 
-        Assert.Equal((OperationKind.Failed, 0, 0, 0, 0), (result.Kind, result.Total, result.InPlace, result.NotPlaced, result.Missing));
+        Assert.Equal((OperationKind.Failed, FailureKind.DesktopUnavailable, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
         Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
     }
 

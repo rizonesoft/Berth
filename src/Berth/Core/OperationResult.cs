@@ -13,6 +13,30 @@ internal enum OperationKind
     Failed,
 }
 
+/// <summary>What kind of failure a <see cref="OperationKind.Failed"/> result is, so its message can be chosen (SPEC §18).</summary>
+internal enum FailureKind
+{
+    None,
+
+    /// <summary>A file in <see cref="OperationResult.Path"/> could not be written.</summary>
+    WriteFailed,
+
+    /// <summary>A file or folder in <see cref="OperationResult.Path"/> could not be read.</summary>
+    ReadFailed,
+
+    /// <summary>The desktop could not be reached part way through (Explorer restarting); some icons may have moved.</summary>
+    DesktopUnavailable,
+
+    /// <summary>The displays changed part way through, before anything moved.</summary>
+    DisplaysChanged,
+
+    /// <summary>Icons on the desktop did not stay where they were placed (<see cref="OperationResult.NotPlaced"/>).</summary>
+    NotPlaced,
+
+    /// <summary>An exception nobody expected, in <see cref="OperationResult.Error"/>.</summary>
+    Unexpected,
+}
+
 /// <summary>Why an operation was refused before it changed anything.</summary>
 internal enum Refusal
 {
@@ -57,6 +81,8 @@ internal sealed record OperationResult
 
     public Refusal Refusal { get; init; }
 
+    public FailureKind Failure { get; init; }
+
     public NameError NameError { get; init; }
 
     public string? Path { get; init; }
@@ -76,12 +102,14 @@ internal sealed record OperationResult
         new(notPlaced > 0 ? OperationKind.Failed : OperationKind.Restored)
         {
             LayoutName = name, Total = total, InPlace = inPlace, NotPlaced = notPlaced, Missing = missing, Origin = origin,
+            Failure = notPlaced > 0 ? FailureKind.NotPlaced : FailureKind.None,
         };
 
     public static OperationResult Undone(int total, int inPlace, int notPlaced, int missing) =>
         new(notPlaced > 0 ? OperationKind.Failed : OperationKind.Undone)
         {
             Total = total, InPlace = inPlace, NotPlaced = notPlaced, Missing = missing,
+            Failure = notPlaced > 0 ? FailureKind.NotPlaced : FailureKind.None,
         };
 
     public static OperationResult Reverted(string name, DateTimeOffset savedAt) =>
@@ -96,6 +124,8 @@ internal sealed record OperationResult
             ? throw new ArgumentException("A refusal names its reason.", nameof(refusal))
             : new(OperationKind.Refused) { Refusal = refusal, LayoutName = layoutName, NameError = nameError, Path = path, Detail = detail };
 
-    public static OperationResult Failed(string? path, string detail, string? layoutName = null, Exception? error = null) =>
-        new(OperationKind.Failed) { Path = path, Detail = detail, LayoutName = layoutName, Error = error };
+    public static OperationResult Failed(FailureKind failure, string? path, string detail, string? layoutName = null, Exception? error = null) =>
+        failure is FailureKind.None or FailureKind.NotPlaced
+            ? throw new ArgumentException("A failure names its kind; one that left icons out of place comes from Restored or Undone.", nameof(failure))
+            : new(OperationKind.Failed) { Failure = failure, Path = path, Detail = detail, LayoutName = layoutName, Error = error };
 }

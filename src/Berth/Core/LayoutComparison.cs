@@ -35,23 +35,34 @@ internal sealed record LayoutComparison(IReadOnlyList<ComparedIcon> Icons, int I
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(desktop);
+        IReadOnlyDictionary<string, IconPosition> live = ById(desktop);
+
+        IReadOnlyList<MonitorInfo> ordered = MonitorNumbering.Order(layout.Monitors);
+        var icons = layout.Icons.Select(saved =>
+        {
+            IconPosition? now = live.GetValueOrDefault(saved.Id);
+            IconState state = StateOf(saved, now);
+            return Plot(saved, state, now, ordered);
+        });
+        return Of(icons);
+    }
+
+    /// <summary>The desktop's icons by parsing name, compared ignoring case (SPEC §15 "Matching"); the first of a repeated name wins.</summary>
+    public static IReadOnlyDictionary<string, IconPosition> ById(IReadOnlyList<IconPosition> desktop)
+    {
+        ArgumentNullException.ThrowIfNull(desktop);
         var live = new Dictionary<string, IconPosition>(StringComparer.OrdinalIgnoreCase);
         foreach (IconPosition icon in desktop)
         {
             live.TryAdd(icon.Id, icon);
         }
 
-        IReadOnlyList<MonitorInfo> ordered = MonitorNumbering.Order(layout.Monitors);
-        var icons = layout.Icons.Select(saved =>
-        {
-            IconPosition? now = live.GetValueOrDefault(saved.Id);
-            IconState state = now is null ? IconState.Missing
-                : now.X == saved.X && now.Y == saved.Y ? IconState.InPlace
-                : IconState.Moved;
-            return Plot(saved, state, now, ordered);
-        });
-        return Of(icons);
+        return live;
     }
+
+    /// <summary>A saved icon against where it is now (null when not on the desktop): in place only at exactly its saved position (SPEC §15).</summary>
+    public static IconState StateOf(IconPosition saved, IconPosition? now) =>
+        now is null ? IconState.Missing : now.X == saved.X && now.Y == saved.Y ? IconState.InPlace : IconState.Moved;
 
     /// <summary>The layout's icons at their saved positions, every one <see cref="IconState.Neutral"/>.</summary>
     public static LayoutComparison Neutral(Layout layout)
