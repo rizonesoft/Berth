@@ -142,9 +142,72 @@ public sealed class JsonFileTests
         {
             Assert.False(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? value, out string? reason));
             Assert.Null(value);
-            Assert.NotNull(reason);
+            Assert.False(string.IsNullOrWhiteSpace(reason));
             Assert.NotEqual(JsonFile.Missing, reason);
         }
+    }
+
+    [Fact]
+    public void AnOversizedFileIsRefusedBeforeItIsRead()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        using (var stream = new FileStream(path, FileMode.CreateNew))
+        {
+            stream.SetLength(JsonFile.MaxBytes + 1);
+        }
+
+        Assert.False(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? value, out string? reason));
+        Assert.Null(value);
+        Assert.Contains("more than", reason, StringComparison.Ordinal);
+        Assert.Equal(JsonFile.MaxBytes + 1, new FileInfo(path).Length);
+    }
+
+    [Fact]
+    public void SavingAgainKeepsTheTargetsOwnPermissions()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+
+        // Restrict the file to its owner, unlike the folder it sits in.
+        var restricted = new System.Security.AccessControl.FileSecurity();
+        restricted.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        restricted.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.FullControl,
+            System.Security.AccessControl.AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(restricted);
+        string before = new FileInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+
+        JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout);
+
+        var after = new FileInfo(path).GetAccessControl();
+        Assert.True(after.AreAccessRulesProtected);
+        Assert.Equal(before, after.GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access));
+        Assert.True(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? read, out _));
+        Assert.Equal("Desk", read!.Name);
+    }
+
+    [Fact]
+    public void AStaleTemporaryLeftByACrashIsRemovedAndAFreshOneIsLeft()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        string stale = path + ".tmp-crashed";
+        string fresh = path + ".tmp-writing";
+        string other = Path.Combine(data.Root, "settings.json.tmp-crashed");
+        File.WriteAllText(stale, "{");
+        File.WriteAllText(fresh, "{");
+        File.WriteAllText(other, "{");
+        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow - JsonFile.StaleAfter - TimeSpan.FromMinutes(1));
+        File.SetLastWriteTimeUtc(other, DateTime.UtcNow - JsonFile.StaleAfter - TimeSpan.FromMinutes(1));
+
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(fresh));
+        Assert.True(File.Exists(other));
     }
 
     [Theory]
