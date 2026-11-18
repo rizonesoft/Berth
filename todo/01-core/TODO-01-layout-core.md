@@ -29,9 +29,9 @@ depends_on: ["dotnet-foundation"]
 - A layout saved through `LayoutService` is on disk in the SPEC §14 shape, read back and compared, and survives a failed write untouched.
 - Restore, undo, revert, rename and delete behave as SPEC §10 and §15 say against `FakeDesktopIcons`, including every refusal.
 
-**Adjacency:** list=applicable @ D01 T01 §5; document=not-applicable (a layout is not carried or printed); settings=applicable @ D01 T01 §6; reporting=not-applicable (no summaries beyond the status line); notifications=not-applicable (the balloon is owned by D06 T01 §3); permissions=not-applicable (one user, no roles); audit=applicable @ D01 T01 §15; exchange=not-applicable (SPEC §20 rules out import and sync); reverse=applicable
+**Adjacency:** list=applicable @ D01 T01 §5; document=not-applicable (a layout is not carried or printed); settings=applicable @ D01 T01 §6; reporting=not-applicable (no summaries beyond the status line); notifications=not-applicable (the balloon is owned by D06 T01 §3); permissions=not-applicable (one user, no roles); audit=applicable @ D01 T01 §15; exchange=not-applicable (SPEC §20 rules out import and sync); reverse=applicable @ D01 T01 §12
 
-**Adjacency rationale:** Layouts are the records and `LayoutStore` lists them. The log is the audit trail. Every create has an undo: a restore has `Undo` (§11), a save over an earlier one has `Revert` (§12), and a layout has `Delete` (§12). Corrected 2026-11-18 (D01 T01 §9 completion review): `reverse` names no single owner, since §11 and §12 share it as this paragraph says.
+**Adjacency rationale:** Layouts are the records and `LayoutStore` lists them. The log is the audit trail. Every create has an undo: a restore has `Undo` (§11), a save over an earlier one has `Revert` (§12), and a layout has `Delete` (§12). Corrected 2026-11-18 (D01 T01 §21): `reverse` names §12 as its formal owner (revert and delete of a save); the undo of a restore is §11's.
 
 ## Implementation Order
 
@@ -599,10 +599,10 @@ Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocki
 
 1. Name the owner on the formal line. Done when: `python scripts/todo-graph.py query adjacency` shows `reverse` owned by `D01 T01 §12` for this file.
 
-- [ ] Set `reverse=applicable @ D01 T01 §12` in `todo/01-core/TODO-01-layout-core.md` (the save's reverse paths, revert and delete) and keep the rationale naming §11 for the undo of a restore. Done when: `validate` passes and `query adjacency` lists the owner. Cheaper substitute: an owner-less `reverse=applicable`, which no tool can follow.
+- [x] Set `reverse=applicable @ D01 T01 §12` in `todo/01-core/TODO-01-layout-core.md` (the save's reverse paths, revert and delete) and keep the rationale naming §11 for the undo of a restore. Done when: `validate` passes and `query adjacency` lists the owner. Cheaper substitute: an owner-less `reverse=applicable`, which no tool can follow. **Corrected 2026-11-18:** D01 T01 §21 plan review: the rationale's sentence that `reverse` names no single owner is replaced by one naming §12 as the formal owner (revert and delete of a save) and §11 for the undo of a restore, and the checkpoint reads it back; `**Needs:** none` is right beside the §9 dependency, since Needs name hosts and people, not sections.
 - [ ] Commit: `todo: the reverse adjacency names its owner`
 
-**Test checkpoint:** `python scripts/todo-graph.py query adjacency` shows `reverse` at `D01 T01 §12` for `TODO-01-layout-core.md`.
+**Test checkpoint:** `python scripts/todo-graph.py query adjacency` shows `reverse` at `D01 T01 §12` for `TODO-01-layout-core.md`, and its Adjacency rationale names §12 as the formal owner and §11 for undo.
 
 ## Verification
 
