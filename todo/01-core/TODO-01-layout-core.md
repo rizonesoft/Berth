@@ -145,6 +145,8 @@ One place decides where Berth's files live, and tests redirect it (SPEC §14, fi
 
 ## 4. Atomic JSON file with read-back
 
+> **Started:** 2026-11-18T03:00:11Z
+
 Every write Berth makes goes through one routine: temporary file, flush, replace, read back, compare (SPEC §14 "Every write").
 
 **Phase:** 1
