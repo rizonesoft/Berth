@@ -610,6 +610,8 @@ Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocki
 
 ## 22. Revert and delete are worded as SPEC §10 words them
 
+> **Started:** 2026-11-18T08:20:17Z
+
 Filed 2026-11-18 from the D01 T01 §21 completion review (P3, below the pin's blocking levels): §21's dated note says §12 owns "revert and delete of a save", while `Delete` removes the whole layout and `Revert` returns to its previous save (SPEC §10).
 
 **Phase:** 1
