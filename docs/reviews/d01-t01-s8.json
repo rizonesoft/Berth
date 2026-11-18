@@ -1,0 +1,85 @@
+{
+  "ref": "D01 T01 \u00a78",
+  "title": "Desktop and monitor seams with fakes",
+  "implementation_sha": "121bc106552d65eff61aa6d47e5982788763a2b7",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s8.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *FakeDesktopIconsTests -> passed (282 suite total); LayerRuleTests pass; 10 fake mutants each fail a test"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s8.md",
+    "verdict": "filed",
+    "candidate": "121bc106552d65eff61aa6d47e5982788763a2b7",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D01 T01 \u00a719"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s8.md",
+    "candidate": "4b3476a242c7eaaed62cde3e530f607fd64e8e0a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "4b3476a242c7eaaed62cde3e530f607fd64e8e0a",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

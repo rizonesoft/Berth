@@ -44,7 +44,7 @@ depends_on: ["dotnet-foundation"]
 | 5 | §5 | Layout store | §1, §2, §4 | [x] |
 | 6 | §6 | Settings store | §4 | [x] |
 | 7 | §7 | Layout names: defaults and validation | §1 | [ ] |
-| 8 | §8 | Desktop and monitor seams with fakes | §1 | [ ] |
+| 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
 | 9 | §9 | Save operation | §5, §7, §8, §14, §15 | [ ] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [ ] |
 | 11 | §11 | Undo operation | §10 | [ ] |
@@ -55,6 +55,7 @@ depends_on: ["dotnet-foundation"]
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
+| 19 | §19 | Fake contract tests all go through the seams | §8 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -276,9 +277,12 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 - [x] Add `FakeDesktopIcons` in `tests/Berth.Tests/Fakes/FakeDesktopIcons.cs`: holds a list of icons, `SetPositions` moves only icons whose `Id` exists (ignoring case) and ignores the rest, `AutoArrange` is settable, `KeepsAutoArrange` makes `TryTurnAutoArrangeOff` return `false` and leave it on, `Unavailable` makes every member throw `DesktopUnavailableException`, `SnapBy` (default 0) with `SnapIds` (null for every icon) shifts the set positions of the chosen icons to imitate Windows adjusting them, `Calls` records every `SetPositions` call and its requested icons before any move, and a move changes only the live icon's coordinates, matched by `Id` ignoring case, never by name. Done when: tests cover a set and fresh read, an unknown `Id` ignored (also one sharing a live icon's name), a differently cased `Id` with a stale name moving only that icon among two of the same name, both auto-arrange outcomes, `SnapBy` for no icon, one of three and all three with exact coordinates, a no-effect call recorded, and every member throwing when `Unavailable` with positions and auto arrange left intact (**Corrected 2026-11-18:** plan review). Cheaper substitute: a fake that accepts any position for any `Id`, hiding the missing-icon rule.
 - [x] Add `FakeMonitors` in `tests/Berth.Tests/Fakes/FakeMonitors.cs` with a settable list and `Unavailable` (throws `DesktopUnavailableException`). Done when: a test reads back what it set, and another sees the exception while the desktop fake is still available (**Corrected 2026-11-18:** plan review). Cheaper substitute: none needed.
 - [x] Add `tests/Berth.Tests/Fakes/FakeDesktopIconsTests.cs` for those behaviours. Done when: all pass, and the unknown-`Id` test fails when the fake starts adding unknown icons. Cheaper substitute: untested fakes whose own bugs pass as product behaviour.
-- [ ] Commit: `core: desktop and monitor seams with fakes`
+- [x] Commit: `core: desktop and monitor seams with fakes`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FakeDesktopIconsTests"` passes (the desktop, monitor and unavailable contract tests are in it; **Corrected 2026-11-18:** plan review), and `LayerRuleTests` still passes with the new interfaces in `Berth.Core`.
+
+> **Verified:** 2026-11-18 | §8 | 121bc106552d65eff61aa6d47e5982788763a2b7
+> **Review:** `docs/reviews/d01-t01-s8.json`
 
 ## 9. Save operation
 
@@ -506,6 +510,23 @@ Filed 2026-11-18 from the phase 1 gap audit: SPEC §18 says every setting change
 - [ ] Commit: `core: setting changes applied, read back and logged`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingChangesTests"` passes, and fails when a failed save is reported as applied.
+
+## 19. Fake contract tests all go through the seams
+
+Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blocking levels): `SnapByShiftsOnlyTheChosenIcons` called the fake's own type, while the record says every fake test exercises `IDesktopIcons`. The change was made in 9a08deb, after the reviewed candidate; this section verifies and reviews it.
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Check every fake test reaches the fakes through the interfaces. Done when: no test in `FakeDesktopIconsTests` calls a desktop member on the fake's own type.
+
+- [ ] Route `SnapByShiftsOnlyTheChosenIcons` through `IDesktopIcons` (`Seam(fake)`) for all three cases, keeping its exact coordinates. Done when: the test passes and every `SetPositions` and `ReadIcons` call in `tests/Berth.Tests/Fakes/FakeDesktopIconsTests.cs` is on an `IDesktopIcons`. Cheaper substitute: narrowing the record's claim instead.
+- [ ] Commit: `test: fake contract tests go through the seams`
+
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FakeDesktopIconsTests"` passes.
 
 ## Verification
 
