@@ -2,34 +2,52 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 CREATE_NO_WINDOW = 0x08000000
 
 
-def scratch_root() -> Path:
-    """`paths.scratch` from `.conclave/local.toml` when set, else the operating system's temporary folder."""
-    local = ROOT / ".conclave" / "local.toml"
-    if local.is_file():
-        with local.open("rb") as handle:
+DEFAULT_CANDIDATE = Path(r"R:\scratch")
+
+
+def scratch_root(
+    environ: Mapping[str, str] = os.environ,
+    local_file: Path = ROOT / ".conclave" / "local.toml",
+    candidate: Path = DEFAULT_CANDIDATE,
+) -> Path:
+    """Where script tests put their temporary folders, the first that applies of: `BERTH_SCRATCH` (the session
+    scratchpad, as the sibling projects' BOSUN_SCRATCH and OFFICE_SCRATCH); `paths.scratch` in
+    `.conclave/local.toml`; `R:\\scratch` when it exists (AGENTS.md, "Working rules"); the system's temporary
+    folder. A chosen BERTH_SCRATCH or paths.scratch folder is created; the candidate never is."""
+    session = environ.get("BERTH_SCRATCH", "")
+    if session:
+        folder = Path(session)
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
+    if local_file.is_file():
+        with local_file.open("rb") as handle:
             configured = tomllib.load(handle).get("paths", {}).get("scratch", "")
         if configured:
             folder = Path(configured)
             folder.mkdir(parents=True, exist_ok=True)
             return folder
+    if candidate.is_dir():
+        return candidate
     return Path(tempfile.gettempdir())
 
 
-def make_scratch(prefix: str) -> Path:
-    """A new folder under `scratch_root()`; remove it with `remove_scratch`."""
-    return Path(tempfile.mkdtemp(prefix=prefix, dir=scratch_root()))
-
+def make_scratch(prefix: str, **where: Any) -> Path:
+    """A new folder under `scratch_root(**where)`; remove it with `remove_scratch`."""
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=scratch_root(**where)))
 
 def remove_scratch(folder: Path) -> None:
     """Deletes a scratch folder, letting any failure surface instead of leaving the folder behind unseen."""

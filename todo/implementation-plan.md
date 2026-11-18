@@ -8,7 +8,7 @@ Format and rules: `todo/README.md`. Run sections with the `process-plan`, `proce
 
 ### Phase 0: Repository and tooling
 
-Sections: 8 | Checklist items: 47
+Sections: 8 | Checklist items: 48
 
 | Status | Reference  | Deliverable                                              | Needs | Items |
 | ------ | ---------- | -------------------------------------------------------- | ----- | ----- |
@@ -19,7 +19,7 @@ Sections: 8 | Checklist items: 47
 | [ ]    | D00 T01 §5 | Build and test workflow in CI                            | none  | 6     |
 | [ ]    | D00 T01 §6 | Test that keeps Core free of UI and COM types            | none  | 4     |
 | [x]    | D00 T01 §7 | Review prompts that name the stamp-owned Commit item     | none  | 4     |
-| [ ]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 3     |
+| [ ]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 4     |
 
 ### Phase 1: Core
 
@@ -152,4 +152,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 5/81 verified sections, 3 ready to run now.
 
-Checklist: 34/484 items completed (includes Commit items).
+Checklist: 37/485 items completed (includes Commit items).

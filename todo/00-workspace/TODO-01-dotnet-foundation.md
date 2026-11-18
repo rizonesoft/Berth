@@ -242,16 +242,19 @@ Filed 2026-11-18 from the D00 T01 §7 completion review (P3): `tests/scripts/sup
 **Needs:** none
 **Surface:** no
 
+**Corrected 2026-11-18:** rewritten after the plan review (P1 1, P2 2 and 3, P3 4). A supplied session scratchpad comes first, passed as `BERTH_SCRATCH` like the sibling projects' `BOSUN_SCRATCH` and `OFFICE_SCRATCH`; one check runs the production defaults against an expected folder computed without `scratch_root()`; the configured folder is created when missing; and the temporary-folder case expects `Path(tempfile.gettempdir())`, not a machine literal.
+
 **Build order:**
 
-1. Add the `R:\scratch` step to `scratch_root()`. Done when: without `paths.scratch`, a machine with `R:\scratch` gets it.
-2. Test the order of choices independently. Done when: `python -m unittest discover -s tests/scripts -p test_support.py` passes.
+1. Give `scratch_root()` its four-step order with injectable inputs. Done when: each step wins in its case.
+2. Test every case and the production defaults. Done when: `python -m unittest discover -s tests/scripts -p test_support.py` passes.
 
-- [ ] Make `scratch_root()` in `tests/scripts/support.py` choose, in order: `paths.scratch` from `.conclave/local.toml` when set; `R:\scratch` when that folder exists (Windows); the operating system's temporary folder otherwise (a CI runner has no `R:` drive). Take the local file path and the candidate folder as parameters with those defaults, so a test can pass its own. Done when: the three tests below pass. Cheaper substitute: creating `R:\scratch` when it is missing, which writes to a drive the machine may not have.
-- [ ] Add tests to `tests/scripts/test_support.py` that give `scratch_root()` a temporary `local.toml` and candidate folder of their own: a configured `paths.scratch` wins over an existing candidate; with no configuration an existing candidate wins; with neither, the result is `tempfile.gettempdir()`. Each expected folder is written in the test as a literal path, never computed by `scratch_root()`. Done when: all pass, and the second fails when the candidate step is removed. Cheaper substitute: comparing the result with another call of `scratch_root()`.
+- [x] Make `scratch_root(environ=os.environ, local_file=<repo>/.conclave/local.toml, candidate=Path(r"R:\scratch"))` in `tests/scripts/support.py` choose, in order: `BERTH_SCRATCH` from `environ` when set (the session scratchpad); `paths.scratch` from `local_file` when set; `candidate` when that folder exists; `tempfile.gettempdir()` otherwise. A chosen `BERTH_SCRATCH` or `paths.scratch` folder is created with its parents; `candidate` is never created. Done when: the tests below pass. Cheaper substitute: creating `R:\scratch` when it is missing, which writes to a drive the machine may not have.
+- [x] Add tests to `tests/scripts/test_support.py`, each with a `local.toml`, candidate and session folder of its own under a temporary folder: `BERTH_SCRATCH` wins over a configured `paths.scratch` and an existing candidate, and `make_scratch` creates its folder there; a configured `paths.scratch` naming a missing nested folder wins over an existing candidate, the folder is created, and `make_scratch` succeeds in it; with neither, an existing candidate wins; with nothing, the result is `Path(tempfile.gettempdir())` and the missing candidate is still absent. Done when: all pass, and the candidate test fails when that step is removed. Cheaper substitute: comparing the result with another call of `scratch_root()`.
+- [x] Add a test of the production defaults: with `BERTH_SCRATCH` removed from `environ` and `local_file` pointing at a missing file, `make_scratch` with no other argument creates its folder under `Path(r"R:\scratch")` when that folder exists and under `Path(tempfile.gettempdir())` when it does not, the expected value computed in the test without `scratch_root()`. Done when: it passes, and fails when the default candidate is misspelled (`R:\scrath`) on a machine that has `R:\scratch`. Cheaper substitute: only testing with injected folders, so a typo in the default passes.
 - [ ] Commit: `test: script test scratch folder falls back to R:\scratch`
 
-**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_support.py` passes, and fails when `scratch_root()` skips the `R:\scratch` step.
+**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_support.py` passes, and fails when `scratch_root()` skips the `R:\scratch` step or misspells its default.
 
 ## Verification
 
