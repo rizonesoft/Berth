@@ -95,6 +95,25 @@ public sealed class ArrangementKeyTests
         }
     }
 
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("sv-SE")]
+    public void TheNamedCulturesGiveTheSameKey(string name)
+    {
+        CultureInfo before = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(name, useUserOverride: false);
+            Assert.Equal(ThreeMonitorKey, ArrangementKey.From([Left, Main, Below]));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before;
+        }
+
+        Assert.Same(before, CultureInfo.CurrentCulture);
+    }
+
     [Fact]
     public void AKeyIsSixteenLowercaseHexCharacters()
     {
