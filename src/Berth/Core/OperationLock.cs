@@ -31,13 +31,18 @@ internal sealed class OperationLock
 
     /// <summary>
     /// <c>Global\</c>, so a command line in another of the user's sessions shares it with the tray app, and a hash of
-    /// the data root (the first 16 lowercase hex of SHA-256 of the UTF-8 of its full path without trailing
-    /// separators, lowercased), so every spelling of one root shares a lock and different roots do not.
+    /// the data root (the first 16 lowercase hex of SHA-256 of the UTF-8 of the path Windows resolves the folder to,
+    /// without trailing separators, lowercased), so every spelling of one root shares a lock (an extended prefix, a
+    /// short name, a junction) and different roots do not. The folder is created first, so its name never changes
+    /// between the first operation and the next.
     /// </summary>
+    /// <exception cref="IOException">The data root cannot be created or opened.</exception>
+    /// <exception cref="UnauthorizedAccessException">The data root may not be created.</exception>
     internal static string NameFor(string dataRoot)
     {
         ArgumentException.ThrowIfNullOrEmpty(dataRoot);
-        string root = Path.GetFullPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
+        Directory.CreateDirectory(dataRoot);
+        string root = JsonFile.FinalFolderPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
         string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..16];
         return @"Global\Berth.Operation." + hash;
     }

@@ -546,16 +546,26 @@ internal static partial class JsonFile
             return false;
         }
 
-        using Microsoft.Win32.SafeHandles.SafeFileHandle folder = NativeMethods.CreateFile(
-            Path.GetDirectoryName(full)!, NativeMethods.FileReadAttributes, NativeMethods.ShareAll, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.BackupSemantics, IntPtr.Zero);
-        if (folder.IsInvalid)
+        string final = FinalPath(opened.SafeFileHandle);
+        return string.Equals(Path.GetDirectoryName(final), FinalFolderPath(Path.GetDirectoryName(full)!), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Path.GetFileName(final), Path.GetFileName(full), exactName ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The path Windows resolves the existing folder <paramref name="folder"/> to: one spelling for every way of naming
+    /// it (an extended <c>\\?\</c> prefix, a short 8.3 name, a junction or a substituted drive on the way).
+    /// </summary>
+    /// <exception cref="IOException">The folder cannot be opened.</exception>
+    internal static string FinalFolderPath(string folder)
+    {
+        using Microsoft.Win32.SafeHandles.SafeFileHandle handle = NativeMethods.CreateFile(
+            folder, NativeMethods.FileReadAttributes, NativeMethods.ShareAll, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.BackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
         {
-            throw new IOException($"The folder of '{path}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
+            throw new IOException($"The folder '{folder}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
         }
 
-        string final = FinalPath(opened.SafeFileHandle);
-        return string.Equals(Path.GetDirectoryName(final), FinalPath(folder), StringComparison.OrdinalIgnoreCase)
-            && string.Equals(Path.GetFileName(final), Path.GetFileName(full), exactName ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        return FinalPath(handle);
     }
 
     private static string FinalPath(Microsoft.Win32.SafeHandles.SafeFileHandle handle)

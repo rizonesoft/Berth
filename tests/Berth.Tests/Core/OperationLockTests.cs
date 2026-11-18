@@ -83,20 +83,29 @@ public sealed class OperationLockTests
         int calls = 0, busies = 0;
         CancellationToken cancel = TestContext.Current.CancellationToken;
 
-        Task<string> pending = Task.Run(() => gate.Run(() => { calls++; return "work"; }, () => { busies++; return "busy"; }), cancel);
+        string? result = null;
+        var contender = new Thread(() => result = gate.Run(() => { calls++; return "work"; }, () => { busies++; return "busy"; }));
+        contender.Start();
 
-        // Released while the run waits (a run that did not wait would have returned busy by now); the run must
-        // then take the lock within its 10-second deadline.
-        await Task.Delay(300, cancel);
-        Assert.False(pending.IsCompleted, "the run did not wait for the lock");
+        // Released only once the run is blocked waiting for the mutex (a run that did not wait never blocks); the run
+        // must then take the lock within its 10-second deadline.
+        var seen = Stopwatch.StartNew();
+        while ((contender.ThreadState & System.Threading.ThreadState.WaitSleepJoin) == 0 && contender.IsAlive && seen.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            Thread.Yield();
+        }
+
+        Assert.True(contender.IsAlive, "the run did not wait for the lock");
         holder.Release();
+        Task<bool> ended = Task.Run(() => contender.Join(TimeSpan.FromSeconds(10)), cancel);
+        Assert.True(await ended);
+        Assert.Equal("work", result);
 
-        Assert.Equal("work", await pending.WaitAsync(TimeSpan.FromSeconds(10), cancel));
         Assert.Equal((1, 0), (calls, busies));
     }
 
     [Fact]
-    public void ATimedOutRunIsBusyOnceAndOnlyAfterTheWait()
+    public async Task ATimedOutRunIsBusyOnceAndOnlyAfterTheWait()
     {
         using var data = new TestData();
         OperationLock gate = Lock(data, 400);
@@ -104,12 +113,15 @@ public sealed class OperationLockTests
         int busies = 0;
 
         var clock = Stopwatch.StartNew();
-        string result = gate.Run(() => "work", () => { busies++; return "busy"; });
+        Task<string> run = Task.Run(() => gate.Run(() => "work", () => { busies++; return "busy"; }), TestContext.Current.CancellationToken);
+
+        // Bounded from outside, so a wait far longer than the configured one fails rather than hangs.
+        Assert.True(await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken)) == run, "the run did not time out");
         clock.Stop();
 
-        Assert.Equal("busy", result);
+        Assert.Equal("busy", await run);
         Assert.Equal(1, busies);
-        Assert.True(clock.ElapsedMilliseconds >= 350, $"busy after {clock.ElapsedMilliseconds} ms");
+        Assert.InRange(clock.ElapsedMilliseconds, 350, 2000);
     }
 
     [Fact]
@@ -163,6 +175,7 @@ public sealed class OperationLockTests
 
         Assert.Equal(OperationLock.NameFor(root), OperationLock.NameFor(root.ToUpperInvariant() + @"\"));
         Assert.Equal(OperationLock.NameFor(root), OperationLock.NameFor(Path.Combine(root, "sub", "..")));
+        Assert.Equal(OperationLock.NameFor(root), OperationLock.NameFor(@"\\?\" + root));
         Assert.NotEqual(OperationLock.NameFor(root), OperationLock.NameFor(BerthPaths.ForRoot(other.Root).DataRoot));
 
         using (new MutexHolder(OperationLock.NameFor(root.ToUpperInvariant())))
@@ -211,7 +224,7 @@ public sealed class OperationLockTests
 }
 
 [Collection(DesktopCollectionDefinition.Name)]
-public sealed class OperationLockProcessTests
+public sealed class CrossProcessOperationLockTests
 {
     [Fact]
     public void AnotherProcessHoldingTheLockMakesRunBusyAndSeesItHeldDuringWork()
