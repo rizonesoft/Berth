@@ -28,14 +28,7 @@ internal sealed class LayoutService(
 
     private OperationResult SaveLocked(string? name)
     {
-        IReadOnlyList<MonitorInfo> arrangement;
-        IReadOnlyList<IconPosition> icons;
-        try
-        {
-            arrangement = monitors.Read();
-            icons = desktop.ReadIcons();
-        }
-        catch (DesktopUnavailableException)
+        if (Capture() is not ({ } arrangement, { } icons))
         {
             return OperationResult.Refused(Refusal.DesktopUnavailable);
         }
@@ -43,11 +36,16 @@ internal sealed class LayoutService(
         string key = ArrangementKey.From(arrangement);
         string file = paths.LayoutFile(key);
         LayoutSnapshot snapshot;
-        LayoutSet all;
+        LayoutSet? all = null;
         try
         {
             snapshot = store.Snapshot(key);
-            all = store.LoadAll();
+
+            // The other layouts' names are needed only to name this one: a repeat save keeps its name.
+            if (name is not null || snapshot.Layout is null)
+            {
+                all = store.LoadAll();
+            }
         }
         catch (UnreadableLayoutException unreadable)
         {
@@ -58,8 +56,14 @@ internal sealed class LayoutService(
             return OperationResult.Failed(paths.LayoutsFolder, error.Message);
         }
 
+        // A layout another program holds may carry the very name: no name is chosen past it.
+        if (all?.Unreadable.FirstOrDefault(u => u.Held) is { } held)
+        {
+            return OperationResult.Refused(Refusal.UnreadableLayout, path: held.FileName, detail: held.Reason);
+        }
+
         // Names of the other arrangements' layouts: this one's own name may be kept or given again.
-        string[] others = [.. all.Layouts.Where(l => l.Key != key).Select(l => l.Name)];
+        string[] others = all is null ? [] : [.. all.Layouts.Where(l => l.Key != key).Select(l => l.Name)];
         string layoutName;
         if (name is not null)
         {
@@ -112,25 +116,51 @@ internal sealed class LayoutService(
     }
 
     /// <summary>
+    /// The monitors and the icons read together: the monitors are read again after the icons, and a capture across a
+    /// display change (the icons Explorer moved for another arrangement) is taken again, up to three times. Null
+    /// when the desktop cannot be reached or the displays keep changing.
+    /// </summary>
+    private (IReadOnlyList<MonitorInfo>, IReadOnlyList<IconPosition>)? Capture()
+    {
+        try
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                IReadOnlyList<MonitorInfo> before = monitors.Read();
+                IReadOnlyList<IconPosition> icons = desktop.ReadIcons();
+                if (ArrangementKey.From(monitors.Read()) == ArrangementKey.From(before))
+                {
+                    return (before, icons);
+                }
+            }
+        }
+        catch (DesktopUnavailableException)
+        {
+            // An unreachable desktop is a refusal (SPEC §18), which the caller reports.
+            return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Runs <paramref name="work"/> under the operation lock (refused as busy when it is not free), turns an exception
     /// nobody expected into a failure that keeps it (SPEC §18 "Something went wrong"), and logs the one result.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Every operation ends in one result and one log event; an unexpected error is that failure (SPEC §18).")]
     private OperationResult Logged(string operation, Func<OperationResult> work)
     {
-        OperationResult result = gate.Run(
-            () =>
-            {
-                try
-                {
-                    return work();
-                }
-                catch (Exception error)
-                {
-                    return OperationResult.Failed(path: null, error.Message, error: error);
-                }
-            },
-            () => OperationResult.Refused(Refusal.Busy));
+        OperationResult result;
+        try
+        {
+            // Taking the lock is inside the boundary too: a mutex that cannot be opened is a failure, not a throw.
+            result = gate.Run(work, () => OperationResult.Refused(Refusal.Busy));
+        }
+        catch (Exception error)
+        {
+            result = OperationResult.Failed(path: null, error.Message, error: error);
+        }
+
         log.Result(result, Describe(operation, result));
         return result;
     }

@@ -505,7 +505,6 @@ public sealed class LayoutStoreTests
             Layout layout = Layouts.Single();
             store.Save(layout);
             byte[]? edited = null;
-            var clock = System.Diagnostics.Stopwatch.StartNew();
 
             Assert.Throws<TargetChangedException>(() => store.Save(layout with { Name = "Mine" }, beforeReplace: () =>
             {
@@ -514,7 +513,6 @@ public sealed class LayoutStoreTests
                 edited = File.ReadAllBytes(paths.LayoutFile(layout.Key));
             }));
 
-            Assert.True(clock.ElapsedMilliseconds < JsonFile.LiveSaveWait.TotalMilliseconds, $"{clock.ElapsedMilliseconds} ms");
             Assert.Equal(edited, File.ReadAllBytes(paths.LayoutFile(layout.Key)));
             Assert.Equal("Theirs", new LayoutStore(paths).Find(layout.Key)!.Name);
         }

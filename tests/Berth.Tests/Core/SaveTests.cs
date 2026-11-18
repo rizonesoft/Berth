@@ -314,6 +314,92 @@ public sealed class SaveTests
     }
 
     [Fact]
+    public void AnIconReadAcrossADisplayChangeIsTakenAgain()
+    {
+        // The displays change after the monitors are read and before the icons are: the icons belong to the new
+        // arrangement, so the capture is taken again and saved under that arrangement's key.
+        using var rig = new Rig(Three);
+        rig.Monitors.AfterRead = read =>
+        {
+            if (read == 1)
+            {
+                rig.Monitors.Monitors = [Rig.Main];
+            }
+        };
+
+        OperationResult result = rig.Service().Save();
+
+        Assert.Equal(("1 monitor", OperationKind.Saved), (result.LayoutName, result.Kind));
+        Assert.Equal([Rig.Main], rig.Stored()!.Monitors);
+        Assert.False(System.IO.File.Exists(rig.Paths.LayoutFile(ArrangementKey.From([Rig.Left, Rig.Main]))));
+    }
+
+    [Fact]
+    public void DisplaysThatKeepChangingAreARefusal()
+    {
+        using var rig = new Rig(Three);
+        rig.Monitors.AfterRead = read => rig.Monitors.Monitors = read % 2 == 0 ? [Rig.Left, Rig.Main] : [Rig.Main];
+
+        Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), rig.Service().Save());
+        Assert.False(Directory.Exists(rig.Paths.LayoutsFolder));
+    }
+
+    [Fact]
+    public void ALayoutAnotherProgramHoldsStopsANameBeingChosen()
+    {
+        using var rig = new Rig(Three);
+        rig.Service().Save("Docked");
+        string docked = rig.File;
+        rig.Monitors.Monitors = [Rig.Main];
+
+        OperationResult result;
+        using (new FileStream(docked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = rig.Service().Save("Docked");
+        }
+
+        Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, Path.GetFileName(docked)), (result.Kind, result.Refusal, result.Path));
+        Assert.False(System.IO.File.Exists(rig.File));
+    }
+
+    [Fact]
+    public void ARepeatSaveDoesNotReadTheOtherLayouts()
+    {
+        // Another arrangement's file held by another program would make a full scan wait; a repeat save keeps its
+        // name and never looks.
+        using var rig = new Rig(Three);
+        rig.Service().Save();
+        rig.Monitors.Monitors = [Rig.Main];
+        rig.Service().Save();
+        string other = rig.File;
+        rig.Monitors.Monitors = [Rig.Left, Rig.Main];
+
+        OperationResult result;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        using (new FileStream(other, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = rig.Service().Save();
+        }
+
+        Assert.Equal(OperationKind.Saved, result.Kind);
+        Assert.True(clock.Elapsed < JsonFile.LiveSaveWait, $"{clock.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public void ALockThatCannotBeOpenedIsAFailureNotAThrow()
+    {
+        // An event, not a mutex, holds the lock's name: opening the mutex fails before any work, inside the boundary.
+        using var rig = new Rig(Three);
+        using var squatter = new EventWaitHandle(false, EventResetMode.ManualReset, rig.Gate.MutexName);
+
+        OperationResult result = rig.Service().Save();
+
+        Assert.Equal(OperationKind.Failed, result.Kind);
+        Assert.NotNull(result.Error);
+        Assert.Single(rig.LogLines(), line => line.Contains(" FAIL Save: Failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void SavingWorksWhileAutoArrangeIsOn()
     {
         using var rig = new Rig(Three);

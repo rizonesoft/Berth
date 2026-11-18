@@ -3,22 +3,26 @@ using Berth.Core.Model;
 
 namespace Berth.Core;
 
-/// <summary>A layout file that cannot be read, by its name in the layouts folder and the reason.</summary>
-internal sealed record UnreadableFile(string FileName, string Reason);
+/// <summary>
+/// A layout file that cannot be read, by its name in the layouts folder and the reason. <paramref name="Held"/> is
+/// true when another program held it (it may read fine a moment later), false when its contents or name break the
+/// rules.
+/// </summary>
+internal sealed record UnreadableFile(string FileName, string Reason, bool Held = false);
 
 /// <summary>Every readable layout, and every layout file that could not be read (SPEC §9, third notice).</summary>
 internal sealed record LayoutSet(IReadOnlyList<Layout> Layouts, IReadOnlyList<UnreadableFile> Unreadable);
 
-/// <summary>
-/// The layouts folder: one file per monitor arrangement, named by its key (SPEC §14). A file that cannot be read is
-/// reported, kept out of every lookup, and never overwritten or deleted.
-/// </summary>
 /// <summary>
 /// The layout of one arrangement as a save read it (null when there was none), with the bytes it was read from, so
 /// the save can be written over exactly this version (SPEC §14: a file that changed is never written).
 /// </summary>
 internal sealed record LayoutSnapshot(string Key, Layout? Layout, byte[]? Bytes);
 
+/// <summary>
+/// The layouts folder: one file per monitor arrangement, named by its key (SPEC §14). A file that cannot be read is
+/// reported, kept out of every lookup, and never overwritten or deleted.
+/// </summary>
 internal sealed class LayoutStore(BerthPaths paths)
 {
     /// <summary>The layout of <paramref name="key"/> as it is now, for <see cref="Save(Layout, LayoutSnapshot)"/>.</summary>
@@ -271,7 +275,7 @@ internal sealed class LayoutStore(BerthPaths paths)
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}"));
+            return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}", Held: true));
         }
 
         if (entry is null)
@@ -290,7 +294,7 @@ internal sealed class LayoutStore(BerthPaths paths)
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Renamed(path, fileKey) ?? new Lookup(null, new UnreadableFile(fileName, $"It could not be read as it was being saved: {error.Message}"));
+            return Renamed(path, fileKey) ?? new Lookup(null, new UnreadableFile(fileName, $"It could not be read as it was being saved: {error.Message}", Held: true));
         }
 
         // Read as Windows opens names: if the file was renamed to another case meanwhile, what was read is not
@@ -302,7 +306,8 @@ internal sealed class LayoutStore(BerthPaths paths)
 
         if (!readable)
         {
-            return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
+            // No bytes at all, and not missing: another program held it through the wait, which may pass.
+            return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!, Held: bytes is null && reason != JsonFile.Missing));
         }
 
         string? problem = LayoutRules.Check(layout!, fileKey);

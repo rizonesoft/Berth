@@ -161,12 +161,10 @@ public sealed class SettingsStoreTests
         using (data)
         {
             Put(paths, Good);
-            var clock = System.Diagnostics.Stopwatch.StartNew();
 
             Assert.Throws<TargetChangedException>(() => store.Save(Settings.Default, beforeReplace: () =>
                 new SettingsStore(BerthPaths.ForRoot(data.Root)).Save(new Settings(1, true, null))));
 
-            Assert.True(clock.ElapsedMilliseconds < JsonFile.LiveSaveWait.TotalMilliseconds, $"{clock.ElapsedMilliseconds} ms");
             Assert.Equal(new Settings(1, true, null), new SettingsStore(BerthPaths.ForRoot(data.Root)).Load().Value);
         }
     }

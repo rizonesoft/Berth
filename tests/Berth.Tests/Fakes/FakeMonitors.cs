@@ -16,12 +16,17 @@ internal sealed class FakeMonitors : IMonitors
     /// <summary>How many times the monitors were read.</summary>
     public int Reads { get; private set; }
 
+    /// <summary>Called with the read count after each read, so a test can change the displays between reads.</summary>
+    public Action<int>? AfterRead { get; set; }
+
     /// <summary>When true, <see cref="IMonitors.Read"/> throws <see cref="DesktopUnavailableException"/>, as it does for an empty list.</summary>
     public bool Unavailable { get; set; }
 
     IReadOnlyList<MonitorInfo> IMonitors.Read()
     {
         Reads++;
-        return Unavailable || Monitors.Count == 0 ? throw new DesktopUnavailableException("No monitor can be read.") : [.. Monitors];
+        IReadOnlyList<MonitorInfo> read = Unavailable || Monitors.Count == 0 ? throw new DesktopUnavailableException("No monitor can be read.") : [.. Monitors];
+        AfterRead?.Invoke(Reads);
+        return read;
     }
 }
