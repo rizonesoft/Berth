@@ -1,0 +1,83 @@
+{
+  "ref": "D00 T01 \u00a78",
+  "title": "Script test scratch folder that falls back to R:\\scratch",
+  "implementation_sha": "b2128b8aec374f7497c3d97a1d225ec3ea05b82d",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/00-workspace/D00-T01-s8.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python -m unittest discover -s tests/scripts -p test_support.py -> OK; mutants: candidate step removed -> 2 failures, default misspelled -> test_production_defaults fails, default environ empty -> session test fails"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s8.md",
+    "verdict": "complete",
+    "candidate": "b2128b8aec374f7497c3d97a1d225ec3ea05b82d",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s8.md",
+    "candidate": "a81987346c68a30c639d44b30230eb1da7337d3a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "a81987346c68a30c639d44b30230eb1da7337d3a",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

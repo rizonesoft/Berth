@@ -43,7 +43,7 @@ title: "TODO-01 -- .NET foundation"
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
 | 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [x] |
-| 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [ ] |
+| 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [x] |
 
 ## 1. Solution, SDK pin and shared build properties
 
@@ -252,9 +252,12 @@ Filed 2026-11-18 from the D00 T01 §7 completion review (P3): `tests/scripts/sup
 - [x] Make `scratch_root(environ=os.environ, local_file=<repo>/.conclave/local.toml, candidate=Path(r"R:\scratch"))` in `tests/scripts/support.py` choose, in order: `BERTH_SCRATCH` from `environ` when set (the session scratchpad); `paths.scratch` from `local_file` when set; `candidate` when that folder exists; `tempfile.gettempdir()` otherwise. A chosen `BERTH_SCRATCH` or `paths.scratch` folder is created with its parents; `candidate` is never created. Done when: the tests below pass. Cheaper substitute: creating `R:\scratch` when it is missing, which writes to a drive the machine may not have.
 - [x] Add tests to `tests/scripts/test_support.py`, each with a `local.toml`, candidate and session folder of its own under a temporary folder: `BERTH_SCRATCH` wins over a configured `paths.scratch` and an existing candidate, and `make_scratch` creates its folder there; a configured `paths.scratch` naming a missing nested folder wins over an existing candidate, the folder is created, and `make_scratch` succeeds in it; with neither, an existing candidate wins; with nothing, the result is `Path(tempfile.gettempdir())` and the missing candidate is still absent. Done when: all pass, and the candidate test fails when that step is removed. Cheaper substitute: comparing the result with another call of `scratch_root()`.
 - [x] Add a test of the production defaults: with `BERTH_SCRATCH` removed from `environ` and `local_file` pointing at a missing file, `make_scratch` with no other argument creates its folder under `Path(r"R:\scratch")` when that folder exists and under `Path(tempfile.gettempdir())` when it does not, the expected value computed in the test without `scratch_root()`. Done when: it passes, and fails when the default candidate is misspelled (`R:\scrath`) on a machine that has `R:\scratch`. Cheaper substitute: only testing with injected folders, so a typo in the default passes.
-- [ ] Commit: `test: script test scratch folder falls back to R:\scratch`
+- [x] Commit: `test: script test scratch folder falls back to R:\scratch`
 
 **Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_support.py` passes, and fails when `scratch_root()` skips the `R:\scratch` step or misspells its default.
+
+> **Verified:** 2026-11-18 | §8 | b2128b8aec374f7497c3d97a1d225ec3ea05b82d
+> **Review:** `docs/reviews/d00-t01-s8.json`
 
 ## Verification
 

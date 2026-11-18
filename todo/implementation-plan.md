@@ -19,7 +19,7 @@ Sections: 8 | Checklist items: 48
 | [ ]    | D00 T01 §5 | Build and test workflow in CI                            | none  | 6     |
 | [ ]    | D00 T01 §6 | Test that keeps Core free of UI and COM types            | none  | 4     |
 | [x]    | D00 T01 §7 | Review prompts that name the stamp-owned Commit item     | none  | 4     |
-| [ ]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 4     |
+| [x]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 4     |
 
 ### Phase 1: Core
 
@@ -150,6 +150,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 5/81 verified sections, 3 ready to run now.
+Progress: 6/81 verified sections, 2 ready to run now.
 
-Checklist: 37/485 items completed (includes Commit items).
+Checklist: 38/485 items completed (includes Commit items).
