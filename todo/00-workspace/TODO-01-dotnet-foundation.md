@@ -206,6 +206,8 @@ The foundation plan's one architectural rule, enforced by a test instead of by c
 
 ## 7. Review prompts that name the stamp-owned Commit item
 
+> **Started:** 2026-11-18T01:11:58Z
+
 Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking for the `- [ ] Commit:` item to be ticked before the stamp, but `stamp` ticks it (`todo/README.md`, "Stamps and receipts"), so every section draws the same finding. The prompts must say so.
 
 **Phase:** 0
