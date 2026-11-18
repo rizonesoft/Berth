@@ -188,7 +188,7 @@ internal static partial class JsonFile
     /// Writes <paramref name="written"/> over <paramref name="path"/> in place, under a lock no other program can
     /// share, and only if the file still holds exactly <paramref name="expected"/>. A redo note taken (and held) first
     /// names the verified temporary copy and the digests of the old and new contents, so a crash at any point is
-    /// finished by <see cref="Recover(string)"/>: the save is completed only over the version it had read. A file
+    /// finished by <see cref="Recover(string, bool)"/>: the save is completed only over the version it had read. A file
     /// that changed, or that another program holds, is never written; while the lock is held, nothing else can read,
     /// write, rename or delete it. Writing in place keeps the file's own permissions and attributes.
     /// </summary>
@@ -275,16 +275,17 @@ internal static partial class JsonFile
     /// </summary>
     /// <exception cref="IOException">The file did not settle, or an interrupted save cannot be finished.</exception>
     /// <exception cref="UnauthorizedAccessException">An interrupted save may not be finished.</exception>
-    public static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class =>
-        TryReadSettled(path, info, out value, out reason, out read, afterRecover: null, afterRead: null);
+    /// <param name="exactName">As for <see cref="Recover(string, bool)"/>, for the recovery every attempt runs.</param>
+    public static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read) where T : class =>
+        TryReadSettled(path, info, exactName, out value, out reason, out read, afterRecover: null, afterRead: null);
 
     /// <summary>As the public overload; the two actions let a test interleave a save with the read.</summary>
-    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class
+    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class
     {
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
         for (int attempt = 0; attempt < SettleAttempts; attempt++)
         {
-            Recover(path);
+            Recover(path, exactName, afterNoteRead: null);
             afterRecover?.Invoke();
             bool ok = TryRead(path, info, out value, out reason, out read);
             afterRead?.Invoke();
@@ -358,14 +359,13 @@ internal static partial class JsonFile
     /// </summary>
     /// <exception cref="IOException">The interrupted save cannot be finished now, or another Berth is still saving.</exception>
     /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
-    public static void Recover(string path) => Recover(path, afterNoteRead: null);
+    /// <param name="exactName">True for a store whose rule is the exact name (layouts): a file whose name on disk is
+    /// spelled differently from <paramref name="path"/> (another case) is not Berth's file and is never written. False
+    /// compares names as Windows does. Every caller decides; there is no default.</param>
+    public static void Recover(string path, bool exactName) => Recover(path, exactName, afterNoteRead: null);
 
-    /// <summary>As <see cref="Recover(string)"/>; with <paramref name="exactName"/>, a file whose name on disk is spelled
-    /// differently from <paramref name="path"/> (another case) is not Berth's file and is never written.</summary>
-    public static void Recover(string path, bool exactName) => Recover(path, afterNoteRead: null, exactName);
-
-    /// <summary>As <see cref="Recover(string)"/>; <paramref name="afterNoteRead"/> lets a test act while recovery holds the note.</summary>
-    internal static void Recover(string path, Action? afterNoteRead, bool exactName = false)
+    /// <summary>As <see cref="Recover(string, bool)"/>; <paramref name="afterNoteRead"/> lets a test act while recovery holds the note.</summary>
+    internal static void Recover(string path, bool exactName, Action? afterNoteRead)
     {
         string pending = path + PendingSuffix;
         if (!File.Exists(pending))

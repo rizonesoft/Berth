@@ -24,7 +24,7 @@ internal sealed class SettingsStore(BerthPaths paths)
         string? reason;
         try
         {
-            if (JsonFile.TryReadSettled(paths.SettingsFile, BerthJson.Default.Settings, out value, out reason, out read, afterRecover, afterRead))
+            if (JsonFile.TryReadSettled(paths.SettingsFile, BerthJson.Default.Settings, exactName: false, out value, out reason, out read, afterRecover, afterRead))
             {
                 reason = null;
             }

@@ -258,7 +258,7 @@ public sealed partial class JsonFileTests
             {
                 while (!stop.IsCancellationRequested)
                 {
-                    JsonFile.Recover(paths.SettingsFile);
+                    JsonFile.Recover(paths.SettingsFile, exactName: false);
                 }
             }
             catch (Exception error) when (error is IOException)
@@ -523,14 +523,14 @@ public sealed partial class JsonFileTests
         bool newSaveRefused = false;
         Exception? secondError = null;
         Thread? second = null;
-        JsonFile.Recover(paths.SettingsFile, afterNoteRead: () =>
+        JsonFile.Recover(paths.SettingsFile, exactName: false, afterNoteRead: () =>
         {
             // While the first recovery holds the note, a second one (the tray beside a command) must wait...
             second = new Thread(() =>
             {
                 try
                 {
-                    JsonFile.Recover(paths.SettingsFile);
+                    JsonFile.Recover(paths.SettingsFile, exactName: false);
                 }
                 catch (Exception error)
                 {
@@ -708,6 +708,33 @@ public sealed partial class JsonFileTests
         Assert.Equal(read, File.ReadAllBytes(renamed));
         Assert.False(File.Exists(path + JsonFile.PendingSuffix));
         Assert.Single(Directory.GetFiles(data.Root, "layout.json" + JsonFile.KeptSuffix + "*"));
+    }
+
+    [Fact]
+    public void ALayoutRenamedToAnotherCaseWhileItIsReadIsRefusedUntouched()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        string renamed = Path.Combine(paths.LayoutsFolder, layout.Key + ".JSON");
+
+        // After the store's checks and first recovery: a save is interrupted, then sync renames the file.
+        UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() => store.Find(layout.Key, beforeSettledRead: () =>
+        {
+            Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+                path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+                afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+            File.Move(path, renamed);
+        }));
+
+        Assert.Equal(layout.Key + ".JSON", error.FileName);
+        Assert.Equal(read, File.ReadAllBytes(renamed));
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
     }
 
     [Fact]

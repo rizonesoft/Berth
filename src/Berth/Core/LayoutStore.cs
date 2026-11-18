@@ -137,9 +137,13 @@ internal sealed class LayoutStore(BerthPaths paths)
 
     /// <summary>The layout of <paramref name="key"/>, or null when there is none.</summary>
     /// <exception cref="UnreadableLayoutException">Its file cannot be read, so it must not be used.</exception>
-    public Layout? Find(string key)
+    public Layout? Find(string key) => Find(key, beforeSettledRead: null);
+
+    /// <summary>As <see cref="Find(string)"/>; <paramref name="beforeSettledRead"/> lets a test act after the name and
+    /// link checks and the first recovery, just before the file is read.</summary>
+    internal Layout? Find(string key, Action? beforeSettledRead)
     {
-        Lookup found = Read(paths.LayoutFile(key), key);
+        Lookup found = Read(paths.LayoutFile(key), key, beforeSettledRead);
         return found.Unreadable is { } unreadable ? throw new UnreadableLayoutException(unreadable.FileName, unreadable.Reason) : found.Layout;
     }
 
@@ -171,7 +175,7 @@ internal sealed class LayoutStore(BerthPaths paths)
     /// lowercase key, or that is a link (Berth never writes one), is unreadable, so no operation follows a link or a
     /// differently written name that another operation would refuse.
     /// </summary>
-    private static Lookup Read(string path, string fileKey)
+    private static Lookup Read(string path, string fileKey, Action? beforeSettledRead = null)
     {
         string fileName = Path.GetFileName(path);
         FileInfo? entry = Entry(path);
@@ -201,13 +205,15 @@ internal sealed class LayoutStore(BerthPaths paths)
         {
             return new Lookup(null, null);
         }
+
+        beforeSettledRead?.Invoke();
         bool readable;
         Layout? layout;
         string? reason;
         byte[]? bytes;
         try
         {
-            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, out layout, out reason, out bytes);
+            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, exactName: true, out layout, out reason, out bytes);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -217,6 +223,13 @@ internal sealed class LayoutStore(BerthPaths paths)
         if (!readable)
         {
             return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
+        }
+
+        // Read as Windows opens names: if the file was renamed to another case meanwhile, what was read is not
+        // Berth's file, and the rule refuses it under the name it now has.
+        if (Entry(path) is { } now && now.Name != fileKey + ".json")
+        {
+            return new Lookup(null, new UnreadableFile(now.Name, $"Its name is not the layout file name {fileKey}.json."));
         }
 
         string? problem = LayoutRules.Check(layout!, fileKey);
