@@ -76,17 +76,14 @@ internal sealed partial class BerthPaths
             : throw new InvalidOperationException($"Windows gives no folder for {special}, so Berth has nowhere to keep its files.");
     }
 
+    /// <summary>Whether <paramref name="key"/> is 16 lowercase hexadecimal characters.</summary>
+    public static bool IsKey(string? key) => key is not null && KeyPattern().IsMatch(key);
+
     /// <summary>The layout file of an arrangement key, which must be 16 lowercase hexadecimal characters.</summary>
     /// <exception cref="ArgumentException">The key is anything else, so it can never leave the layouts folder.</exception>
-    public string LayoutFile(string key)
-    {
-        if (key is null || !KeyPattern().IsMatch(key))
-        {
-            throw new ArgumentException($"'{key}' is not an arrangement key.", nameof(key));
-        }
-
-        return Path.Combine(LayoutsFolder, key + ".json");
-    }
+    public string LayoutFile(string key) => IsKey(key)
+        ? Path.Combine(LayoutsFolder, key + ".json")
+        : throw new ArgumentException($"'{key}' is not an arrangement key.", nameof(key));
 
     /// <summary>
     /// Creates the folder that holds <paramref name="file"/>, and its parents. Each writer calls it for its own

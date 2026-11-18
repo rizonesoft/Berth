@@ -57,6 +57,23 @@ internal static class LayoutRules
         return IconProblem(layout.Icons, "icons") ?? (layout.Previous is null ? null : IconProblem(layout.Previous.Icons, "previous icons"));
     }
 
+    /// <summary>Null when <paramref name="snapshot"/> is a readable undo snapshot, else why not.</summary>
+    public static string? CheckUndo(UndoSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.SchemaVersion != UndoSnapshot.CurrentSchemaVersion)
+        {
+            return $"It has schemaVersion {snapshot.SchemaVersion}; this version of Berth reads {UndoSnapshot.CurrentSchemaVersion}.";
+        }
+
+        if (!BerthPaths.IsKey(snapshot.Key))
+        {
+            return $"Its key '{snapshot.Key}' is not an arrangement key.";
+        }
+
+        return IconProblem(snapshot.Icons, "icons");
+    }
+
     private static string? IconProblem(System.Collections.Immutable.ImmutableArray<IconPosition> icons, string what)
     {
         if (icons.IsDefault)

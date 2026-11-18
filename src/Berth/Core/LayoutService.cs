@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using Berth.Core.Model;
 
 namespace Berth.Core;
@@ -31,6 +32,36 @@ internal sealed class LayoutService(
     /// result and its log line.
     /// </summary>
     public OperationResult Restore(string? origin = null) => Logged("Restore", () => RestoreLocked(origin), origin);
+
+    /// <summary>
+    /// Whether <c>undo.json</c> holds a valid snapshot for the monitors connected now, without touching the desktop.
+    /// </summary>
+    public bool CanUndo
+    {
+        get
+        {
+            if (ReadUndoSnapshot() is not { } snapshot)
+            {
+                return false;
+            }
+
+            try
+            {
+                return ArrangementKey.From(monitors.Read()) == snapshot.Key;
+            }
+            catch (DesktopUnavailableException)
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Puts the icons back where they were before the last restore (SPEC §15 "Undo"): refused, in this order, when the
+    /// desktop cannot be reached, when there is nothing to undo for the current arrangement, or while auto arrange is
+    /// on. Deletes <c>undo.json</c> only when every snapshot icon still on the desktop matches its saved position.
+    /// </summary>
+    public OperationResult Undo() => Logged("Undo", UndoLocked, origin: null);
 
     /// <summary>Lets a test act between the save's read of the layouts and its write. Production leaves it null.</summary>
     internal Action? BeforeWrite { get; init; }
@@ -230,6 +261,142 @@ internal sealed class LayoutService(
         return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin);
     }
 
+    private OperationResult UndoLocked()
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (UndoOnce() is { } result)
+            {
+                return result;
+            }
+        }
+
+        return OperationResult.Refused(Refusal.DesktopUnavailable);
+    }
+
+    /// <summary>One undo, or null when the displays changed before anything moved, to start over.</summary>
+    private OperationResult? UndoOnce()
+    {
+        if (Capture() is not ({ } arrangement, { } icons))
+        {
+            return OperationResult.Refused(Refusal.DesktopUnavailable);
+        }
+
+        string key = ArrangementKey.From(arrangement);
+        if (ReadUndoSnapshot() is not { } snapshot || snapshot.Key != key)
+        {
+            return OperationResult.Refused(Refusal.NothingToUndo);
+        }
+
+        try
+        {
+            if (desktop.AutoArrange)
+            {
+                return OperationResult.Refused(Refusal.AutoArrange);
+            }
+        }
+        catch (DesktopUnavailableException)
+        {
+            return OperationResult.Refused(Refusal.DesktopUnavailable);
+        }
+
+        if (!StillThe(key))
+        {
+            return null;
+        }
+
+        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
+        IconPosition[] wanted = [.. snapshot.Icons.Where(saved => live.ContainsKey(saved.Id))];
+        IReadOnlyList<MonitorInfo> beforeReadBack;
+        IReadOnlyList<IconPosition> after;
+        IReadOnlyList<MonitorInfo> afterReadBack;
+        try
+        {
+            desktop.SetPositions(wanted);
+            beforeReadBack = monitors.Read();
+            if (ArrangementKey.From(beforeReadBack) != key)
+            {
+                return OperationResult.Failed(
+                    FailureKind.DisplaysChanged, path: null, "The displays changed before the undo could be checked.");
+            }
+
+            after = desktop.ReadIcons();
+            afterReadBack = monitors.Read();
+        }
+        catch (DesktopUnavailableException)
+        {
+            return OperationResult.Failed(
+                FailureKind.DesktopUnavailable, path: null, "The desktop could not be reached while the icons were being placed.");
+        }
+
+        if (ArrangementKey.From(afterReadBack) != key)
+        {
+            return OperationResult.Failed(
+                FailureKind.DisplaysChanged, path: null, "The displays changed before the undo could be checked.");
+        }
+
+        IReadOnlyDictionary<string, IconPosition> now = LayoutComparison.ById(after);
+        IconState[] states = [.. snapshot.Icons.Select(saved => LayoutComparison.StateOf(saved, now.GetValueOrDefault(saved.Id)))];
+        int inPlace = states.Count(s => s == IconState.InPlace), notPlaced = states.Count(s => s == IconState.Moved), missing = states.Count(s => s == IconState.Missing);
+        if (notPlaced == 0)
+        {
+            try
+            {
+                if ((File.GetAttributes(paths.UndoFile) & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new IOException($"'{paths.UndoFile}' is a link, which Berth never deletes.");
+                }
+
+                File.Delete(paths.UndoFile);
+            }
+            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // Already absent.
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message);
+            }
+        }
+
+        return OperationResult.Undone(snapshot.Icons.Length, inPlace, notPlaced, missing);
+    }
+
+    private UndoSnapshot? ReadUndoSnapshot()
+    {
+        byte[] bytes;
+        try
+        {
+            if ((File.GetAttributes(paths.UndoFile) & FileAttributes.ReparsePoint) != 0)
+            {
+                return null;
+            }
+
+            using var stream = new FileStream(paths.UndoFile, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (!JsonFile.IsTheFileItself(stream, paths.UndoFile, exactName: false) || stream.Length > JsonFile.MaxBytes)
+            {
+                return null;
+            }
+
+            bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        try
+        {
+            UndoSnapshot snapshot = BerthJson.Parse(bytes, BerthJson.Default.UndoSnapshot);
+            return LayoutRules.CheckUndo(snapshot) is null ? snapshot : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Removing a leftover staging file is best effort; the next restore replaces it.")]
     private static void DeleteIfThere(string file)
     {
@@ -321,7 +488,7 @@ internal sealed class LayoutService(
         + (result.Refusal == Refusal.None ? string.Empty : $", {result.Refusal}")
         + (result.NameError == NameError.None ? string.Empty : $" ({result.NameError})")
         + (result.Path is null ? string.Empty : $", {result.Path}")
-        + (result.Kind is OperationKind.Restored or OperationKind.Failed && result.Total > 0
+        + (result.Kind is OperationKind.Restored or OperationKind.Undone or OperationKind.Failed && result.Total > 0
             ? $", {result.InPlace} of {result.Total} in place, {result.NotPlaced} not placed, {result.Missing} missing" : string.Empty)
         + (result.Detail is null ? string.Empty : $": {result.Detail}")
         + (result.Origin is null ? string.Empty : $" ({result.Origin})");
