@@ -173,6 +173,8 @@ Every JSON file Berth writes goes through one routine, in the SPEC §14 "Every w
 
 ## 5. Layout store
 
+> **Started:** 2026-11-18T03:26:44Z
+
 Loads every layout, saves one, deletes one, and reports files it cannot read without touching them (SPEC §14, §9 third notice).
 
 **Phase:** 1
