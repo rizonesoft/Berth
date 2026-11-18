@@ -165,6 +165,8 @@ The test project every later section adds to, with one real test so the runner i
 
 ## 5. Build and test workflow in CI
 
+> **Started:** 2026-11-18T01:28:43Z
+
 The plan workflow already checks the TODO graph. This adds the build and the tests, so a push that breaks either is red.
 
 **Phase:** 0
