@@ -287,28 +287,49 @@ internal static class LayerRule
                 _ => [],
             };
 
-        /// <summary>The type an attribute blob names by its serialized name, "Namespace.Name, Assembly, ...".</summary>
-        internal ImmutableArray<Ref> FromSerializedName(string serialized)
+        /// <summary>
+        /// Every type an attribute blob names by its serialized name, parsed by .NET's own TypeName parser so the
+        /// generic arguments, array elements and assembly of each part all count.
+        /// </summary>
+        internal ImmutableArray<Ref> FromSerializedName(string serialized) => FromTypeName(TypeName.Parse(serialized), null);
+
+        private ImmutableArray<Ref> FromTypeName(TypeName type, string? assembly)
         {
-            int comma = serialized.IndexOf(',', StringComparison.Ordinal);
-            string typeName = (comma < 0 ? serialized : serialized[..comma]).Trim();
-            int dot = typeName.LastIndexOf('.');
-            string ns = dot < 0 ? string.Empty : typeName[..dot];
-            string name = dot < 0 ? typeName : typeName[(dot + 1)..];
-            if (comma >= 0)
+            string? owner = type.AssemblyName?.Name ?? assembly;
+            if (type.IsArray || type.IsPointer || type.IsByRef)
             {
-                string assembly = serialized[(comma + 1)..].Split(',')[0].Trim();
-                if (!assembly.Equals(OwnAssembly, StringComparison.OrdinalIgnoreCase))
-                {
-                    return [new Ref(assembly, ns, name, default)];
-                }
+                return FromTypeName(type.GetElementType(), owner);
             }
 
-            // Unqualified: this assembly when it defines the type, else the core library.
-            TypeDefinitionHandle own = md.TypeDefinitions.FirstOrDefault(d => FullName(d) == typeName);
-            return own.IsNil ? [new Ref("System.Private.CoreLib", ns, name, default)] : [Definition(own)];
-        }
+            if (type.IsConstructedGenericType)
+            {
+                ImmutableArray<Ref> found = FromTypeName(type.GetGenericTypeDefinition(), owner);
+                foreach (TypeName argument in type.GetGenericArguments())
+                {
+                    found = found.AddRange(FromTypeName(argument, null));
+                }
 
+                return found;
+            }
+
+            string full = type.FullName;
+            if (owner is null || owner.Equals(OwnAssembly, StringComparison.OrdinalIgnoreCase))
+            {
+                // Unqualified or this assembly: this assembly when it defines the type, else the core library.
+                TypeDefinitionHandle own = md.TypeDefinitions.FirstOrDefault(d => FullName(d) == full);
+                if (!own.IsNil)
+                {
+                    return [Definition(own)];
+                }
+
+                owner = owner is null ? "System.Private.CoreLib" : OwnAssembly;
+            }
+
+            string outer = full.Split('+')[0];
+            int dot = outer.LastIndexOf('.');
+            string ns = dot < 0 ? string.Empty : outer[..dot];
+            return [new Ref(owner, ns, dot < 0 ? full : full[(dot + 1)..], default)];
+        }
         /// <summary>An enum's underlying type: read from its value__ field when this assembly defines it.</summary>
         internal PrimitiveTypeCode UnderlyingEnumType(ImmutableArray<Ref> type)
         {
@@ -392,7 +413,7 @@ internal static class LayerRule
                     }
                     else if (used.Namespace == ComTypesNamespace || used.Namespace.StartsWith(ComTypesNamespace + ".", StringComparison.Ordinal))
                     {
-                        violations.Add($"{member} uses the COM type {used.FullName} from {used.Assembly}");
+                        violations.Add($"{member} uses {used.FullName} from {used.Assembly}");
                     }
 
                     continue;
@@ -400,7 +421,7 @@ internal static class LayerRule
 
                 if (IsCom(used.Definition))
                 {
-                    violations.Add($"{member} uses the COM type {used.FullName} from {used.Assembly}");
+                    violations.Add($"{member} uses {used.FullName} from {used.Assembly}");
                 }
                 else if (!InPrefix(OuterNamespace(used.Definition)) && !IsCompilerHelper(used.Definition))
                 {

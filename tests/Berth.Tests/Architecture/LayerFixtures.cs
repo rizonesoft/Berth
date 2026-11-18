@@ -73,6 +73,16 @@ namespace Berth.Tests.LayerFixtures.Core
     {
     }
 
+    [System.Diagnostics.DebuggerTypeProxy(typeof(Dictionary<string, System.Windows.Window>))]
+    internal sealed class GenericAttributeValue
+    {
+    }
+
+    [System.Diagnostics.DebuggerTypeProxy(typeof(Dictionary<string, int>))]
+    internal sealed class CleanGenericAttributeValue
+    {
+    }
+
     internal sealed class MarkedGeneratedUser
     {
         internal Berth.Tests.LayerFixtures.Outside.MarkedGenerated? marked;

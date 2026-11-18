@@ -1,8 +1,10 @@
-using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Berth.Tests.Architecture;
 
-public sealed partial class LayerRuleTests
+public sealed class LayerRuleTests
 {
     private const string Fixtures = "Berth.Tests.LayerFixtures.Core";
 
@@ -39,12 +41,13 @@ public sealed partial class LayerRuleTests
     [InlineData("Berth.Tests.LayerFixtures.Core.GenericArgument.windows uses System.Windows.Window from PresentationFramework")]
     [InlineData("Berth.Tests.LayerFixtures.Core.Ambient uses System.Windows.Markup.IQueryAmbient from System.Xaml")]
     [InlineData("Berth.Tests.LayerFixtures.Core.Primitives.Margin uses System.Windows.Forms.Padding from System.Windows.Forms.Primitives")]
-    [InlineData("Berth.Tests.LayerFixtures.Core.ComImportUser.com uses the COM type Berth.Tests.LayerFixtures.Outside.IComImported from Berth.Tests")]
-    [InlineData("Berth.Tests.LayerFixtures.Core.GeneratedComUser.com uses the COM type Berth.Tests.LayerFixtures.Outside.IComGenerated from Berth.Tests")]
+    [InlineData("Berth.Tests.LayerFixtures.Core.ComImportUser.com uses Berth.Tests.LayerFixtures.Outside.IComImported from Berth.Tests")]
+    [InlineData("Berth.Tests.LayerFixtures.Core.GeneratedComUser.com uses Berth.Tests.LayerFixtures.Outside.IComGenerated from Berth.Tests")]
     [InlineData("Berth.Tests.LayerFixtures.Core.OuterLayerUser.outer uses Berth.Tests.LayerFixtures.Outside.OuterLayer from Berth.Tests")]
     [InlineData("Berth.Tests.LayerFixtures.Core.CatchOnly.Run uses System.Windows.Markup.XamlParseException from PresentationFramework")]
     [InlineData("Berth.Tests.LayerFixtures.Core.AttributeValue uses System.Windows.Window from PresentationFramework")]
     [InlineData("Berth.Tests.LayerFixtures.Core.NamedAttributeValue uses System.Windows.Forms.Form from System.Windows.Forms")]
+    [InlineData("Berth.Tests.LayerFixtures.Core.GenericAttributeValue uses System.Windows.Window from PresentationFramework")]
     [InlineData("Berth.Tests.LayerFixtures.Core.MarkedGeneratedUser.marked uses Berth.Tests.LayerFixtures.Outside.MarkedGenerated from Berth.Tests")]
     public void EachFixtureIsReported(string expected)
     {
@@ -57,6 +60,9 @@ public sealed partial class LayerRuleTests
         Assert.DoesNotContain(
             LayerRule.Check(TestAssembly, Fixtures),
             line => line.StartsWith(Fixtures + ".Clean", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            LayerRule.Check(TestAssembly, Fixtures),
+            line => line.StartsWith(Fixtures + ".CleanGenericAttributeValue", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -65,42 +71,77 @@ public sealed partial class LayerRuleTests
         string core = Path.Combine(RepositoryRoot(), "src", "Berth", "Core");
         string[] files = Directory.GetFiles(core, "*.cs", SearchOption.AllDirectories);
         Assert.NotEmpty(files);
-        string[] strays = files.Where(file => !DeclaresCoreNamespace(File.ReadAllText(file))).ToArray();
-        Assert.True(strays.Length == 0, "Files under src/Berth/Core outside Berth.Core:\n" + string.Join("\n", strays));
+        string[] strays = files.Where(file => !DeclaresCoreNamespace(File.ReadAllText(file)))
+            .Select(file => $"{file}: {string.Join(", ", StrayTypes(File.ReadAllText(file)))}")
+            .ToArray();
+        Assert.True(strays.Length == 0, "Files under src/Berth/Core that are not one file-scoped Berth.Core namespace:\n" + string.Join("\n", strays));
     }
 
     [Theory]
     [InlineData("namespace Berth.Core.Model;\n\ninternal sealed class X { }", true)]
     [InlineData("namespace Berth.Core;", true)]
+    [InlineData("namespace Berth.Core;\n\ninternal static class X\n{\n    internal const string Doc = \"\"\"\n        namespace Berth.Elsewhere;\n        \"\"\";\n}", true)]
+    [InlineData("namespace Berth.Core;\n// namespace Berth.Elsewhere;\ninternal static class X { }", true)]
     [InlineData("namespace Berth.Elsewhere;\ninternal static class X { }", false)]
-    [InlineData("namespace Berth.CoreTools;", false)]
+    [InlineData("namespace Berth.CoreTools;\ninternal static class X { }", false)]
     [InlineData("namespace Berth.Core { }\ninternal class Stray { }", false)]
-    [InlineData("namespace Berth.Core\n{\n}", false)]
+    [InlineData("namespace Berth.Core\n{\n    internal sealed class X { }\n}", false)]
     [InlineData("namespace Berth.Core;\nnamespace Berth.Core.Second;", false)]
+    [InlineData("// namespace Berth.Core;\ninternal class Global { }", false)]
+    [InlineData("/* namespace Berth.Core; */\ninternal enum Global { A }", false)]
     [InlineData("internal class NoNamespace { }", false)]
+    [InlineData("", false)]
     public void ASourceFileMustBeOneFileScopedCoreNamespace(string source, bool accepted)
     {
         Assert.Equal(accepted, DeclaresCoreNamespace(source));
     }
 
+    [Fact]
+    public void StrayTypesAreNamedWhereTheCompilerPutsThem()
+    {
+        Assert.Equal(["Stray"], StrayTypes("namespace Berth.Core { }\ninternal class Stray { }"));
+        Assert.Equal(["Global"], StrayTypes("// namespace Berth.Core;\ninternal class Global { }"));
+        Assert.Equal(["Berth.D"], StrayTypes("namespace Berth\n{\n    namespace Core\n    {\n        internal interface I { }\n    }\n\n    internal delegate void D();\n}"));
+    }
+
     /// <summary>
-    /// True when the source declares exactly one namespace, file-scoped, that is Berth.Core or below it. C# allows
-    /// no type before or outside a file-scoped namespace, so every type in such a file is in it; a block namespace
-    /// is refused because a type may follow its closing brace.
+    /// True when the C# parser finds exactly one namespace declaration in the source, file-scoped, named Berth.Core
+    /// or below it, and no type outside it. Comments and strings never count, because the parser reads them as
+    /// comments and strings.
     /// </summary>
     internal static bool DeclaresCoreNamespace(string source)
     {
-        string[] fileScoped = FileScopedNamespace().Matches(source).Select(m => m.Groups[1].Value).ToArray();
-        int all = AnyNamespace().Count(source);
-        return fileScoped.Length == 1 && all == 1
-            && (fileScoped[0] == "Berth.Core" || fileScoped[0].StartsWith("Berth.Core.", StringComparison.Ordinal));
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        BaseNamespaceDeclarationSyntax[] namespaces = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToArray();
+        return namespaces is [FileScopedNamespaceDeclarationSyntax only]
+            && InCore(only.Name.ToString())
+            && StrayTypes(source).Count == 0;
     }
 
-    [GeneratedRegex(@"^\s*namespace\s+([\w.]+)\s*;", RegexOptions.Multiline)]
-    private static partial Regex FileScopedNamespace();
+    /// <summary>The top-level types a source file declares outside Berth.Core, read with the C# parser.</summary>
+    internal static IReadOnlyList<string> StrayTypes(string source)
+    {
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        return root.DescendantNodes()
+            .Where(node => node is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax)
+            .Where(node => !node.Ancestors().Any(a => a is BaseTypeDeclarationSyntax))
+            .Select(node => (Namespace: Namespace(node), Name: Name(node)))
+            .Where(t => !InCore(t.Namespace))
+            .Select(t => t.Namespace.Length == 0 ? t.Name : t.Namespace + "." + t.Name)
+            .ToList();
+    }
 
-    [GeneratedRegex(@"^\s*namespace\s+[\w.]+", RegexOptions.Multiline)]
-    private static partial Regex AnyNamespace();
+    private static bool InCore(string name) => name == "Berth.Core" || name.StartsWith("Berth.Core.", StringComparison.Ordinal);
+    private static string Namespace(SyntaxNode node) => string.Join(
+        ".",
+        node.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse().Select(n => n.Name.ToString()));
+
+    private static string Name(SyntaxNode node) => node switch
+    {
+        BaseTypeDeclarationSyntax type => type.Identifier.Text,
+        DelegateDeclarationSyntax @delegate => @delegate.Identifier.Text,
+        _ => throw new ArgumentException("not a type declaration", nameof(node)),
+    };
     private static string RepositoryRoot()
     {
         string? folder = AppContext.BaseDirectory;

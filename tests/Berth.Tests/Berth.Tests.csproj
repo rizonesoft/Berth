@@ -14,6 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The C# parser, so the layer rule reads Core's source files as the compiler does. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="xunit.v3" />
     <Using Include="System.IO" />
     <Using Include="Xunit" />
