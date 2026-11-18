@@ -102,10 +102,34 @@ internal static partial class JsonFile
         }
         finally
         {
-            if (!replaced)
+            // A save over an existing file that stopped part way (a full disk, say) leaves its redo note naming this
+            // copy; the next read finishes the save from it, so it is kept. Otherwise nothing needs it.
+            if (!replaced && !NamedByOutstandingNote(path, temp))
             {
                 File.Delete(temp);
             }
+        }
+    }
+
+    private static bool NamedByOutstandingNote(string path, string temp)
+    {
+        try
+        {
+            string pending = path + PendingSuffix;
+            if (!File.Exists(pending) || new FileInfo(pending).Length > MaxNoteBytes)
+            {
+                return false;
+            }
+
+            using var stream = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            byte[] bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+            return Encoding.UTF8.GetString(bytes).Split('\n')[0] == Path.GetFileName(temp);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Unknown: keep the copy; a stale one is removed by a later write.
+            return true;
         }
     }
 
@@ -155,60 +179,40 @@ internal static partial class JsonFile
         }
     }
 
-    /// <summary>The suffix of a version a save displaced and could not prove it may drop; never cleaned up automatically.</summary>
+    /// <summary>The suffix of Berth's intended save, set beside a file that changed under an interrupted save; never cleaned up.</summary>
     public const string KeptSuffix = ".berth-replaced-";
 
     /// <summary>
-    /// Replaces <paramref name="path"/> only if it still holds exactly what the caller read, keeping what it held
-    /// under a <see cref="KeptSuffix"/> name in the same step.
-    /// That version is deleted only when it is exactly what the caller read; otherwise it goes back in place and the
-    /// write fails, and whatever the rollback displaces is in turn kept unless it is exactly this write. Windows cannot
-    /// stop another program writing the file meanwhile, but no version is lost: a crash at any point leaves the
-    /// displaced one beside the file, where no clean-up deletes it.
+    /// Writes <paramref name="written"/> over <paramref name="path"/> in place, under a lock no other program can
+    /// share, and only if the file still holds exactly <paramref name="expected"/>. A redo note taken (and held) first
+    /// names the verified temporary copy and the digests of the old and new contents, so a crash at any point is
+    /// finished by <see cref="Recover(string)"/>: the save is completed only over the version it had read. A file
+    /// that changed, or that another program holds, is never written; while the lock is held, nothing else can read,
+    /// write, rename or delete it. Writing in place keeps the file's own permissions and attributes.
     /// </summary>
     private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved)
     {
-        // A file that changed (or was locked) while the temporary one was written is not replaced at all.
-        bool same;
-        try
-        {
-            same = HoldsExactly(path, expected);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            throw new TargetChangedException(path, error);
-        }
-
-        if (!same)
-        {
-            throw new TargetChangedException(path);
-        }
-
-        string kept = path + KeptSuffix + Guid.NewGuid().ToString("N");
-
-        // Written before the replace, so a crash between the replace and its check is finished by Recover on the
-        // next read: Berth's save never stays in place over a file that had changed.
-        // The note stays open, unshared, for the whole save: a reader that cannot open it knows a save is under way
-        // and leaves it alone; one it can open was left by a writer that ended, and only then is it acted on.
         string pending = path + PendingSuffix;
-        bool stands;
+
         // Delete sharing lets this writer remove its own note while still holding it; a reader asks for exclusive
-        // access, which any open handle denies, so it can never take the note in between.
+        // access, which any open handle denies, so it waits for this save rather than act on its note.
         using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete))
         {
-            note.Write(Encoding.UTF8.GetBytes(Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected))));
+            note.Write(Encoding.UTF8.GetBytes(
+                Path.GetFileName(temp) + "\n" + Convert.ToHexString(SHA256.HashData(expected)) + "\n" + Convert.ToHexString(SHA256.HashData(written))));
             note.Flush(flushToDisk: true);
-            afterCheck?.Invoke();
+
+            FileStream target;
             try
             {
-                File.Replace(temp, path, kept, ignoreMetadataErrors: false);
+                target = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                // Nothing was replaced. A file another program now holds so that it cannot even be read is a file
-                // that changed; one that can still be read refused the write, and keeps its own error.
+                // Nothing was written. A file another program holds so that it cannot even be read changed under this
+                // save; one that is missing or can be read refused the write, and keeps its own error.
                 File.Delete(pending);
-                if (!CanRead(path))
+                if (error is not FileNotFoundException && error is not DirectoryNotFoundException && !CanRead(path))
                 {
                     throw new TargetChangedException(path, error);
                 }
@@ -216,28 +220,28 @@ internal static partial class JsonFile
                 throw;
             }
 
-            afterReplace?.Invoke();
-            try
+            using (target)
             {
-                stands = Settle(path, kept, expected, written);
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-            {
-                // Another program held the file through the check or the rollback. The note stays, so the next read
-                // finishes this save; the caller is told the file could not be checked, not that a write failed.
-                throw new TargetChangedException(path, error);
+                if (!HoldsExactly(target, expected))
+                {
+                    File.Delete(pending);
+                    throw new TargetChangedException(path);
+                }
+
+                afterCheck?.Invoke();
+                target.Position = 0;
+                target.Write(written);
+                target.SetLength(written.Length);
+                target.Flush(flushToDisk: true);
+                afterReplace?.Invoke();
             }
 
             beforeNoteRemoved?.Invoke();
             File.Delete(pending);
         }
 
-        if (!stands)
-        {
-            throw new TargetChangedException(path);
-        }
+        File.Delete(temp);
     }
-
     /// <summary>
     /// Reads <paramref name="path"/> as <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string, out byte[])"/>
     /// does, but only a settled version: an interrupted save is finished first and a save under way is waited for,
@@ -301,19 +305,21 @@ internal static partial class JsonFile
         }
     }
 
-    /// <summary>The suffix of the note a save over an existing file leaves until it has checked what it displaced.</summary>
+    /// <summary>The suffix of the redo note a save over an existing file holds until it has written the file.</summary>
     public const string PendingSuffix = ".berth-pending";
 
     /// <summary>How long a reader waits for a save under way on the same file to settle.</summary>
     internal static readonly TimeSpan LiveSaveWait = TimeSpan.FromSeconds(2);
 
-    /// <summary>A note holds a file name and a digest; anything longer is not one of Berth's.</summary>
+    /// <summary>A note holds a file name and two digests; anything longer is not one of Berth's.</summary>
     private const int MaxNoteBytes = 512;
 
     /// <summary>
-    /// Finishes a save over <paramref name="path"/> that ended between its replace and its check (a crash, Task
-    /// Manager): when the version it displaced is not the one it had read, that version goes back in place and the
-    /// unverified save is kept beside it. Every reader of a Berth file calls this first; with no note it does nothing.
+    /// Finishes a save over <paramref name="path"/> that ended before it removed its redo note (a crash, Task Manager):
+    /// when the file still holds the version the save had read, the save is completed from its verified temporary
+    /// copy; when it holds the new version, nothing is left to do; when it holds anything else (it changed after the
+    /// save ended), it is left exactly as it is and the intended save is kept beside it. Every reader of a Berth file
+    /// calls this first; with no note it does nothing.
     /// </summary>
     /// <exception cref="IOException">The interrupted save cannot be finished now, or another Berth is still saving.</exception>
     /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
@@ -345,8 +351,7 @@ internal static partial class JsonFile
             }
             catch (IOException) when (DateTime.UtcNow < giveUp)
             {
-                // A save or another recovery holds it: wait for it to settle, so the file it is replacing is never
-                // read half way (its proposed version may still be taken back).
+                // A save or another recovery holds it: wait for it to finish, so the file is never read half written.
                 Thread.Sleep(20);
             }
             catch (IOException error)
@@ -367,53 +372,91 @@ internal static partial class JsonFile
 
             afterNoteRead?.Invoke();
 
-            // Only a note this writer makes is acted on: a sibling kept name it generates and a SHA-256 digest.
-            // Anything else is discarded without touching another file.
+            // Only a note this writer makes is acted on: its own temporary name for this target and two SHA-256
+            // digests. Anything else is discarded without touching another file.
             string target = Path.GetFileName(path);
-            string? keptName = note.Length == 2 && KeptName().IsMatch(note[0]) && note[0].StartsWith(target + KeptSuffix, StringComparison.Ordinal)
-                && note[0].Length == target.Length + KeptSuffix.Length + 32 && Digest().IsMatch(note[1])
-                ? note[0]
-                : null;
-            string kept = keptName is null ? string.Empty : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, keptName);
-            if (keptName is not null && File.Exists(kept) && !HashOf(kept).Equals(note[1], StringComparison.OrdinalIgnoreCase))
+            bool valid = note.Length == 3
+                && note[0].StartsWith(target + ".tmp-", StringComparison.Ordinal)
+                && TemporarySuffix().IsMatch(note[0][(target.Length + ".tmp-".Length)..])
+                && Digest().IsMatch(note[1])
+                && Digest().IsMatch(note[2]);
+            if (valid)
             {
-                // The displaced version is not what the save had read: put it back, keep the unverified save beside it.
-                File.Replace(kept, path, path + KeptSuffix + Guid.NewGuid().ToString("N"), ignoreMetadataErrors: false);
-            }
-            else if (keptName is not null && File.Exists(kept))
-            {
-                File.Delete(kept);
+                string temp = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, note[0]);
+                Finish(path, temp, oldDigest: note[1], newDigest: note[2]);
             }
 
             File.Delete(pending);
         }
     }
+
+    private static void Finish(string path, string temp, string oldDigest, string newDigest)
+    {
+        bool haveCopy = File.Exists(temp) && HashOf(temp).Equals(newDigest, StringComparison.OrdinalIgnoreCase);
+        FileStream target;
+        try
+        {
+            target = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // The file went away after the save ended: create nothing, keep what the save meant to write beside it.
+            if (haveCopy)
+            {
+                File.Move(temp, path + KeptSuffix + Guid.NewGuid().ToString("N"));
+            }
+
+            return;
+        }
+
+        using (target)
+        {
+            string now = Convert.ToHexString(SHA256.HashData(target));
+            if (now.Equals(newDigest, StringComparison.OrdinalIgnoreCase))
+            {
+                // The save had finished writing.
+            }
+            else if (now.Equals(oldDigest, StringComparison.OrdinalIgnoreCase) && haveCopy)
+            {
+                // Still the version the save had read: complete it.
+                byte[] written = File.ReadAllBytes(temp);
+                target.Position = 0;
+                target.Write(written);
+                target.SetLength(written.Length);
+                target.Flush(flushToDisk: true);
+            }
+            else if (haveCopy)
+            {
+                // It changed after the save ended: leave it, and keep what the save meant to write beside it.
+                File.Move(temp, path + KeptSuffix + Guid.NewGuid().ToString("N"));
+                return;
+            }
+        }
+
+        if (File.Exists(temp))
+        {
+            File.Delete(temp);
+        }
+    }
+
     private static string HashOf(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    /// <summary>
-    /// True when the displaced version is the one that was read, which is then deleted; otherwise it goes back in
-    /// place (see ReplaceExpected) and the answer is false.
-    /// </summary>
-    private static bool Settle(string path, string kept, byte[] expected, byte[] written)
+    /// <summary>Whether <paramref name="stream"/>, from its start, holds exactly <paramref name="bytes"/>; read only when the lengths agree.</summary>
+    private static bool HoldsExactly(FileStream stream, byte[] bytes)
     {
-        if (HoldsExactly(kept, expected))
+        if (stream.Length != bytes.Length)
         {
-            File.Delete(kept);
-            return true;
+            return false;
         }
 
-        string displaced = path + KeptSuffix + Guid.NewGuid().ToString("N");
-        File.Replace(kept, path, displaced, ignoreMetadataErrors: false);
-        if (HoldsExactly(displaced, written))
-        {
-            File.Delete(displaced);
-        }
-
-        return false;
+        stream.Position = 0;
+        byte[] actual = new byte[bytes.Length];
+        stream.ReadExactly(actual);
+        return actual.AsSpan().SequenceEqual(bytes);
     }
     /// <summary>Whether <paramref name="path"/> holds exactly <paramref name="bytes"/>, read only when the lengths agree.</summary>
     private static bool HoldsExactly(string path, byte[] bytes)
@@ -466,9 +509,6 @@ internal static partial class JsonFile
 
     [GeneratedRegex(@"^[0-9a-f]{32}\z")]
     private static partial Regex TemporarySuffix();
-
-    [GeneratedRegex(@"^[^\\/:*?""<>|]+\.berth-replaced-[0-9a-f]{32}\z")]
-    private static partial Regex KeptName();
 
     [GeneratedRegex(@"^[0-9A-F]{64}\z")]
     private static partial Regex Digest();

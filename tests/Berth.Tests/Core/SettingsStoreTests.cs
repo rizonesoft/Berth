@@ -178,65 +178,7 @@ public sealed class SettingsStoreTests
         }
     }
     [Fact]
-    public void AnOutsideHandleBlockingTheRollbackStillGivesTheTypedRefusal()
-    {
-        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
-        using (data)
-        {
-            Put(paths, Good);
-            byte[] arrived = "{ damaged by a sync"u8.ToArray();
-            FileStream? outside = null;
-            try
-            {
-                // Another program opens the file without delete sharing between the replace and its check.
-                Assert.Throws<UnreadableSettingsException>(() => store.Save(
-                    Settings.Default,
-                    beforeReplace: null,
-                    afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
-                    afterReplace: () => outside = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.Read)));
-            }
-            finally
-            {
-                outside?.Dispose();
-            }
-
-            // The next read finishes the interrupted save: the arrival is back in place and reported.
-            SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
-            Assert.False(string.IsNullOrWhiteSpace(load.Unreadable));
-            Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
-        }
-    }
-
-    [Fact]
-    public void AReadHandleOfBerthsOwnKindNeverBlocksTheRollback()
-    {
-        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
-        using (data)
-        {
-            Put(paths, Good);
-            byte[] arrived = "{ damaged by a sync"u8.ToArray();
-            FileStream? reader = null;
-            try
-            {
-                // A reader opens the file the way Berth's own reader does, and holds it through the rollback.
-                Assert.Throws<UnreadableSettingsException>(() => store.Save(
-                    Settings.Default,
-                    beforeReplace: null,
-                    afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
-                    afterReplace: () => reader = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)));
-
-                // The rollback was not blocked: the arrival is back in place at once, with no note left over.
-                Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
-            }
-            finally
-            {
-                reader?.Dispose();
-            }
-
-            Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
-        }
-    }    [Fact]
-    public void AnExclusiveLockTakenAfterTheLastCheckIsTheTypedRefusal()
+    public void AFileAnotherProgramHoldsWhenTheSaveLocksItIsTheTypedRefusal()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
         using (data)
@@ -247,9 +189,9 @@ public sealed class SettingsStoreTests
             try
             {
                 Assert.Throws<UnreadableSettingsException>(() => store.Save(
-                    Settings.Default, beforeReplace: null,
-                    afterCheck: () => held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None),
-                    afterReplace: null));
+                    Settings.Default,
+                    beforeReplace: () => held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None),
+                    afterCheck: null, afterReplace: null));
             }
             finally
             {
@@ -257,12 +199,12 @@ public sealed class SettingsStoreTests
             }
 
             Assert.Equal(before, File.ReadAllBytes(paths.SettingsFile));
-            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+            Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
         }
     }
 
     [Fact]
-    public void AReadableFileThatRefusesTheReplaceIsAWriteFailure()
+    public void AReadableFileThatRefusesTheWriteIsAWriteFailure()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
         using (data)
@@ -271,23 +213,25 @@ public sealed class SettingsStoreTests
             try
             {
                 Exception error = Assert.ThrowsAny<Exception>(() => store.Save(
-                    Settings.Default, beforeReplace: null,
-                    afterCheck: () => File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly),
-                    afterReplace: null));
+                    Settings.Default,
+                    beforeReplace: () => File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly),
+                    afterCheck: null, afterReplace: null));
                 Assert.True(error is IOException or UnauthorizedAccessException, error.GetType().FullName);
                 Assert.False(error is TargetChangedException);
+                Assert.IsNotType<UnreadableSettingsException>(error);
             }
             finally
             {
                 File.SetAttributes(paths.SettingsFile, FileAttributes.Normal);
             }
 
-            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+            Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
             Assert.Equal(new Settings(1, true, new WindowPlacement(100, 100, 980, 640)), store.Load().Value);
         }
     }
+
     [Fact]
-    public void AFileMovedAwayAfterTheLastCheckIsAWriteFailureNotAnUnreadableFile()
+    public void AFileMovedAwayDuringASaveIsAWriteFailureNotAnUnreadableFile()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
         using (data)
@@ -296,14 +240,14 @@ public sealed class SettingsStoreTests
             string aside = Path.Combine(data.Root, "moved-aside.json");
 
             Exception error = Assert.ThrowsAny<Exception>(() => store.Save(
-                Settings.Default, beforeReplace: null,
-                afterCheck: () => File.Move(paths.SettingsFile, aside),
-                afterReplace: null));
+                Settings.Default,
+                beforeReplace: () => File.Move(paths.SettingsFile, aside),
+                afterCheck: null, afterReplace: null));
 
             Assert.True(error is IOException, error.GetType().FullName);
             Assert.False(error is TargetChangedException);
             Assert.IsNotType<UnreadableSettingsException>(error);
-            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+            Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
             Assert.Equal(Good, File.ReadAllText(aside));
         }
     }
