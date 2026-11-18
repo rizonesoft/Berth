@@ -247,6 +247,7 @@ Every refusal and failure has one message, used in the status line, on standard 
 | ----- | ------- |
 | Auto arrange is on | "Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again." |
 | No layout for this arrangement | "This monitor arrangement has no saved layout." |
+| No previous save | "This layout has no previous save." |
 | The desktop cannot be reached | "Berth cannot reach the desktop. Explorer may be restarting." |
 | Nothing to undo | "There is nothing to undo." |
 | Icons did not stay after a restore or undo | The partial sentence of §8 |
@@ -263,6 +264,7 @@ Every refusal and failure has one message, used in the status line, on standard 
 - A setting change writes `INFO Restore automatically turned on.`, `INFO Restore automatically turned off.`, `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.`, from the window or the tray alike; one that fails writes a `FAIL` line with its message from the table above. Added 2026-11-18 (D01 T01 §18): the bullet above asks for a line per setting change without giving its words.
 - The log is capped at 1 MB: when it passes that, it is renamed `berth.log.1`, replacing the last one, and a new file starts. Corrected 2026-11-18 (D01 T01 §15): the event that would take the file past 1 MB is the first line of the new file, so neither file passes 1 MB; one event larger than 1 MB on its own is cut to fit and ends ` [cut]`.
 - An unhandled exception in the tray app is logged, shown in a message box that names the log file, and ends the process with code 1.
+- Added 2026-11-18 (D01 T01 §12): the "No previous save" row covers a revert whose layout has no previous save (such as when a fresh save replaced a deleted layout after the More menu opened), instead of saying the monitor arrangement has no saved layout.
 
 ## 19. States of each surface
 
