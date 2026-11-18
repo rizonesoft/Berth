@@ -71,6 +71,8 @@ Every project shares one SDK pin, one set of compiler settings and one place for
 
 ## 2. Application project that builds berth.exe
 
+> **Started:** 2026-11-18T00:27:13Z
+
 One project, as the foundation plan says, producing `berth.exe` as a console program with WPF and Windows Forms enabled and the manifest that keeps a console from appearing.
 
 **Phase:** 0
