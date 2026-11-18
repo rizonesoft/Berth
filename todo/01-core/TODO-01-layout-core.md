@@ -620,7 +620,7 @@ Filed 2026-11-18 from the D01 T01 §21 completion review (P3, below the pin's bl
 
 1. Sweep `todo/01-core/TODO-01-layout-core.md` for wording that deletes a save or reverts a layout. Done when: every such phrase says "reverting to the previous save" or "deleting the layout".
 
-- [ ] Correct §21's dated note and any other phrase in `todo/01-core/TODO-01-layout-core.md` that speaks of deleting a save, in a dated note where the text is a promise already reviewed. Done when: `rg -n "delete of a save|deleting a save" todo/01-core/TODO-01-layout-core.md` finds nothing outside this section's own description, and `validate` passes. Cheaper substitute: leaving the wrong scope for a later reader.
+- [ ] Correct any phrase in `todo/01-core/TODO-01-layout-core.md` outside stamped checklists that speaks of deleting a save, in a dated note where the text is a promise already reviewed; §21's stamped note stays as recorded (a stamped checklist is never rewritten), and the Outcome's Adjacency rationale, which says `reverting to the previous save, and deleting the layout`, is the wording that holds. Done when: `rg -n "delete of a save|deleting a save" todo/01-core/TODO-01-layout-core.md` finds only §21's stamped note and this section's own text, and `validate` passes. Cheaper substitute: leaving the wrong scope for a later reader.
 - [ ] Commit: `todo: revert and delete are worded as SPEC §10 words them`
 
 **Test checkpoint:** the search finds no stray wording outside this section and `python scripts/todo-graph.py validate` passes.
