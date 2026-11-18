@@ -194,17 +194,12 @@ internal static partial class JsonFile
     {
         string pending = path + PendingSuffix;
 
-        // A verified copy of what the file holds now, so that recovery can tell a write a crash cut short (the new
-        // bytes over the start of the old ones) from a change made later, and finish the first.
-        string old = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, Path.GetFileName(path) + ".tmp-" + Guid.NewGuid().ToString("N"));
-        WriteVerified(old, expected, path);
-
         // Delete sharing lets this writer remove its own note while still holding it; a reader asks for exclusive
         // access, which any open handle denies, so it waits for this save rather than act on its note.
         using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete))
         {
             note.Write(Encoding.UTF8.GetBytes(
-                Path.GetFileName(temp) + "\n" + Path.GetFileName(old) + "\n" + Convert.ToHexString(SHA256.HashData(expected)) + "\n" + Convert.ToHexString(SHA256.HashData(written))));
+                Path.GetFileName(temp) + "\n" + Convert.ToHexString(SHA256.HashData(expected)) + "\n" + Convert.ToHexString(SHA256.HashData(written))));
             note.Flush(flushToDisk: true);
 
             FileStream target;
@@ -217,7 +212,6 @@ internal static partial class JsonFile
                 // Nothing was written. A file another program holds so that it cannot even be read changed under this
                 // save; one that is missing or can be read refused the write, and keeps its own error.
                 File.Delete(pending);
-                File.Delete(old);
                 if (error is not FileNotFoundException && error is not DirectoryNotFoundException && !CanRead(path))
                 {
                     throw new TargetChangedException(path, error);
@@ -231,16 +225,11 @@ internal static partial class JsonFile
                 if (!HoldsExactly(target, expected))
                 {
                     File.Delete(pending);
-                    File.Delete(old);
                     throw new TargetChangedException(path);
                 }
 
                 afterCheck?.Invoke();
-                target.Position = 0;
-                target.Write(written);
-                target.SetLength(written.Length);
-                target.Flush(flushToDisk: true);
-                afterReplace?.Invoke();
+                WriteInPlace(target, written, afterWrite: afterReplace);
             }
 
             beforeNoteRemoved?.Invoke();
@@ -248,24 +237,33 @@ internal static partial class JsonFile
         }
 
         File.Delete(temp);
-        File.Delete(old);
     }
 
-    /// <summary>Writes <paramref name="bytes"/> to a new file and confirms them from disk, with the owner-only rules of a staged copy.</summary>
-    private static void WriteVerified(string file, byte[] bytes, string target)
+    /// <summary>
+    /// Writes <paramref name="written"/> over an open file in two single calls, so that whatever moment a process
+    /// ends, the file holds either its old contents or the new ones: first the new contents padded with trailing
+    /// spaces (whitespace JSON allows) to at least the old length, in one write, so nothing of the old is left
+    /// after them; then one trim to the new length. A power loss below the file system can still tear a write.
+    /// </summary>
+    private static void WriteInPlace(FileStream target, byte[] written, Action? afterWrite)
     {
-        using (FileStream stream = CreateTemporary(file, target))
-        {
-            stream.Write(bytes);
-            stream.Flush(flushToDisk: true);
-        }
-
-        if (!File.ReadAllBytes(file).AsSpan().SequenceEqual(bytes))
-        {
-            File.Delete(file);
-            throw new IOException($"The copy of '{target}' read back from disk differs from what was written.");
-        }
+        int length = (int)Math.Max(target.Length, written.Length);
+        byte[] padded = new byte[length];
+        written.CopyTo(padded, 0);
+        padded.AsSpan(written.Length).Fill((byte)' ');
+        target.Position = 0;
+        target.Write(padded);
+        target.Flush(flushToDisk: true);
+        afterWrite?.Invoke();
+        target.SetLength(written.Length);
+        target.Flush(flushToDisk: true);
     }
+
+    /// <summary>Whether <paramref name="now"/> is <paramref name="written"/>, possibly still padded with trailing spaces.</summary>
+    private static bool IsWritten(byte[] now, byte[] written) =>
+        now.Length >= written.Length
+        && now.AsSpan(0, written.Length).SequenceEqual(written)
+        && !now.AsSpan(written.Length).ContainsAnyExcept((byte)' ');
     /// <summary>
     /// Reads <paramref name="path"/> as <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string, out byte[])"/>
     /// does, but only a settled version: an interrupted save is finished first and a save under way is waited for,
@@ -345,7 +343,7 @@ internal static partial class JsonFile
     /// <summary>How long a reader waits for a save under way on the same file to settle.</summary>
     internal static readonly TimeSpan LiveSaveWait = TimeSpan.FromSeconds(2);
 
-    /// <summary>A note holds two file names and two digests; anything longer is not one of Berth's.</summary>
+    /// <summary>A note holds a file name and two digests; anything longer is not one of Berth's.</summary>
     private const int MaxNoteBytes = 512;
 
     /// <summary>
@@ -406,25 +404,23 @@ internal static partial class JsonFile
 
             afterNoteRead?.Invoke();
 
-            // Only a note this writer makes is acted on: two of its own temporary names for this target and two
-            // SHA-256 digests. Anything else is discarded without touching another file.
+            // Only a note this writer makes is acted on: its own temporary name for this target and two SHA-256
+            // digests. Anything else is discarded without touching another file.
             string target = Path.GetFileName(path);
             bool Ours(string name) => name.StartsWith(target + ".tmp-", StringComparison.Ordinal) && TemporarySuffix().IsMatch(name[(target.Length + ".tmp-".Length)..]);
-            if (note.Length == 4 && Ours(note[0]) && Ours(note[1]) && Digest().IsMatch(note[2]) && Digest().IsMatch(note[3]))
+            if (note.Length == 3 && Ours(note[0]) && Digest().IsMatch(note[1]) && Digest().IsMatch(note[2]))
             {
-                string folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
-                Finish(path, Path.Combine(folder, note[0]), Path.Combine(folder, note[1]), oldDigest: note[2], newDigest: note[3]);
+                Finish(path, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, note[0]), oldDigest: note[1], newDigest: note[2]);
             }
 
             File.Delete(pending);
         }
     }
 
-    private static void Finish(string path, string newCopy, string oldCopy, string oldDigest, string newDigest)
+    private static void Finish(string path, string newCopy, string oldDigest, string newDigest)
     {
-        // Each copy is read once, within the bound, and used only as the bytes whose digest was checked.
+        // The copy is read once, within the bound, and used only as the bytes whose digest was checked.
         byte[]? written = ReadCopy(newCopy, newDigest);
-        byte[]? previous = ReadCopy(oldCopy, oldDigest);
         FileStream target;
         try
         {
@@ -434,7 +430,6 @@ internal static partial class JsonFile
         {
             // The file went away after the save ended: create nothing, keep what the save meant to write beside it.
             Keep(path, newCopy, written);
-            Delete(oldCopy);
             return;
         }
 
@@ -446,64 +441,26 @@ internal static partial class JsonFile
                 target.ReadExactly(now);
             }
 
-            if (now is not null && written is not null && now.AsSpan().SequenceEqual(written))
+            if (now is not null && written is not null && IsWritten(now, written))
             {
-                // The save had finished writing.
-            }
-            else if (now is not null && written is not null && previous is not null && CutShort(now, previous, written))
-            {
-                // Still the version the save had read, or that version part overwritten by the save: complete it.
-                target.Position = 0;
-                target.Write(written);
+                // The save had written its contents; finish trimming them.
                 target.SetLength(written.Length);
                 target.Flush(flushToDisk: true);
+            }
+            else if (now is not null && written is not null && Convert.ToHexString(SHA256.HashData(now)).Equals(oldDigest, StringComparison.OrdinalIgnoreCase))
+            {
+                // Still exactly the version the save had read: complete the save.
+                WriteInPlace(target, written, afterWrite: null);
             }
             else
             {
                 // It changed after the save ended: leave it, and keep what the save meant to write beside it.
                 Keep(path, newCopy, written);
-                Delete(oldCopy);
                 return;
             }
         }
 
         Delete(newCopy);
-        Delete(oldCopy);
-    }
-
-    /// <summary>
-    /// True when <paramref name="now"/> is what an in-place write of <paramref name="written"/> over
-    /// <paramref name="previous"/> can leave if it stopped part way: some first bytes of the new contents, then the
-    /// rest of the old (the whole old version when nothing was written yet).
-    /// </summary>
-    internal static bool CutShort(byte[] now, byte[] previous, byte[] written)
-    {
-        // A write cut short after k bytes leaves written[..k] then previous[k..], of length max(previous, k).
-        int prefix = 0;
-        while (prefix < now.Length && prefix < written.Length && now[prefix] == written[prefix])
-        {
-            prefix++;
-        }
-
-        if (now.Length > previous.Length)
-        {
-            // Only k = now.Length fits that length: all of it is new bytes.
-            return prefix == now.Length;
-        }
-
-        if (now.Length != previous.Length)
-        {
-            return false;
-        }
-
-        // The earliest point from which now ends exactly as previous does; some k from there to prefix must exist.
-        int start = now.Length;
-        while (start > 0 && now[start - 1] == previous[start - 1])
-        {
-            start--;
-        }
-
-        return start <= prefix;
     }
     private static byte[]? ReadCopy(string file, string digest)
     {

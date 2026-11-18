@@ -347,7 +347,7 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
-    public void AWriteCutShortByACrashIsFinishedByTheNextRead()
+    public void ACrashBetweenThePaddedWriteAndTheTrimLeavesTheNewVersion()
     {
         using var data = new TestData();
         var paths = BerthPaths.ForRoot(data.Root);
@@ -356,29 +356,48 @@ public sealed partial class JsonFileTests
         byte[] written = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new Settings(1, false, null), BerthJson.Default.Settings);
         Assert.True(written.Length < read.Length);
 
-        // The process ends after writing the shorter new contents and before trimming the file: new bytes, old tail.
         Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
             paths.SettingsFile, new Settings(1, false, null), BerthJson.Default.Settings, read,
-            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
-        byte[] torn = [.. written, .. read.AsSpan(written.Length).ToArray()];
-        File.WriteAllBytes(paths.SettingsFile, torn);
+            afterFlush: null, afterCheck: null, afterReplace: () => throw new SimulatedCrash()));
+
+        // The new contents, padded with spaces to the old length: nothing of the old is left, and it parses.
+        byte[] now = File.ReadAllBytes(paths.SettingsFile);
+        Assert.Equal(read.Length, now.Length);
+        Assert.Equal(written, now[..written.Length]);
+        Assert.All(now[written.Length..], b => Assert.Equal((byte)' ', b));
 
         Assert.Equal(new SettingsLoad(new Settings(1, false, null), Exists: true, Unreadable: null), new SettingsStore(paths).Load());
+        Assert.Equal(written, File.ReadAllBytes(paths.SettingsFile));
         Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
     }
 
-    [Theory]
-    [InlineData("old-old-old", "new", "old-old-old", true)]
-    [InlineData("old-old-old", "new", "newold-old", false)]
-    [InlineData("old-old-old", "new", "new-old-old", true)]
-    [InlineData("old-old-old", "new", "nld-old-old", true)]
-    [InlineData("old-old-old", "new", "other-thing", false)]
-    [InlineData("old", "new-and-longer", "new-and", true)]
-    [InlineData("old", "new-and-longer", "new-and-longer", true)]
-    [InlineData("old", "new-and-longer", "neX", false)]
-    public void ACutShortWriteIsToldFromAnyOtherChange(string previous, string written, string now, bool cutShort)
+    [Fact]
+    public void ALaterChangeThatLooksLikeAPartWrittenSaveIsKept()
     {
-        Assert.Equal(cutShort, JsonFile.CutShort(System.Text.Encoding.UTF8.GetBytes(now), System.Text.Encoding.UTF8.GetBytes(previous), System.Text.Encoding.UTF8.GetBytes(written)));
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, true, new WindowPlacement(-1600, 120, 1100, 700)));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] written = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new Settings(1, false, null), BerthJson.Default.Settings);
+
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, false, null), BerthJson.Default.Settings, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+
+        // After the crash a sync writes a file that is the first new bytes and the rest of the old ones.
+        int split = 0;
+        while (written[split] == read[split])
+        {
+            split++;
+        }
+
+        byte[] arrived = [.. written.AsSpan(0, split + 1).ToArray(), .. read.AsSpan(split + 1).ToArray()];
+        Assert.NotEqual(read, arrived);
+        File.WriteAllBytes(paths.SettingsFile, arrived);
+
+        _ = new SettingsStore(paths).Load();
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+        Assert.Single(Directory.GetFiles(paths.DataRoot, "settings.json" + JsonFile.KeptSuffix + "*"));
     }
     [Fact]
     public void ACrashAfterTheFileIsWrittenLeavesTheSave()
