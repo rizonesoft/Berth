@@ -287,6 +287,8 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 
 ## 9. Save operation
 
+> **Started:** 2026-11-18T07:40:03Z
+
 `LayoutService.Save` reads the desktop and the monitors and writes the current arrangement's layout (SPEC §15 "Save").
 
 **Phase:** 1
