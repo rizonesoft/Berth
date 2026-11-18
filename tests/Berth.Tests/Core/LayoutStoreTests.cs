@@ -28,6 +28,17 @@ public sealed class LayoutRulesTests
         Assert.Null(LayoutRules.Check(layout, layout.Key));
     }
 
+    [Fact]
+    public void ALayoutMayNameAtMost64Monitors()
+    {
+        MonitorInfo[] Row(int count) => [.. Enumerable.Range(0, count).Select(i => new MonitorInfo(i * 10, 0, 10, 10, 100, i == 0))];
+        Layout most = Layouts.Make("Wall", Row(64), []);
+        Layout tooMany = Layouts.Make("Wall", Row(65), []);
+
+        Assert.Null(LayoutRules.Check(most, most.Key));
+        Assert.Equal("It names 65 monitors, more than the 64 a layout may name.", LayoutRules.Check(tooMany, tooMany.Key));
+    }
+
 [Theory]
     [InlineData("schema")]
     [InlineData("fileKey")]

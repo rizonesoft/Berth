@@ -22,23 +22,22 @@ internal static class MonitorNumbering
     {
         ArgumentNullException.ThrowIfNull(ordered);
         ArgumentOutOfRangeException.ThrowIfZero(ordered.Count);
+        // One pass: a monitor at distance 0 holds the point. Edges are computed in 64 bits and squared distances in
+        // 128, so no stored coordinate or size can wrap (a monitor near int.MaxValue, an icon at int.MinValue).
+        int nearest = 0;
+        Int128 best = Int128.MaxValue;
         for (int i = 0; i < ordered.Count; i++)
         {
             MonitorInfo m = ordered[i];
-            if (x >= m.X && x < m.X + m.Width && y >= m.Y && y < m.Y + m.Height)
+            long right = (long)m.X + m.Width - 1, bottom = (long)m.Y + m.Height - 1;
+            long dx = Math.Max(Math.Max((long)m.X - x, 0), x - right);
+            long dy = Math.Max(Math.Max((long)m.Y - y, 0), y - bottom);
+            if (dx == 0 && dy == 0)
             {
                 return (i + 1, false);
             }
-        }
 
-        int nearest = 0;
-        long best = long.MaxValue;
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            MonitorInfo m = ordered[i];
-            long dx = Math.Max(Math.Max((long)m.X - x, 0), (long)x - (m.X + m.Width - 1));
-            long dy = Math.Max(Math.Max((long)m.Y - y, 0), (long)y - (m.Y + m.Height - 1));
-            long distance = (dx * dx) + (dy * dy);
+            Int128 distance = ((Int128)dx * dx) + ((Int128)dy * dy);
             if (distance < best)
             {
                 best = distance;

@@ -11,6 +11,10 @@ internal static class LayoutRules
     /// <summary>The longest layout name, after trimming (SPEC §10).</summary>
     public const int MaxNameLength = 40;
 
+    /// <summary>The most monitors a layout may name (SPEC §14): far above any real arrangement, and a bound on the
+    /// work of comparing a damaged file with the desktop.</summary>
+    public const int MaxMonitors = 64;
+
     /// <summary>Null when <paramref name="layout"/> is a readable layout stored as <paramref name="fileKey"/>, else why not.</summary>
     public static string? Check(Layout layout, string fileKey)
     {
@@ -28,6 +32,11 @@ internal static class LayoutRules
         if (layout.Monitors.IsDefaultOrEmpty)
         {
             return "It names no monitor.";
+        }
+
+        if (layout.Monitors.Length > MaxMonitors)
+        {
+            return $"It names {layout.Monitors.Length} monitors, more than the {MaxMonitors} a layout may name.";
         }
 
         if (layout.Monitors.Any(m => m.Width <= 0 || m.Height <= 0 || m.Scale <= 0))

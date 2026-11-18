@@ -15,10 +15,10 @@ public sealed class LayoutComparisonTests
     [Fact]
     public void EachSavedIconIsInPlaceMovedOrMissing()
     {
-        IconPosition a = Icon("a.txt", 10, 10), b = Icon("b.txt", 20, 20), c = Icon("c.txt", 30, 30), d = Icon("d.txt", 40, 40), e = Icon("e.txt", 50, 50);
+        IconPosition a = Icon("a.txt", 10, 10), b = Icon("b.txt", 20, 20), c = Icon("c.txt", 30, 30), d = Icon("d.txt", 40, 40), e = Icon("e.txt", 50, 50), f = Icon("f.txt", 60, 60);
         IconPosition bNow = b with { X = 21 }, cNow = c with { Y = 31 };
 
-        LayoutComparison result = LayoutComparison.Compare(With(a, b, c, d, e), [a, bNow, cNow, e]);
+        LayoutComparison result = LayoutComparison.Compare(With(a, b, c, d, e, f), [a, bNow, cNow, e, f]);
 
         Assert.Equal(
             [
@@ -27,9 +27,10 @@ public sealed class LayoutComparisonTests
                 new ComparedIcon(c, IconState.Moved, cNow, 2, false),
                 new ComparedIcon(d, IconState.Missing, null, 2, false),
                 new ComparedIcon(e, IconState.InPlace, e, 2, false),
+                new ComparedIcon(f, IconState.InPlace, f, 2, false),
             ],
             result.Icons);
-        Assert.Equal((2, 2, 1), (result.InPlace, result.Moved, result.Missing));
+        Assert.Equal((3, 2, 1), (result.InPlace, result.Moved, result.Missing));
     }
 
     [Fact]
@@ -43,6 +44,22 @@ public sealed class LayoutComparisonTests
 
         Assert.Equal(IconState.InPlace, only.State);
         Assert.Equal(@"c:\DESK\NOTES.TXT", only.Current!.Id);
+
+        // Another icon with the saved display name is never taken for it.
+        ComparedIcon alone = Assert.Single(LayoutComparison.Compare(With(saved), [otherWithSavedName]).Icons);
+        Assert.Equal(IconState.Missing, alone.State);
+        Assert.Null(alone.Current);
+    }
+
+    [Fact]
+    public void NoCoordinateOrSizeWrapsTheMonitorArithmetic()
+    {
+        // A monitor whose right edge passes int.MaxValue still holds its own origin.
+        var far = new MonitorInfo(2147483640, 0, 1920, 1080, 100, true);
+        Assert.Equal((1, false), MonitorNumbering.Locate([far], 2147483640, 0));
+
+        // The nearer monitor wins even when a squared distance passes long.MaxValue.
+        Assert.Equal((1, true), MonitorNumbering.Locate(MonitorNumbering.Order([Main, Left]), int.MinValue, int.MinValue));
     }
 
     [Fact]
