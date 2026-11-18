@@ -671,6 +671,46 @@ public sealed partial class JsonFileTests
         Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json.tmp-*"));
     }
     [Fact]
+    public void ASaveNeverWritesToALayoutRenamedToAnotherCaseDuringIt()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        string renamed = Path.Combine(paths.LayoutsFolder, layout.Key + ".JSON");
+
+        // Renamed after the store looked the file up, before the writer opens it.
+        UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() => store.Save(layout with { Name = "Desk" }, beforeReplace: () => File.Move(path, renamed)));
+
+        Assert.Equal(layout.Key + ".JSON", error.FileName);
+        Assert.Equal(read, File.ReadAllBytes(renamed));
+        Assert.Empty(Leftovers.Of(paths.LayoutsFolder, layout.Key + ".json"));
+    }
+
+    [Fact]
+    public void ExactNameRecoveryNeverWritesToAFileRenamedToAnotherCase()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+        string renamed = Path.Combine(data.Root, "layout.JSON");
+        File.Move(path, renamed);
+
+        JsonFile.Recover(path, exactName: true);
+
+        Assert.Equal(read, File.ReadAllBytes(renamed));
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(data.Root, "layout.json" + JsonFile.KeptSuffix + "*"));
+    }
+
+    [Fact]
     public void ASaveNeverWritesThroughALinkAtTheFilesName()
     {
         using var data = new TestData();

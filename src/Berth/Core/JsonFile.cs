@@ -49,15 +49,15 @@ internal static partial class JsonFile
     /// profile sync, another program), the file that arrived is put back as it was and the write fails with
     /// <see cref="TargetChangedException"/>.
     /// </summary>
-    public static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush = null) =>
-        Write(path, value, info, afterFlush, mustBeNew: false, expected);
+    public static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush = null, bool exactName = false) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected, exactName: exactName);
 
     /// <summary>As <see cref="WriteOver"/>; <paramref name="afterCheck"/> and <paramref name="afterReplace"/> let a test
     /// act just after the last check and just after the replace.</summary>
-    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved = null) =>
-        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace, afterCheck, beforeNoteRemoved);
+    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved = null, bool exactName = false) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace, afterCheck, beforeNoteRemoved, exactName);
 
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null, Action? afterCheck = null, Action? beforeNoteRemoved = null)
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null, Action? afterCheck = null, Action? beforeNoteRemoved = null, bool exactName = false)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -91,7 +91,7 @@ internal static partial class JsonFile
             }
             else if (expected is not null)
             {
-                ReplaceExpected(temp, path, expected, bytes, afterCheck, afterReplace, beforeNoteRemoved);
+                ReplaceExpected(temp, path, expected, bytes, afterCheck, afterReplace, beforeNoteRemoved, exactName);
             }
             else
             {
@@ -192,7 +192,7 @@ internal static partial class JsonFile
     /// that changed, or that another program holds, is never written; while the lock is held, nothing else can read,
     /// write, rename or delete it. Writing in place keeps the file's own permissions and attributes.
     /// </summary>
-    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved)
+    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved, bool exactName)
     {
         string pending = path + PendingSuffix;
 
@@ -224,7 +224,7 @@ internal static partial class JsonFile
 
             using (target)
             {
-                if (!IsTheFileItself(target, path) || !HoldsExactly(target, expected))
+                if (!IsTheFileItself(target, path, exactName) || !HoldsExactly(target, expected))
                 {
                     // Changed, or reached through a link: neither is written.
                     File.Delete(pending);
@@ -360,8 +360,12 @@ internal static partial class JsonFile
     /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
     public static void Recover(string path) => Recover(path, afterNoteRead: null);
 
+    /// <summary>As <see cref="Recover(string)"/>; with <paramref name="exactName"/>, a file whose name on disk is spelled
+    /// differently from <paramref name="path"/> (another case) is not Berth's file and is never written.</summary>
+    public static void Recover(string path, bool exactName) => Recover(path, afterNoteRead: null, exactName);
+
     /// <summary>As <see cref="Recover(string)"/>; <paramref name="afterNoteRead"/> lets a test act while recovery holds the note.</summary>
-    internal static void Recover(string path, Action? afterNoteRead)
+    internal static void Recover(string path, Action? afterNoteRead, bool exactName = false)
     {
         string pending = path + PendingSuffix;
         if (!File.Exists(pending))
@@ -413,14 +417,14 @@ internal static partial class JsonFile
             bool Ours(string name) => name.StartsWith(target + ".tmp-", StringComparison.Ordinal) && TemporarySuffix().IsMatch(name[(target.Length + ".tmp-".Length)..]);
             if (note.Length == 3 && Ours(note[0]) && Digest().IsMatch(note[1]) && Digest().IsMatch(note[2]))
             {
-                Finish(path, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, note[0]), oldDigest: note[1], newDigest: note[2]);
+                Finish(path, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, note[0]), oldDigest: note[1], newDigest: note[2], exactName);
             }
 
             File.Delete(pending);
         }
     }
 
-    private static void Finish(string path, string newCopy, string oldDigest, string newDigest)
+    private static void Finish(string path, string newCopy, string oldDigest, string newDigest, bool exactName)
     {
         // The copy is read once, within the bound, and used only as the bytes whose digest was checked.
         byte[]? written = ReadCopy(newCopy, newDigest);
@@ -438,7 +442,7 @@ internal static partial class JsonFile
 
         using (target)
         {
-            if (!IsTheFileItself(target, path))
+            if (!IsTheFileItself(target, path, exactName))
             {
                 // A link now stands where the file was: write nothing through it, keep the intended save beside it.
                 Keep(path, newCopy, written);
@@ -515,8 +519,10 @@ internal static partial class JsonFile
     /// Whether <paramref name="opened"/> is the file named <paramref name="path"/> in its own folder, not something a
     /// link (on the file or on the way to it) led to: the handle's final path must be the folder's final path and the
     /// file's name. Comparing with the folder's own final path keeps a substituted drive letter from counting as a link.
+    /// Names compare as Windows compares them, unless <paramref name="exactName"/> asks for the name exactly as given
+    /// (the layout store's rule), so a file renamed to another case is not taken for the caller's file.
     /// </summary>
-    internal static bool IsTheFileItself(FileStream opened, string path)
+    internal static bool IsTheFileItself(FileStream opened, string path, bool exactName = false)
     {
         string full = Path.GetFullPath(path);
         if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
@@ -531,10 +537,9 @@ internal static partial class JsonFile
             throw new IOException($"The folder of '{path}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
         }
 
-        // Compared as Windows compares names. A store with a rule of its own about the exact name (the layout store)
-        // applies it before it reads, recovers or writes the file.
         string final = FinalPath(opened.SafeFileHandle);
-        return string.Equals(final, Path.Combine(FinalPath(folder), Path.GetFileName(full)), StringComparison.OrdinalIgnoreCase);
+        return string.Equals(Path.GetDirectoryName(final), FinalPath(folder), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Path.GetFileName(final), Path.GetFileName(full), exactName ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FinalPath(Microsoft.Win32.SafeHandles.SafeFileHandle handle)

@@ -45,7 +45,7 @@ internal sealed class LayoutStore(BerthPaths paths)
         {
             try
             {
-                JsonFile.WriteOver(path, layout, BerthJson.Default.Layout, current.Bytes!, hook);
+                JsonFile.WriteOver(path, layout, BerthJson.Default.Layout, current.Bytes!, hook, exactName: true);
             }
             catch (TargetChangedException changed) when (changed.InnerException is IOException or UnauthorizedAccessException)
             {
@@ -102,7 +102,7 @@ internal sealed class LayoutStore(BerthPaths paths)
             {
                 try
                 {
-                    JsonFile.Recover(target);
+                    JsonFile.Recover(target, exactName: true);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
@@ -190,7 +190,7 @@ internal sealed class LayoutStore(BerthPaths paths)
         try
         {
             // An interrupted save is finished next, even when its file has been moved away since.
-            JsonFile.Recover(path);
+            JsonFile.Recover(path, exactName: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
