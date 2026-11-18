@@ -19,6 +19,7 @@ namespace Berth.Core.Model;
     Converters = [typeof(UtcSecondsConverter), typeof(NonNullElementsConverterFactory)])]
 [JsonSerializable(typeof(Layout))]
 [JsonSerializable(typeof(Settings))]
+[JsonSerializable(typeof(UndoSnapshot))]
 internal sealed partial class BerthJson : JsonSerializerContext
 {
     /// <summary>

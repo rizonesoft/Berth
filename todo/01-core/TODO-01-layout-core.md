@@ -320,6 +320,8 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 
 ## 10. Restore operation with its undo snapshot
 
+> **Started:** 2026-11-18T08:27:28Z
+
 `LayoutService.Restore` puts icons back and records where they were first (SPEC §15 "Restore", "In place", "Matching").
 
 **Phase:** 1
