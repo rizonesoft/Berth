@@ -43,6 +43,7 @@ title: "TODO-01 -- .NET foundation"
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
 | 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [ ] |
+| 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [ ] |
 
 ## 1. Solution, SDK pin and shared build properties
 
@@ -227,6 +228,25 @@ Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking
 - [ ] Commit: `review: prompts name the stamp-owned Commit item`
 
 **Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes, and fails in a scratch copy whose completion template holds the sentence above its `---` separator.
+
+## 8. Script test scratch folder that falls back to R:\scratch
+
+Filed 2026-11-18 from the D00 T01 §7 completion review (P3): `tests/scripts/support.py` `scratch_root()` reads `paths.scratch` from `.conclave/local.toml` and otherwise uses the operating system's temporary folder, but `AGENTS.md` ("Working rules") names `R:\scratch` on Windows, and its test compares the folder with the same helper that chose it.
+
+**Phase:** 0
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Add the `R:\scratch` step to `scratch_root()`. Done when: without `paths.scratch`, a machine with `R:\scratch` gets it.
+2. Test the order of choices independently. Done when: `python -m unittest discover -s tests/scripts -p test_support.py` passes.
+
+- [ ] Make `scratch_root()` in `tests/scripts/support.py` choose, in order: `paths.scratch` from `.conclave/local.toml` when set; `R:\scratch` when that folder exists (Windows); the operating system's temporary folder otherwise (a CI runner has no `R:` drive). Take the local file path and the candidate folder as parameters with those defaults, so a test can pass its own. Done when: the three tests below pass. Cheaper substitute: creating `R:\scratch` when it is missing, which writes to a drive the machine may not have.
+- [ ] Add tests to `tests/scripts/test_support.py` that give `scratch_root()` a temporary `local.toml` and candidate folder of their own: a configured `paths.scratch` wins over an existing candidate; with no configuration an existing candidate wins; with neither, the result is `tempfile.gettempdir()`. Each expected folder is written in the test as a literal path, never computed by `scratch_root()`. Done when: all pass, and the second fails when the candidate step is removed. Cheaper substitute: comparing the result with another call of `scratch_root()`.
+- [ ] Commit: `test: script test scratch folder falls back to R:\scratch`
+
+**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_support.py` passes, and fails when `scratch_root()` skips the `R:\scratch` step.
 
 ## Verification
 
