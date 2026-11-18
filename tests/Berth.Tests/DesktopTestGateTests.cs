@@ -147,6 +147,30 @@ public sealed class DesktopTestGateTests
     }
 
     [Fact]
+    public void DisposeStopsALiveHelperAndConfirmsItsExit()
+    {
+        using var data = new TestData();
+        var helper = HelperProcess.Start(data.Root, "mutex", UniqueName());
+        int id = helper.Id;
+
+        helper.Dispose();
+
+        Assert.Throws<ArgumentException>(() => System.Diagnostics.Process.GetProcessById(id));
+    }
+
+    [Fact]
+    public void StopFailsWithThePidWhenTheExitIsNotConfirmed()
+    {
+        using var data = new TestData();
+        using var helper = HelperProcess.Start(data.Root, "mutex", UniqueName());
+        using var running = System.Diagnostics.Process.GetProcessById(helper.Id);
+
+        // The helper is alive and not being killed, so the zero wait cannot confirm an exit: Stop must say so.
+        var error = Assert.Throws<TimeoutException>(() => HelperProcess.Stop(running, TimeSpan.Zero, kill: false));
+
+        Assert.Contains($"Helper {helper.Id} did not exit", error.Message, StringComparison.Ordinal);
+    }
+    [Fact]
     public void DefaultGateUsesTheMachineWideName()
     {
         Assert.Equal(@"Global\Berth.Tests.Desktop", DesktopTestGate.DefaultMutexName);

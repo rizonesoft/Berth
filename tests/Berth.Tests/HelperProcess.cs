@@ -101,33 +101,45 @@ internal sealed class HelperProcess : IDisposable
     }
 
     /// <summary>Ends the helper at once, as a crash would, and waits for it to be gone.</summary>
-    public void Kill()
-    {
-        process.Kill(entireProcessTree: true);
-        if (!process.WaitForExit(ReplyTimeout))
-        {
-            throw new TimeoutException($"Helper {process.Id} did not exit after being killed.");
-        }
-    }
+    public void Kill() => Stop(process, ReplyTimeout);
 
+    /// <summary>Stops the helper's whole tree if it still runs, then releases the process handle.</summary>
+    /// <exception cref="TimeoutException">The helper did not exit within the reply timeout.</exception>
     public void Dispose()
     {
         try
         {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(ReplyTimeout);
-            }
+            Stop(process, ReplyTimeout);
         }
-        catch (InvalidOperationException)
+        finally
         {
-            // The process ended between the check and the kill: nothing is left to stop.
+            process.Dispose();
         }
-
-        process.Dispose();
     }
 
+    /// <summary>
+    /// Kills <paramref name="target"/> and its children (unless <paramref name="kill"/> is false, for a test of the wait) and confirms the exit, failing with the PID when the exit
+    /// is not confirmed within <paramref name="wait"/>. Both <see cref="Kill"/> and <see cref="Dispose"/> use it.
+    /// </summary>
+    internal static void Stop(Process target, TimeSpan wait, bool kill = true)
+    {
+        if (kill)
+        {
+            try
+            {
+                target.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // It has already exited: the wait below confirms it.
+            }
+        }
+
+        if (!target.WaitForExit(wait))
+        {
+            throw new TimeoutException($"Helper {target.Id} did not exit within {wait.TotalSeconds} seconds of being stopped.");
+        }
+    }
     /// <summary>
     /// Reads standard error from the start, so a chatty child (host tracing, say) never blocks on a full pipe, and
     /// keeps only its last <see cref="ErrorTailLimit"/> characters for the failure message.
