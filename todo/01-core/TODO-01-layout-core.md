@@ -379,6 +379,8 @@ The three "More" menu operations of SPEC §10, each written and read back before
 
 ## 13. Comparison of a layout with the desktop
 
+> **Started:** 2026-11-18T06:43:02Z
+
 What the position map and the status line show: each saved icon is in place, moved or missing (SPEC §7 table, §8).
 
 **Phase:** 1
