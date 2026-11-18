@@ -1,0 +1,83 @@
+{
+  "ref": "D00 T01 \u00a73",
+  "title": "Test project with a first failing-capable test",
+  "implementation_sha": "9fafd5965524c3e02b15f353f782ca9e23671e28",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 2,
+      "report": "docs/reviews/00-workspace/D00-T01-s3.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -> exit 0, 15 passed (AppInfoTests 2, TestDataTests 1, DesktopTestGateTests 11, DesktopCollectionMemberTests 1); AppInfoTests asserting ^x$ -> exit 2 with Assert.Matches() Failure"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s3.md",
+    "verdict": "reconciled",
+    "candidate": "9fafd5965524c3e02b15f353f782ca9e23671e28",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 2,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s3.md",
+    "candidate": "232066dd882596ec9eedf58654fcea33f9d6258f",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "232066dd882596ec9eedf58654fcea33f9d6258f",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

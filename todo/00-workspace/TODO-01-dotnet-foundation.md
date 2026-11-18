@@ -38,7 +38,7 @@ title: "TODO-01 -- .NET foundation"
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Solution, SDK pin and shared build properties | -- | [x] |
 | 2 | §2 | Application project that builds berth.exe | §1 | [x] |
-| 3 | §3 | Test project with a first failing-capable test | §2 | [ ] |
+| 3 | §3 | Test project with a first failing-capable test | §2 | [x] |
 | 4 | §4 | One command that runs every gate | §3 | [ ] |
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
@@ -123,9 +123,12 @@ The test project every later section adds to, with one real test so the runner i
 - [x] Add a `TestData` helper in `tests/Berth.Tests/TestData.cs` that creates a unique folder under the system temporary folder, exposes it as `Root`, and deletes the tree on dispose. It never changes the test process's environment, because xUnit runs test classes in parallel: in-process tests pass `Root` to the code under test (`BerthPaths.ForRoot` from `D01 T01 §3`), and tests that start a child process put `BERTH_DATA` in that child's own environment. Done when: `tests/Berth.Tests/TestDataTests.cs` keeps two instances alive at once, writes a marker file into each, finds the two roots different and both markers present, finds `BERTH_DATA` in the test process unchanged while both live, disposes one and finds only its tree gone, then disposes the other and finds it gone. Cheaper substitute: `Environment.SetEnvironmentVariable` in a test, which leaks into every test running at the same time.
 - [x] Add `tests/Berth.Tests/DesktopCollection.cs`: `[CollectionDefinition("Desktop", DisableParallelization = true)]` with a `DesktopTestGate` collection fixture that takes the named mutex `Global\Berth.Tests.Desktop` in its constructor (default wait 10 minutes, a test-supplied wait for its own tests, an abandoned mutex counting as taken) and releases it on dispose, on the thread that took it. A wait that times out throws `another Berth interface test run holds Global\Berth.Tests.Desktop` and the tests in the collection do not run. Every test that touches the real desktop, opens a window, adds a tray icon or starts `berth.exe` is in this collection (`[Collection("Desktop")]`, rule in `AGENTS.md`), so such tests never run beside each other in one run, and a second test run on the same machine waits for the first. Done when: the gate tests below pass. **Corrected 2026-11-18:** added on the owner's instruction that interface and smoke tests must never clash. Cheaper substitute: `[assembly: CollectionBehavior(DisableTestParallelization = true)]`, which slows every unit test and still lets two runs clash.
 - [x] Add `tests/Berth.Tests/DesktopTestGateTests.cs`, driving a helper process (the test assembly started with an argument, `CreateNoWindow`, a 20 second bound, the whole tree stopped in `finally`) that takes and holds the gate's mutex on command over standard input: (a) while a gate built in the test holds the mutex, the helper's try-acquire with zero wait fails, and after the gate is disposed the helper acquires it while the test process is still alive; (b) while the helper holds it, a gate with a 300 ms wait throws the stated message and a body guarded by it never runs; (c) after the helper is killed while holding it, a new gate acquires the abandoned mutex and releases it on dispose. Done when: all three pass and no helper process remains. Cheaper substitute: two test classes in one collection, which xUnit serialises even with an empty fixture.
-- [ ] Commit: `test: test project with a first failing-capable test`
+- [x] Commit: `test: test project with a first failing-capable test`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx` exits 0 with `AppInfoTests`, `TestDataTests` and `DesktopTestGateTests` passed by name; with `AppInfoTests` asserting `^x$` it exits non-zero reporting that assertion failure, and green again once restored. **Corrected 2026-11-18:** "at least 2 passed" and "any non-zero exit" passed with the gate tests missing or a build error (plan review P1 4).
+
+> **Verified:** 2026-11-18 | §3 | 9fafd5965524c3e02b15f353f782ca9e23671e28
+> **Review:** `docs/reviews/d00-t01-s3.json`
 
 ## 4. One command that runs every gate
 
