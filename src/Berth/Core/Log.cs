@@ -50,6 +50,9 @@ internal sealed class Log
     /// <summary>How many attempts the last call made (1, or 2 after one failure).</summary>
     internal int LastAttempts { get; private set; }
 
+    /// <summary>The marker that ends a record cut to fit the cap.</summary>
+    internal const string CutMarker = " [cut]\r\n";
+
     public void Info(string message) => Write(LogLevel.Info, message);
 
     public void Warn(string message) => Write(LogLevel.Warn, message);
@@ -57,13 +60,9 @@ internal sealed class Log
     public void Fail(string message) => Write(LogLevel.Fail, message);
 
     /// <summary>A <c>FAIL</c> line, then the exception (type, message and stack) on lines that start with two spaces.</summary>
-    public void Fail(string message, Exception error)
-    {
-        ArgumentNullException.ThrowIfNull(error);
-        Append(Record(LogLevel.Fail, message, error));
-    }
+    public void Fail(string message, Exception error) => Append(level: LogLevel.Fail, message, error);
 
-    public void Write(LogLevel level, string message) => Append(Record(level, message, error: null));
+    public void Write(LogLevel level, string message) => Append(level, message, error: null);
 
     /// <summary>
     /// The record as written: the header, with a CR or LF in the message written as <c>\r</c> or <c>\n</c> so one event
@@ -89,22 +88,72 @@ internal sealed class Log
         return text.ToString();
     }
 
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "A log call never throws (SPEC §18): a failed write must not end the operation it records.")]
-    private void Append(string record)
+    /// <summary>
+    /// <paramref name="record"/> as at most <paramref name="limit"/> bytes: whole when it fits, else its longest
+    /// prefix that fits with <see cref="CutMarker"/> after it, never splitting a character.
+    /// </summary>
+    internal static byte[] Fit(string record, long limit)
     {
-        byte[] bytes = Utf8.GetBytes(record);
-        for (int attempt = 1; attempt <= 2; attempt++)
+        byte[] whole = Utf8.GetBytes(record);
+        if (whole.Length <= limit)
         {
-            LastAttempts = attempt;
+            return whole;
+        }
+
+        long room = limit - Utf8.GetByteCount(CutMarker);
+        int chars = 0, bytes = 0;
+        while (chars < record.Length)
+        {
+            int width = char.IsHighSurrogate(record[chars]) && chars + 1 < record.Length ? 2 : 1;
+            int size = Utf8.GetByteCount(record.AsSpan(chars, width));
+            if (bytes + size > room)
+            {
+                break;
+            }
+
+            bytes += size;
+            chars += width;
+        }
+
+        return Utf8.GetBytes(record[..chars] + CutMarker);
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "A log call never throws (SPEC §18): a failed write must not end the operation it records.")]
+    private void Append(LogLevel level, string message, Exception? error)
+    {
+        // Everything happens inside the no-throw boundary: building the record (an exception's text can itself
+        // fail), encoding it, and each write.
+        LastAttempts = 0;
+        try
+        {
+            string record;
             try
             {
-                WriteOnce(bytes);
-                return;
+                record = Record(level, message ?? string.Empty, error);
             }
-            catch (Exception)
+            catch (Exception) when (error is not null)
             {
-                afterFailedAttempt?.Invoke(attempt);
+                record = Record(level, (message ?? string.Empty) + " (The error's details could not be written.)", error: null);
             }
+
+            byte[] bytes = Fit(record, cap);
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                LastAttempts = attempt;
+                try
+                {
+                    WriteOnce(bytes);
+                    return;
+                }
+                catch (Exception)
+                {
+                    afterFailedAttempt?.Invoke(attempt);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Nothing is left that a log call may do but return.
         }
     }
 

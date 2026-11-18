@@ -76,7 +76,8 @@ internal static class HelperMain
         {
             if (command.StartsWith("write ", StringComparison.Ordinal))
             {
-                int count = int.Parse(command[6..], System.Globalization.CultureInfo.InvariantCulture);
+                // Bounded: a fixture's write loop never runs on without end (AGENTS.md).
+                int count = Math.Clamp(int.Parse(command[6..], System.Globalization.CultureInfo.InvariantCulture), 0, 10_000);
                 for (int i = 1; i <= count; i++)
                 {
                     log.Info($"{tag} {i}");

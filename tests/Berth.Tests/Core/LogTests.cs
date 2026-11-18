@@ -174,6 +174,68 @@ public sealed class LogTests
         }
     }
 
+    [Fact]
+    public void ALogThatCannotBeWrittenReturnsAfterTwoAttempts()
+    {
+        // A file where the log folder should be: every write fails, and the call still returns.
+        using var data = new TestData();
+        string folder = BerthPaths.ForRoot(data.Root).LogFolder;
+        Directory.CreateDirectory(Path.GetDirectoryName(folder)!);
+        File.WriteAllText(folder, "not a folder");
+        Log log = Make(data);
+
+        log.Info("hello");
+
+        Assert.Equal(2, log.LastAttempts);
+        Assert.Equal("not a folder", File.ReadAllText(folder));
+    }
+
+    [Fact]
+    public void AnEventLargerThanTheCapIsCutToFit()
+    {
+        using var data = new TestData();
+        Log log = Make(data, cap: 200);
+
+        log.Info(new string('x', 1000) + "ü");
+        log.Info("next");
+
+        byte[] cut = File.ReadAllBytes(LogFile(data) + ".1");
+        Assert.True(cut.Length <= 200, $"{cut.Length} bytes");
+        string text = Encoding.UTF8.GetString(cut);
+        Assert.StartsWith("2026-11-15T07:14:03Z INFO xxx", text, StringComparison.Ordinal);
+        Assert.EndsWith(Log.CutMarker, text, StringComparison.Ordinal);
+        Assert.Equal("2026-11-15T07:14:03Z INFO next\r\n", File.ReadAllText(LogFile(data)));
+    }
+
+    [Fact]
+    public void ACutNeverSplitsACharacter()
+    {
+        string record = "2026-11-15T07:14:03Z INFO " + string.Concat(Enumerable.Repeat("\U0001F600", 50)) + "\r\n";
+
+        for (int limit = 40; limit < 80; limit++)
+        {
+            byte[] fitted = Log.Fit(record, limit);
+            Assert.True(fitted.Length <= limit);
+            Assert.DoesNotContain('\uFFFD', new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(fitted));
+        }
+    }
+
+    [Fact]
+    public void AnErrorWhoseTextFailsStillLogsItsLine()
+    {
+        using var data = new TestData();
+        Log log = Make(data);
+
+        log.Fail("Restore failed.", new BrokenError());
+
+        Assert.Equal(["2026-11-15T07:14:03Z FAIL Restore failed. (The error's details could not be written.)"], File.ReadAllLines(LogFile(data)));
+    }
+
+    private sealed class BrokenError : Exception
+    {
+        public override string ToString() => throw new InvalidOperationException("no text");
+    }
+
     private static void ThrowFromANamedPlace() => throw new InvalidOperationException("boom");
 }
 
