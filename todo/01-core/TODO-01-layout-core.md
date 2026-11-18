@@ -437,6 +437,8 @@ Save, restore, undo and revert run one at a time across the tray app and the com
 
 ## 15. Log file with a size cap
 
+> **Started:** 2026-11-18T07:23:55Z
+
 One line per event, capped at 1 MB with one previous file (SPEC §18).
 
 **Phase:** 1
