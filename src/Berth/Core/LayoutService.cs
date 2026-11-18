@@ -183,21 +183,29 @@ internal sealed class LayoutService(
             return null;
         }
 
-        // The way back is on disk before anything moves, so `berth undo` in another process has it.
+        // The way back is staged beside undo.json, then put in its place just before anything moves, so `berth undo`
+        // in another process has it, and an abort before the move leaves the earlier undo exactly as it was.
+        string staged = paths.UndoFile + ".next";
         try
         {
             BerthPaths.EnsureFolderFor(paths.UndoFile);
-            JsonFile.Write(paths.UndoFile, new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]), BerthJson.Default.UndoSnapshot);
+            JsonFile.Write(staged, new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]), BerthJson.Default.UndoSnapshot);
+
+            // A change after the snapshot was taken: nothing has moved; stop rather than place another arrangement's icons.
+            if (!StillThe(key))
+            {
+                return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, "The displays changed before any icon was moved.", layout.Name);
+            }
+
+            File.Move(staged, paths.UndoFile, overwrite: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message, layout.Name);
         }
-
-        // A change after the way back was written: nothing has moved; stop rather than place another arrangement's icons.
-        if (!StillThe(key))
+        finally
         {
-            return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, "The displays changed before any icon was moved.", layout.Name);
+            DeleteIfThere(staged);
         }
 
         IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
@@ -220,6 +228,19 @@ internal sealed class LayoutService(
         int inPlace = states.Count(s => s == IconState.InPlace), notPlaced = states.Count(s => s == IconState.Moved), missing = states.Count(s => s == IconState.Missing);
 
         return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin);
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Removing a leftover staging file is best effort; the next restore replaces it.")]
+    private static void DeleteIfThere(string file)
+    {
+        try
+        {
+            File.Delete(file);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Left behind; the next restore writes over it.
+        }
     }
 
     /// <summary>Whether the monitors still give <paramref name="key"/>; an unreachable desktop counts as a change.</summary>

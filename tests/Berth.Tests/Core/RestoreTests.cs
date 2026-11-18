@@ -56,6 +56,11 @@ public sealed class RestoreTests
 
         Assert.Empty(rig.Desktop.Calls);
         Assert.False(File.Exists(rig.Paths.UndoFile));
+
+        // An earlier undo survives the refusal byte for byte.
+        byte[] undo = SeedUndo(rig);
+        Assert.Equal(OperationResult.Refused(Refusal.NoLayout), rig.Service().Restore());
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
     }
 
     [Fact]
@@ -104,6 +109,13 @@ public sealed class RestoreTests
 
         Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable, "2 monitors"), rig.Service().Restore());
         Assert.False(File.Exists(rig.Paths.UndoFile));
+
+        // Again with an earlier undo, which survives byte for byte.
+        rig.Desktop.Unavailable = false;
+        byte[] undo = SeedUndo(rig);
+        reads = rig.Monitors.Reads;
+        Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable, "2 monitors"), rig.Service().Restore());
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
     }
 
     [Fact]
@@ -164,6 +176,7 @@ public sealed class RestoreTests
     public void ADisplayChangeAfterTheWayBackIsWrittenMovesNothing()
     {
         using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
         rig.Desktop.BeforeSet = () => throw new InvalidOperationException("nothing may move");
         int reads = rig.Monitors.Reads;
         rig.Monitors.AfterRead = read =>
@@ -178,6 +191,8 @@ public sealed class RestoreTests
 
         Assert.Equal((OperationKind.Failed, FailureKind.DisplaysChanged, "2 monitors"), (result.Kind, result.Failure, result.LayoutName));
         Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        Assert.False(File.Exists(rig.Paths.UndoFile + ".next"));
     }
 
     [Fact]
