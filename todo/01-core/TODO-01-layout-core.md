@@ -43,9 +43,9 @@ depends_on: ["dotnet-foundation"]
 | 4 | §4 | Atomic JSON file with read-back | §1, §3 | [x] |
 | 5 | §5 | Layout store | §1, §2, §4 | [x] |
 | 6 | §6 | Settings store | §4 | [x] |
-| 7 | §7 | Layout names: defaults and validation | §1 | [ ] |
+| 7 | §7 | Layout names: defaults and validation | §1, §9, §12 | [ ] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
-| 9 | §9 | Save operation | §5, §7, §8, §14, §15 | [ ] |
+| 9 | §9 | Save operation | §5, §8, §14, §15 | [ ] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [ ] |
 | 11 | §11 | Undo operation | §10 | [ ] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
