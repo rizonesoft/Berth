@@ -69,27 +69,30 @@ public sealed class ArrangementKeyTests
     }
 
     [Theory]
-    [InlineData("en-US")]
-    [InlineData("sv-SE")]
-    [InlineData("ar-SA")]
-    public void TheCultureDoesNotChangeTheKey(string culture)
+    [InlineData("−", "")]
+    [InlineData("-", "")]
+    [InlineData("−", "٬")]
+    public void TheCultureDoesNotChangeTheKey(string negativeSign, string groupSeparator)
     {
+        // A culture of the test's own, so the machine's regional overrides cannot change what is tested.
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NegativeSign = negativeSign;
+        if (groupSeparator.Length > 0)
+        {
+            culture.NumberFormat.NumberGroupSeparator = groupSeparator;
+        }
+
+        Assert.Equal(negativeSign, (-1).ToString(culture)[..negativeSign.Length]);
         CultureInfo before = CultureInfo.CurrentCulture;
         try
         {
-            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            CultureInfo.CurrentCulture = culture;
             Assert.Equal(ThreeMonitorKey, ArrangementKey.From([Left, Main, Below]));
         }
         finally
         {
             CultureInfo.CurrentCulture = before;
         }
-    }
-
-    [Fact]
-    public void SwedishReallyUsesAnotherNegativeSign()
-    {
-        Assert.NotEqual("-", new CultureInfo("sv-SE").NumberFormat.NegativeSign);
     }
 
     [Fact]
@@ -107,10 +110,14 @@ public sealed class ArrangementKeyTests
     [Fact]
     public void TheSpecExampleKeyIsItsMonitorsKey()
     {
-        Assert.Equal("c7f017905ce518e6", ArrangementKey.From([new MonitorInfo(0, 0, 2560, 1440, 100, true)]));
+        // The JSON block of SPEC §14, parsed as a layout file, must carry the key of its own monitors.
         string spec = File.ReadAllText(Path.Combine(RepositoryRoot(), "design", "SPEC.md"));
-        Assert.Contains("\"key\": \"c7f017905ce518e6\"", spec, StringComparison.Ordinal);
-        Assert.Contains("{ \"x\": 0, \"y\": 0, \"width\": 2560, \"height\": 1440, \"scale\": 100, \"primary\": true }", spec, StringComparison.Ordinal);
+        int section = spec.IndexOf("## 14. Storage", StringComparison.Ordinal);
+        int start = spec.IndexOf("```json", section, StringComparison.Ordinal) + "```json".Length;
+        int end = spec.IndexOf("```", start, StringComparison.Ordinal);
+        Layout example = BerthJson.Parse(Encoding.UTF8.GetBytes(spec[start..end]), BerthJson.Default.Layout);
+
+        Assert.Equal(ArrangementKey.From(example.Monitors), example.Key);
     }
 
     private static string Sha16(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];

@@ -209,7 +209,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 - Every write goes to a temporary file in the same folder, is flushed, is read back and compared, and only then replaces the target in one step. A write that fails at any point leaves the old file as it was.
 - A layout or settings file that is not valid JSON, has another `schemaVersion`, or breaks the schema is never overwritten or deleted by Berth: it is reported (§9, §18) and skipped, and a save that would replace it is refused with the "could not be read" message of §18. A missing `settings.json` means the defaults.
 - `undo.json` is Berth's own scratch file: one that cannot be read counts as missing and is replaced by the next restore.
-- The arrangement key is the first 16 hexadecimal characters of the SHA-256 of the monitors, each written `x,y,width,height,scale` and sorted by `x` then `y`, joined by `;`. The same monitors in the same places at the same scale always give the same key.
+- The arrangement key is the first 16 lowercase hexadecimal characters of the SHA-256 of the UTF-8 text of the monitors, each written `x,y,width,height,scale` in plain decimal integers (ASCII `-` for a negative value, whatever the regional format) and sorted by `x`, then `y`, then `width`, `height` and `scale`, joined by `;`. The same monitors in the same places at the same scale always give the same key. Clarified 2026-11-18 (D01 T01 §2): the text format, the case and the tie-breakers after `y` were unstated.
 
 ## 15. Save and restore rules
 
