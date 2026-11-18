@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a722",
+  "title": "Revert and delete are worded as SPEC \u00a710 words them",
+  "implementation_sha": "e0845e77ab252c1fd10233dfba5a607a335f18ce",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s22.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "rg -n \"delete of a save|deleting a save\" todo/01-core/TODO-01-layout-core.md -> only the allowed lines; validate -> valid"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s22.md",
+    "verdict": "complete",
+    "candidate": "e0845e77ab252c1fd10233dfba5a607a335f18ce",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s22.md",
+    "candidate": "77bac9b73d272fc47320ac3e7c598a55db8f884e",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "77bac9b73d272fc47320ac3e7c598a55db8f884e",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

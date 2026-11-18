@@ -58,7 +58,7 @@ depends_on: ["dotnet-foundation"]
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
 | 21 | §21 | The reverse adjacency names its owner | §9 | [x] |
-| 22 | §22 | Revert and delete are worded as SPEC §10 words them | §21 | [ ] |
+| 22 | §22 | Revert and delete are worded as SPEC §10 words them | §21 | [x] |
 
 ## 1. Layout, monitor and icon records
 
@@ -623,9 +623,12 @@ Filed 2026-11-18 from the D01 T01 §21 completion review (P3, below the pin's bl
 1. Sweep `todo/01-core/TODO-01-layout-core.md` for wording that deletes a save or reverts a layout. Done when: every such phrase says "reverting to the previous save" or "deleting the layout". **Corrected 2026-11-18:** D01 T01 §22 plan review: one exception throughout: §21's stamped checklist item stays as recorded; §21's introduction (prose, not checklist) gets a dated correction.
 
 - [x] Correct any phrase in `todo/01-core/TODO-01-layout-core.md` outside stamped checklists that speaks of deleting a save, in a dated note where the text is a promise already reviewed; §21's stamped note stays as recorded (a stamped checklist is never rewritten), and the Outcome's Adjacency rationale, which says `reverting to the previous save, and deleting the layout`, is the wording that holds. Done when: `rg -n "delete of a save|deleting a save" todo/01-core/TODO-01-layout-core.md` finds only §21's stamped note and this section's own text, and `validate` passes. Cheaper substitute: leaving the wrong scope for a later reader. **Corrected 2026-11-18:** D01 T01 §22 plan review: the search finds the phrase only in §21's stamped checklist item, §21's corrected introduction (before its correction) and this section; and the Outcome's Adjacency rationale is read back to say both that revert returns to the previous save and that delete removes the layout (SPEC §10).
-- [ ] Commit: `todo: revert and delete are worded as SPEC §10 words them`
+- [x] Commit: `todo: revert and delete are worded as SPEC §10 words them`
 
 **Test checkpoint:** the search finds the phrase only where the item allows, the rationale reads back both statements, and `python scripts/todo-graph.py validate` passes.
+
+> **Verified:** 2026-11-18 | §22 | e0845e77ab252c1fd10233dfba5a607a335f18ce
+> **Review:** `docs/reviews/d01-t01-s22.json`
 
 ## Verification
 
