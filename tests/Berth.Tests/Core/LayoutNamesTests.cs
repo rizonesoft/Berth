@@ -1,4 +1,5 @@
 using Berth.Core;
+using Berth.Core.Model;
 
 namespace Berth.Tests.Core;
 
@@ -53,6 +54,26 @@ public sealed class LayoutNamesTests
         Assert.Equal(NameError.Taken, LayoutNames.Validate(" Docked ", ["DOCKED"]));
         Assert.Equal(NameError.None, LayoutNames.Validate(" Docked ", ["Desk"]));
         Assert.Equal(NameError.Taken, LayoutNames.Validate("Docked", ["  DOCKED "]));
+    }
+
+    [Fact]
+    public void ATrimmedNameIsWhatTheStoreKeepsOnAFirstSaveALaterSaveAndARename()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        Layout layout = Layouts.Single();
+
+        // First save, later save and rename all store what Trimmed returns; a fresh store reads it back from disk.
+        new LayoutStore(paths).Save(layout with { Name = LayoutNames.Trimmed("  Docked ") });
+        Assert.Equal("Docked", new LayoutStore(paths).Find(layout.Key)!.Name);
+
+        new LayoutStore(paths).Save(layout with { Name = LayoutNames.Trimmed("  Office "), Icons = [new IconPosition(@"C:\Desk\a.txt", "a.txt", 30, 40)] });
+        Assert.Equal("Office", new LayoutStore(paths).Find(layout.Key)!.Name);
+
+        Layout saved = new LayoutStore(paths).Find(layout.Key)!;
+        new LayoutStore(paths).Save(saved with { Name = LayoutNames.Trimmed(" Desk  ") });
+        Assert.Equal("Desk", new LayoutStore(paths).Find(layout.Key)!.Name);
+        Assert.Contains("\"name\": \"Desk\"", File.ReadAllText(paths.LayoutFile(layout.Key)), StringComparison.Ordinal);
     }
 
     [Fact]
