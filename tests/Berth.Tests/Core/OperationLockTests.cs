@@ -81,21 +81,57 @@ public sealed class OperationLockTests
         OperationLock gate = Lock(data, 10_000);
         using var holder = new MutexHolder(gate.MutexName);
         int calls = 0, busies = 0;
-        CancellationToken cancel = TestContext.Current.CancellationToken;
 
-        string? result = null;
-        var contender = new Thread(() => result = gate.Run(() => { calls++; return "work"; }, () => { busies++; return "busy"; }));
-        contender.Start();
+        string? result = await Task.Run(
+            () => ReleaseOnceSeenWaiting(holder, () => gate.Run(() => { calls++; return "work"; }, () => { busies++; return "busy"; }), TimeSpan.FromSeconds(10)),
+            TestContext.Current.CancellationToken);
 
-        // Released only once the run is seen blocked waiting for the mutex (a run that does not wait is never seen
-        // blocked); the run must then take the lock within its 10-second deadline.
-        Assert.True(SeenBlocked(contender, TimeSpan.FromSeconds(10)), "the run was never seen waiting for the lock");
-        holder.Release();
-        Task<bool> ended = Task.Run(() => contender.Join(TimeSpan.FromSeconds(10)), cancel);
-        Assert.True(await ended);
         Assert.Equal("work", result);
-
         Assert.Equal((1, 0), (calls, busies));
+    }
+
+    [Fact]
+    public void AContenderThatNeverWaitsIsCaughtBeforeTheRelease()
+    {
+        // The waiting test's own observation, given a contender that stays alive and busy but never waits: it fails
+        // before the holder is released, so the holder still holds the lock.
+        using var data = new TestData();
+        OperationLock gate = Lock(data, 0);
+        using var holder = new MutexHolder(gate.MutexName);
+        using var stop = new CancellationTokenSource();
+
+        try
+        {
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => ReleaseOnceSeenWaiting(holder, () =>
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    Thread.SpinWait(1000);
+                }
+
+                return "never waited";
+            }, TimeSpan.FromMilliseconds(300)));
+            Assert.Equal("held", Probe(gate.MutexName));
+        }
+        finally
+        {
+            stop.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Starts <paramref name="run"/> on its own thread, releases <paramref name="holder"/> only once that thread is
+    /// seen blocked waiting (failing first if it never is within <paramref name="deadline"/>), and returns its result.
+    /// </summary>
+    private static string? ReleaseOnceSeenWaiting(MutexHolder holder, Func<string> run, TimeSpan deadline)
+    {
+        string? result = null;
+        var contender = new Thread(() => result = run()) { IsBackground = true };
+        contender.Start();
+        Assert.True(SeenBlocked(contender, deadline), "the run was never seen waiting for the lock");
+        holder.Release();
+        Assert.True(contender.Join(TimeSpan.FromSeconds(10)), "the run did not finish after the release");
+        return result;
     }
 
     [Fact]
@@ -195,10 +231,16 @@ public sealed class OperationLockTests
         using var go = new ManualResetEventSlim();
         var waiter = new Thread(() => go.Wait()) { IsBackground = true };
         waiter.Start();
-
-        Assert.True(SeenBlocked(waiter, TimeSpan.FromSeconds(10)));
-        go.Set();
-        Assert.True(waiter.Join(TimeSpan.FromSeconds(10)));
+        try
+        {
+            Assert.True(SeenBlocked(waiter, TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            // Let it go and see it end before its event is disposed, whatever the assertion found.
+            go.Set();
+            Assert.True(waiter.Join(TimeSpan.FromSeconds(10)));
+        }
     }
 
     [Fact]
@@ -216,11 +258,16 @@ public sealed class OperationLockTests
         })
         { IsBackground = true };
         busy.Start();
-
-        Assert.False(SeenBlocked(busy, TimeSpan.FromMilliseconds(300)));
-        Assert.True(busy.IsAlive);
-        stop.Cancel();
-        Assert.True(busy.Join(TimeSpan.FromSeconds(10)));
+        try
+        {
+            Assert.False(SeenBlocked(busy, TimeSpan.FromMilliseconds(300)));
+            Assert.True(busy.IsAlive);
+        }
+        finally
+        {
+            stop.Cancel();
+            Assert.True(busy.Join(TimeSpan.FromSeconds(10)));
+        }
     }
 
     /// <summary>Whether <paramref name="thread"/> is seen in a wait (blocked) within <paramref name="deadline"/>.</summary>
