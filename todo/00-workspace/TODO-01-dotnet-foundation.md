@@ -42,6 +42,7 @@ title: "TODO-01 -- .NET foundation"
 | 4 | §4 | One command that runs every gate | §3 | [ ] |
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
+| 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [ ] |
 
 ## 1. Solution, SDK pin and shared build properties
 
@@ -199,6 +200,26 @@ The foundation plan's one architectural rule, enforced by a test instead of by c
 - [ ] Commit: `test: keep Core free of UI and COM types`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayerRuleTests"` passes, and fails while a `Berth.Core` type holds a `System.Windows.Window` field.
+
+## 7. Review prompts that name the stamp-owned Commit item
+
+Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking for the `- [ ] Commit:` item to be ticked before the stamp, but `stamp` ticks it (`todo/README.md`, "Stamps and receipts"), so every section draws the same finding. The prompts must say so.
+
+**Phase:** 0
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Add one sentence to each of the four review prompts. Done when: each prompt holds it.
+2. Record the new hashes and test them. Done when: `python -m unittest discover -s tests/scripts` passes.
+
+- [ ] Add to `docs/completion-review-prompt.md`, `docs/reconciliation-review-prompt.md`, `docs/review-round-prompt.md` and `docs/plan-review-prompt.md`, where each lists what to judge, the sentence: "The section's `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after this review: an open `Commit:` item is not a gap." Done when: `Select-String -SimpleMatch` finds the sentence once in each file. Cheaper substitute: telling each reviewer in the per-section purpose text, which the next section forgets.
+- [ ] Update the four files' `sha256` entries in `.conclave/kits.json` to the new contents. Done when: the recorded hash equals `Get-FileHash -Algorithm SHA256` of each file. Cheaper substitute: leaving the old hashes, so the kit reports drift it cannot explain.
+- [ ] Add `tests/scripts/test_review_prompts.py` asserting the sentence is in each prompt and each prompt's hash in `.conclave/kits.json` matches the file. Done when: it passes, and fails when the sentence is removed from one prompt. Cheaper substitute: no test, so a kit update silently drops the sentence.
+- [ ] Commit: `review: prompts name the stamp-owned Commit item`
+
+**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes, and fails when the sentence is removed from `docs/completion-review-prompt.md`.
 
 ## Verification
 
