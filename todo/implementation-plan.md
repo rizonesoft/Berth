@@ -38,7 +38,7 @@ Sections: 22 | Checklist items: 131
 | [x]    | D01 T01 §14 | Operation lock across processes                            | none  | 5     |
 | [x]    | D01 T01 §15 | Log file with a size cap                                   | none  | 6     |
 | [x]    | D01 T01 §9  | Save operation                                             | none  | 10    |
-| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 10    |
+| [x]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 10    |
 | [ ]    | D01 T01 §11 | Undo operation                                             | none  | 8     |
 | [ ]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 8     |
 | [ ]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
@@ -155,6 +155,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 23/86 verified sections, 3 ready to run now.
+Progress: 24/86 verified sections, 3 ready to run now.
 
-Checklist: 146/517 items completed (includes Commit items).
+Checklist: 147/517 items completed (includes Commit items).

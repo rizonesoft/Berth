@@ -46,7 +46,7 @@ depends_on: ["dotnet-foundation"]
 | 7 | §7 | Layout names: defaults and validation | §1, §9, §12 | [ ] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
 | 9 | §9 | Save operation | §5, §8, §14, §15 | [x] |
-| 10 | §10 | Restore operation with its undo snapshot | §9 | [ ] |
+| 10 | §10 | Restore operation with its undo snapshot | §9 | [x] |
 | 11 | §11 | Undo operation | §10 | [ ] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
@@ -342,9 +342,12 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 - [x] Add `tests/Berth.Tests/Core/RestoreTests.cs` with those cases. Done when: all pass, and the missing-icon test fails when matching uses `Name`. Cheaper substitute: one test with identical saved and current sets.
 - [x] Run the restore inside `OperationLock.Run`, returning `Refused` with `Busy` when the lock is not acquired (**Corrected 2026-11-18:** D01 T01 §14 plan review). Done when: a test holding the lock gets `Refused` with `Busy`, and the desktop, the layout file and `undo.json` are unchanged. Cheaper substitute: wrapping only save, so a restore can write beside another.
 - [x] Log exactly one event per restore through `Log.Result` (**Corrected 2026-11-18:** D01 T01 §15 plan review). Done when: tests read back exactly one line with its level and message for a done, a refused and a failed result. Cheaper substitute: asserting the returned result only.
-- [ ] Commit: `core: restore operation with its undo snapshot`
+- [x] Commit: `core: restore operation with its undo snapshot`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RestoreTests"` passes, and fails when icons are matched by display name.
+
+> **Verified:** 2026-11-18 | §10 | 81d842c2e7594a300c49a85f4fa36e863be4a14d
+> **Review:** `docs/reviews/d01-t01-s10.json`
 
 ## 11. Undo operation
 
