@@ -102,6 +102,18 @@ public sealed class FakeDesktopIconsTests
     }
 
     [Fact]
+    public void ARecordedCallKeepsWhatWasAskedEvenIfTheCallersListChanges()
+    {
+        var fake = new FakeDesktopIcons(A);
+        IconPosition[] request = [A with { X = 5 }];
+
+        Seam(fake).SetPositions(request);
+        request[0] = A with { X = 999 };
+
+        Assert.Equal([A with { X = 5 }], Assert.Single(fake.Calls));
+    }
+
+    [Fact]
     public void AnUnavailableDesktopThrowsFromEveryMemberAndChangesNothing()
     {
         var fake = new FakeDesktopIcons(A);
@@ -117,7 +129,9 @@ public sealed class FakeDesktopIconsTests
         fake.Unavailable = false;
         Assert.Equal([A], desktop.ReadIcons());
         Assert.True(desktop.AutoArrange);
-        Assert.Empty(fake.Calls);
+
+        // The refused write is still recorded as attempted.
+        Assert.Equal([A with { X = 99 }], Assert.Single(fake.Calls));
     }
 
     [Fact]
@@ -148,5 +162,14 @@ public sealed class FakeDesktopIconsTests
 
         Assert.Throws<DesktopUnavailableException>(() => monitors.Read());
         Assert.Equal([A], desktop.ReadIcons());
+    }
+
+    [Fact]
+    public void NoMonitorsLeftIsUnavailableNotAnEmptyList()
+    {
+        var fake = new FakeMonitors(new MonitorInfo(0, 0, 1, 1, 100, true));
+        fake.Monitors.Clear();
+
+        Assert.Throws<DesktopUnavailableException>(() => Seam(fake).Read());
     }
 }

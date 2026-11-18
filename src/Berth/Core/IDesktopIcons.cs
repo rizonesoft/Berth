@@ -24,7 +24,10 @@ internal interface IDesktopIcons
     /// <exception cref="DesktopUnavailableException">The desktop cannot be reached.</exception>
     bool AutoArrange { get; }
 
-    /// <summary>Turns auto arrange off; false when Windows kept it on.</summary>
+    /// <summary>
+    /// Turns auto arrange off. False when it could not be turned off: Windows kept it on, or the desktop's folder view
+    /// does not offer the setting; read <see cref="AutoArrange"/> to learn its state.
+    /// </summary>
     /// <exception cref="DesktopUnavailableException">The desktop cannot be reached.</exception>
     bool TryTurnAutoArrangeOff();
 }

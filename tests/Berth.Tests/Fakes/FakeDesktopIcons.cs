@@ -18,7 +18,8 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         this.icons = [.. icons];
     }
 
-    /// <summary>Every <see cref="SetPositions"/> call, with the icons it asked for, recorded before anything moves.</summary>
+    /// <summary>Every <see cref="SetPositions"/> call, with a copy of the icons it asked for, recorded before anything
+    /// moves and before an unavailable desktop refuses it, so a test can prove a write was never attempted.</summary>
     public List<IReadOnlyList<IconPosition>> Calls { get; } = [];
 
     /// <summary>When true, every member throws <see cref="DesktopUnavailableException"/> and changes nothing.</summary>
@@ -54,8 +55,8 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
     public void SetPositions(IReadOnlyList<IconPosition> requested)
     {
         ArgumentNullException.ThrowIfNull(requested);
-        ThrowIfUnavailable();
         Calls.Add([.. requested]);
+        ThrowIfUnavailable();
         foreach (IconPosition wanted in requested)
         {
             int index = icons.FindIndex(icon => string.Equals(icon.Id, wanted.Id, StringComparison.OrdinalIgnoreCase));
