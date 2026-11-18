@@ -595,13 +595,83 @@ public sealed class LayoutEditTests
         SeedTwoSaves(rig, "Docked", t1, [A], t1.AddHours(1), [B]);
         byte[] before = File.ReadAllBytes(rig.File);
         int logged = rig.LogLines().Length;
-        using var holder = new MutexHolder(rig.Gate.MutexName);
+        using (var holder = new MutexHolder(rig.Gate.MutexName))
+        {
+            OperationResult result = Run(EditService(rig), operation, rig.Key);
+            Assert.Equal(OperationResult.Refused(Refusal.Busy), result);
+            Assert.Equal(before, File.ReadAllBytes(rig.File));
+            Assert.Equal([$"2026-11-15T07:14:03Z WARN {operation}: Refused, Busy"], LinesAfter(rig, logged));
+        }
 
-        OperationResult result = Run(EditService(rig), operation, rig.Key);
+        // Even when the layouts path would fail to read, Busy refuses before touching disk.
+        using var brokenRig = new Rig(A);
+        Directory.CreateDirectory(brokenRig.Paths.DataRoot);
+        File.WriteAllText(brokenRig.Paths.LayoutsFolder, "file where folder belongs");
+        using var brokenHolder = new MutexHolder(brokenRig.Gate.MutexName);
+        Assert.Equal(OperationResult.Refused(Refusal.Busy), Run(EditService(brokenRig), operation, brokenRig.Key));
+    }
 
-        Assert.Equal(OperationResult.Refused(Refusal.Busy), result);
-        Assert.Equal(before, File.ReadAllBytes(rig.File));
-        Assert.Equal([$"2026-11-15T07:14:03Z WARN {operation}: Refused, Busy"], LinesAfter(rig, logged));
+    [Fact]
+    public void RenameIgnoresClosedOversizedOtherLayoutFileWithoutWaitingAndTargetRefuses()
+    {
+        using var rig = new Rig(A);
+        rig.Service().Save("Docked");
+        string dockedKey = rig.Key;
+
+        string oversizedFile = rig.Paths.LayoutFile("0123456789abcdef");
+        using (var stream = new FileStream(oversizedFile, FileMode.CreateNew))
+        {
+            stream.SetLength(JsonFile.MaxBytes + 1);
+        }
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        OperationResult renamed = EditService(rig).Rename(dockedKey, "  Office ");
+        watch.Stop();
+
+        Assert.Equal(OperationResult.Renamed("Office"), renamed);
+        Assert.Equal("Office", new LayoutStore(rig.Paths).Find(dockedKey)!.Name);
+        Assert.True(watch.Elapsed < JsonFile.LiveSaveWait, $"{watch.ElapsedMilliseconds} ms");
+        Assert.Equal(JsonFile.MaxBytes + 1, new FileInfo(oversizedFile).Length);
+
+        // An oversized target layout itself refuses with UnreadableLayout and keeps its length.
+        OperationResult self = EditService(rig).Rename("0123456789abcdef", "Other");
+        Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, "0123456789abcdef.json"), (self.Kind, self.Refusal, self.Path));
+        Assert.Equal(JsonFile.MaxBytes + 1, new FileInfo(oversizedFile).Length);
+    }
+
+    [Fact]
+    public void DeleteRenameAndRevertWorkWhenFullPathExceedsMaxPath()
+    {
+        using var data = new TestData();
+        // Build an unprefixed BERTH_DATA root so layouts\ exceeds 240 chars and <key>.json exceeds 260 chars.
+        string deepRoot = data.Root;
+        while (Path.Combine(deepRoot, "roaming", "layouts").Length < 245)
+        {
+            deepRoot = Path.Combine(deepRoot, new string('a', 32));
+        }
+
+        BerthPaths paths = BerthPaths.ForRoot(deepRoot);
+        var clock = new TestClock(new DateTimeOffset(2026, 11, 15, 7, 0, 0, TimeSpan.Zero));
+        var desktop = new FakeDesktopIcons(A);
+        var monitors = new FakeMonitors(Rig.Left, Rig.Main);
+        string key = ArrangementKey.From(monitors.Monitors);
+        string layoutFile = paths.LayoutFile(key);
+        Assert.True(paths.LayoutsFolder.Length >= 245, $"LayoutsFolder length was {paths.LayoutsFolder.Length}");
+        Assert.True(layoutFile.Length > 260, $"Layout file length was {layoutFile.Length}");
+
+        var gate = new OperationLock(paths, TimeSpan.FromMilliseconds(200));
+        var store = new LayoutStore(paths);
+        var log = new Log(paths, clock);
+        new LayoutService(desktop, monitors, store, paths, gate, log, clock).Save("Long1");
+        clock.Now = clock.Now.AddHours(1);
+        new LayoutService(new FakeDesktopIcons(B), monitors, store, paths, gate, log, clock).Save();
+
+        var editor = new LayoutService(new ThrowingDesktopIcons(), new ThrowingMonitors(), store, paths, gate, log, clock);
+        Assert.Equal(OperationResult.Renamed("  Long2 ".Trim()), editor.Rename(key, "  Long2 "));
+        Assert.Equal("Long2", new LayoutStore(paths).Find(key)!.Name);
+        Assert.Equal(OperationKind.Reverted, editor.Revert(key).Kind);
+        Assert.Equal(OperationResult.Deleted("Long2"), editor.Delete(key));
+        Assert.False(File.Exists(@"\\?\" + layoutFile));
     }
 
     [Theory]

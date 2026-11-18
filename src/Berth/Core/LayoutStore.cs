@@ -336,9 +336,10 @@ internal sealed class LayoutStore(BerthPaths paths)
         Layout? layout;
         string? reason;
         byte[]? bytes;
+        bool held;
         try
         {
-            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, exactName: true, out layout, out reason, out bytes);
+            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, exactName: true, out layout, out reason, out bytes, out held);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -354,8 +355,8 @@ internal sealed class LayoutStore(BerthPaths paths)
 
         if (!readable)
         {
-            // No bytes at all, and not missing: another program held it through the wait, which may pass.
-            return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!, Held: bytes is null && reason != JsonFile.Missing));
+            // Held only when opening failed due to locking or access denial; oversized/damaged closed files have Held false.
+            return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!, Held: held));
         }
 
         string? problem = LayoutRules.Check(layout!, fileKey);

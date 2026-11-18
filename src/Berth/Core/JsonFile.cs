@@ -303,19 +303,26 @@ internal static partial class JsonFile
     /// <exception cref="UnauthorizedAccessException">An interrupted save may not be finished.</exception>
     /// <param name="exactName">As for <see cref="Recover(string, bool)"/>, for the recovery every attempt runs.</param>
     public static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read) where T : class =>
-        TryReadSettled(path, info, exactName, out value, out reason, out read, afterRecover: null, afterRead: null);
+        TryReadSettled(path, info, exactName, out value, out reason, out read, out _, afterRecover: null, afterRead: null);
+
+    /// <summary>As <see cref="TryReadSettled{T}(string, JsonTypeInfo{T}, bool, out T, out string, out byte[])"/>; <paramref name="held"/> is true only when opening the file failed with an access or sharing error.</summary>
+    public static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, out bool held) where T : class =>
+        TryReadSettled(path, info, exactName, out value, out reason, out read, out held, afterRecover: null, afterRead: null);
 
     /// <summary>As the public overload; the two actions let a test interleave a save with the read.</summary>
-    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class
+    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class =>
+        TryReadSettled(path, info, exactName, out value, out reason, out read, out _, afterRecover, afterRead);
+
+    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, out bool held, Action? afterRecover, Action? afterRead) where T : class
     {
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
         for (int attempt = 0; attempt < SettleAttempts; attempt++)
         {
             Recover(path, exactName, afterNoteRead: null);
             afterRecover?.Invoke();
-            bool ok = TryRead(path, info, out value, out reason, out read);
+            bool ok = TryRead(path, info, out value, out reason, out read, out held);
             afterRead?.Invoke();
-            if (read is null && reason != Missing && File.Exists(path) && DateTime.UtcNow < giveUp)
+            if (held && File.Exists(path) && DateTime.UtcNow < giveUp)
             {
                 // Held by a save (Berth's own takes it exclusively for a moment) or by another program: wait and
                 // read again within the budget, rather than report a passing lock as an unreadable file.
@@ -577,7 +584,7 @@ internal static partial class JsonFile
     internal static bool IsTheFileItself(Microsoft.Win32.SafeHandles.SafeFileHandle handle, string path, bool exactName = false)
     {
         string full = Path.GetFullPath(path);
-        if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+        if ((File.GetAttributes(ExtendedPath(full)) & FileAttributes.ReparsePoint) != 0)
         {
             return false;
         }
@@ -596,8 +603,9 @@ internal static partial class JsonFile
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(expected);
+        string extended = ExtendedPath(path);
         using Microsoft.Win32.SafeHandles.SafeFileHandle handle = NativeMethods.CreateFile(
-            path, NativeMethods.GenericRead | NativeMethods.DeleteAccess, NativeMethods.ShareNone, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.OpenReparsePoint, IntPtr.Zero);
+            extended, NativeMethods.GenericRead | NativeMethods.DeleteAccess, NativeMethods.ShareNone, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.OpenReparsePoint, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             int err = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
@@ -612,7 +620,7 @@ internal static partial class JsonFile
             }
 
             Exception error = Win32ExceptionFor(err, path);
-            if (!CanRead(path))
+            if (!CanRead(extended))
             {
                 throw new TargetChangedException(path, error);
             }
@@ -633,6 +641,19 @@ internal static partial class JsonFile
         }
     }
 
+    private static string ExtendedPath(string path)
+    {
+        string full = Path.GetFullPath(path);
+        if (full.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            return full;
+        }
+
+        return full.StartsWith(@"\\", StringComparison.Ordinal)
+            ? @"\\?\UNC\" + full[2..]
+            : @"\\?\" + full;
+    }
+
     private static Exception Win32ExceptionFor(int win32Error, string path)
     {
         string detail = System.Runtime.InteropServices.Marshal.GetPInvokeErrorMessage(win32Error);
@@ -649,7 +670,7 @@ internal static partial class JsonFile
     internal static string FinalFolderPath(string folder)
     {
         using Microsoft.Win32.SafeHandles.SafeFileHandle handle = NativeMethods.CreateFile(
-            folder, NativeMethods.FileReadAttributes, NativeMethods.ShareAll, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.BackupSemantics, IntPtr.Zero);
+            ExtendedPath(folder), NativeMethods.FileReadAttributes, NativeMethods.ShareAll, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.BackupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             throw new IOException($"The folder '{folder}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
@@ -662,6 +683,12 @@ internal static partial class JsonFile
     {
         char[] buffer = new char[1024];
         uint length = NativeMethods.GetFinalPathNameByHandle(handle, ref buffer[0], (uint)buffer.Length, 0);
+        if (length >= buffer.Length && length <= 32768)
+        {
+            buffer = new char[length + 1];
+            length = NativeMethods.GetFinalPathNameByHandle(handle, ref buffer[0], (uint)buffer.Length, 0);
+        }
+
         if (length == 0 || length >= buffer.Length)
         {
             throw new IOException("The file system could not say where a file is.");
@@ -779,10 +806,14 @@ internal static partial class JsonFile
 
     /// <summary>As <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string)"/>, also giving the bytes read
     /// (null when the file could not be opened), for <see cref="WriteOver"/>.</summary>
-    public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class
+    public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class =>
+        TryRead(path, info, out value, out reason, out read, out _);
+
+    private static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read, out bool held) where T : class
     {
         value = null;
         read = null;
+        held = false;
         byte[] bytes;
         try
         {
@@ -805,6 +836,7 @@ internal static partial class JsonFile
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             reason = error.Message;
+            held = true;
             return false;
         }
 
