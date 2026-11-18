@@ -214,13 +214,20 @@ internal sealed class LayoutService(
             return null;
         }
 
+        var undo = new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]);
+        if (LayoutRules.CheckUndo(undo) is { } problem)
+        {
+            string message = $"This undo snapshot must not be saved: {problem}";
+            return OperationResult.Failed(FailureKind.Unexpected, path: null, message, layout.Name, new InvalidOperationException(message));
+        }
+
         // The way back is staged beside undo.json, then put in its place just before anything moves, so `berth undo`
         // in another process has it, and an abort before the move leaves the earlier undo exactly as it was.
         string staged = paths.UndoFile + ".next";
         try
         {
             BerthPaths.EnsureFolderFor(paths.UndoFile);
-            JsonFile.Write(staged, new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]), BerthJson.Default.UndoSnapshot);
+            JsonFile.Write(staged, undo, BerthJson.Default.UndoSnapshot);
 
             // A change after the snapshot was taken: nothing has moved; stop rather than place another arrangement's icons.
             if (!StillThe(key))
@@ -300,13 +307,13 @@ internal sealed class LayoutService(
             return OperationResult.Refused(Refusal.DesktopUnavailable);
         }
 
+        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
+        IconPosition[] wanted = [.. snapshot.Icons.Where(saved => live.ContainsKey(saved.Id))];
         if (!StillThe(key))
         {
             return null;
         }
 
-        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
-        IconPosition[] wanted = [.. snapshot.Icons.Where(saved => live.ContainsKey(saved.Id))];
         IReadOnlyList<MonitorInfo> beforeReadBack;
         IReadOnlyList<IconPosition> after;
         IReadOnlyList<MonitorInfo> afterReadBack;

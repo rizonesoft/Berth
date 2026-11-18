@@ -379,13 +379,38 @@ public sealed class UndoTests
             Assert.Equal(oldUndo, File.ReadAllBytes(rig.Paths.UndoFile));
         }
 
-        // Oscillating displays exhaust the three attempts and refuse DesktopUnavailable.
+        // Oscillating displays in Capture() refuse DesktopUnavailable.
         using (var rig = new Rig(A with { X = 1 }))
         {
             byte[] undo = SeedUndo(rig, rig.Key, A);
             rig.Monitors.AfterRead = read => rig.Monitors.Monitors = read % 2 == 0 ? [Rig.Left, Rig.Main] : [Rig.Main];
 
             Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), rig.Service().Undo());
+            Assert.Empty(rig.Desktop.Calls);
+            Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        }
+
+        // Stable captures whose StillThe(key) check fails three times exhaust UndoLocked's three attempts and refuse DesktopUnavailable.
+        using (var rig = new Rig(A with { X = 1 }))
+        {
+            byte[] undo = SeedUndo(rig, rig.Key, A);
+            int reads = rig.Monitors.Reads;
+            rig.Monitors.AfterRead = read =>
+            {
+                int delta = read - reads;
+                if (delta is 2 or 5 or 8)
+                {
+                    rig.Monitors.Monitors = [Rig.Main];
+                }
+                else if (delta is 3 or 6 or 9)
+                {
+                    rig.Monitors.Monitors = [Rig.Left, Rig.Main];
+                }
+            };
+
+            Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), rig.Service().Undo());
+            Assert.Equal(9, rig.Monitors.Reads - reads);
+            Assert.Equal(3, rig.Desktop.Reads);
             Assert.Empty(rig.Desktop.Calls);
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
         }
@@ -422,6 +447,27 @@ public sealed class UndoTests
             Assert.Single(rig.Desktop.Calls);
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
         }
+    }
+
+    [Fact]
+    public void ARestoreWhoseDesktopBreaksUndoRulesFailsAndKeepsTheEarlierUndo()
+    {
+        using var rig = new Rig(A);
+        Assert.Equal(OperationKind.Saved, rig.Service().Save().Kind);
+        byte[] earlier = SeedUndo(rig, rig.Key, B);
+        rig.Desktop = new FakeDesktopIcons(Icon("a.txt", 1, 1), new IconPosition(@"C:\DESK\A.TXT", "A.TXT", 2, 2));
+
+        OperationResult restore = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, FailureKind.Unexpected, "2 monitors"), (restore.Kind, restore.Failure, restore.LayoutName));
+        Assert.NotNull(restore.Error);
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.False(File.Exists(rig.Paths.UndoFile + ".next"));
+        Assert.Equal(earlier, File.ReadAllBytes(rig.Paths.UndoFile));
+
+        rig.Desktop = new FakeDesktopIcons(B with { X = 99 });
+        Assert.True(rig.Service().CanUndo);
+        Assert.Equal(OperationResult.Undone(1, 1, 0, 0), rig.Service().Undo());
     }
 
     [Fact]
