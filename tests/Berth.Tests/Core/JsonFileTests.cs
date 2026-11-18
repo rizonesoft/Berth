@@ -5,7 +5,7 @@ using Berth.Core.Model;
 
 namespace Berth.Tests.Core;
 
-public sealed class JsonFileTests
+public sealed partial class JsonFileTests
 {
     private static readonly Layout Sample = new(
         1,
@@ -209,7 +209,7 @@ public sealed class JsonFileTests
         JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, temp =>
             stagedRules = Rules(new FileInfo(temp).GetAccessControl()));
 
-        // The staged copy is no more readable than the restricted target, so a crash cannot expose it either.
+        // The staged copy has the restricted target's rules and no more, so a crash cannot expose it either.
         Assert.Equal(before, stagedRules);
         var after = new FileInfo(path).GetAccessControl();
         Assert.True(after.AreAccessRulesProtected);
@@ -218,6 +218,50 @@ public sealed class JsonFileTests
         Assert.Equal("Desk", read!.Name);
     }
 
+    [Fact]
+    public void AFolderThatGrantsMoreThanTheTargetDoesNotReachTheStagedCopy()
+    {
+        using var data = new TestData();
+        var everyone = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null);
+        string shared = Path.Combine(data.Root, "shared");
+        Directory.CreateDirectory(shared);
+        string path = Path.Combine(shared, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        string targetBefore = Rules(new FileInfo(path).GetAccessControl());
+        Assert.False(new FileInfo(path).GetAccessControl().AreAccessRulesProtected);
+
+        // The folder now hands Everyone read access to new files, set the way an older tool or a copied ACL leaves
+        // it: without passing the grant on to the file already there (SetFileSecurity does not propagate).
+        System.Security.AccessControl.DirectorySecurity open = new DirectoryInfo(shared).GetAccessControl();
+        open.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(everyone, System.Security.AccessControl.FileSystemRights.Read,
+            System.Security.AccessControl.InheritanceFlags.ObjectInherit, System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+        Assert.True(Native.SetFileSecurityW(shared, DaclSecurityInformation, open.GetSecurityDescriptorBinaryForm()), $"SetFileSecurityW failed: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        Assert.DoesNotContain(everyone.Value, Rules(new FileInfo(path).GetAccessControl()), StringComparison.Ordinal);
+        string probe = Path.Combine(shared, "probe.txt");
+        File.WriteAllText(probe, "x");
+        Assert.Contains(everyone.Value, Rules(new FileInfo(probe).GetAccessControl()), StringComparison.Ordinal);
+
+        string? stagedRules = null;
+        JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, temp =>
+            stagedRules = Rules(new FileInfo(temp).GetAccessControl()));
+
+        // The staged copy has the target's rules, not the folder's wider ones.
+        Assert.NotNull(stagedRules);
+        Assert.DoesNotContain(everyone.Value, stagedRules, StringComparison.Ordinal);
+        Assert.Equal(WithoutFlag(targetBefore), WithoutFlag(stagedRules));
+        Assert.StartsWith("protected=True", stagedRules, StringComparison.Ordinal);
+    }
+
+    private const int DaclSecurityInformation = 4;
+
+    private static string WithoutFlag(string rules) => rules[(rules.IndexOf(';', StringComparison.Ordinal) + 1)..];
+
+    private static partial class Native
+    {
+        [System.Runtime.InteropServices.LibraryImport("advapi32.dll", EntryPoint = "SetFileSecurityW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static partial bool SetFileSecurityW(string fileName, int securityInformation, byte[] securityDescriptor);
+    }
     [Fact]
     public void AStaleTemporaryLeftByACrashIsRemovedAndAFreshOneIsLeft()
     {

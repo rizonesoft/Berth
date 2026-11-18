@@ -1,3 +1,4 @@
+using System.Security.Principal;
 using System.Security.AccessControl;
 using System.Text.RegularExpressions;
 using System.IO;
@@ -73,15 +74,22 @@ internal static partial class JsonFile
     }
 
     /// <summary>
-    /// Creates the temporary file. When the target exists it is created with the target's own access rules, so a
-    /// layout its owner restricted is never readable more widely while it is being saved, nor after a crash.
+    /// Creates the temporary file. When the target exists the copy gets exactly the target's effective access rules,
+    /// written as its own and shut off from inheritance, so neither a restricted layout's own rules nor a folder that
+    /// grants more than the target has can make the staged copy readable more widely, even after a crash.
     /// </summary>
     private static FileStream CreateTemporary(string temp, string path)
     {
         FileSecurity? security = null;
         try
         {
-            security = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+            FileSecurity target = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+            security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            foreach (FileSystemAccessRule rule in target.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)))
+            {
+                security.AddAccessRule(new FileSystemAccessRule(rule.IdentityReference, rule.FileSystemRights, rule.AccessControlType));
+            }
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
