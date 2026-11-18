@@ -214,17 +214,19 @@ Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking
 **Needs:** none
 **Surface:** no
 
+**Corrected 2026-11-18:** rewritten after the plan review (P1 1, P1 2, P2 3). `.conclave/kits.json` records the bytes the kit installed, so a Berth edit keeps those hashes and shows as local drift; the check reads the prompts `scripts/review-prompt.py` generates, since text above a template's `---` separator never reaches a reviewer; and the rule rides on each template's "TODO section" line, which the filler drops when no section is named. The upstream change belongs to the Conclave-SDK reviewer kit, whose checkout another session was writing on 2026-11-18; it is recorded as an owner item in the phase 0 run file.
+
 **Build order:**
 
-1. Add one sentence to each of the four review prompts. Done when: each prompt holds it.
-2. Record the new hashes and test them. Done when: `python -m unittest discover -s tests/scripts` passes.
+1. Append the rule to the "TODO section" line of each of the four review templates. Done when: each generated section prompt carries it once.
+2. Test the generated prompts. Done when: `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes.
 
-- [ ] Add to `docs/completion-review-prompt.md`, `docs/reconciliation-review-prompt.md`, `docs/review-round-prompt.md` and `docs/plan-review-prompt.md`, where each lists what to judge, the sentence: "The section's `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after this review: an open `Commit:` item is not a gap." Done when: `Select-String -SimpleMatch` finds the sentence once in each file. Cheaper substitute: telling each reviewer in the per-section purpose text, which the next section forgets.
-- [ ] Update the four files' `sha256` entries in `.conclave/kits.json` to the new contents. Done when: the recorded hash equals `Get-FileHash -Algorithm SHA256` of each file. Cheaper substitute: leaving the old hashes, so the kit reports drift it cannot explain.
-- [ ] Add `tests/scripts/test_review_prompts.py` asserting the sentence is in each prompt and each prompt's hash in `.conclave/kits.json` matches the file. Done when: it passes, and fails when the sentence is removed from one prompt. Cheaper substitute: no test, so a kit update silently drops the sentence.
+- [ ] Append to the `- TODO section` line under "Candidate" in `docs/completion-review-prompt.md`, `docs/reconciliation-review-prompt.md`, `docs/review-round-prompt.md` and `docs/plan-review-prompt.md` the sentence: "Its `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after the last review, so an open `Commit:` item is not a gap." Done when: `Select-String -SimpleMatch` finds the sentence once in each template, on that line, below the `---` separator. Cheaper substitute: telling each reviewer in the per-section purpose text, which the next section forgets.
+- [ ] Leave the four files' `sha256` entries in `.conclave/kits.json` as installed. Done when: `git diff` shows no change to `.conclave/kits.json`. Cheaper substitute: rewriting the hashes to the edited bytes, which makes a local edit look like the installed baseline and lets a kit update overwrite it unseen.
+- [ ] Add `tests/scripts/test_review_prompts.py`, which runs `scripts/review-prompt.py` for each kind with `--ref "D00 T01 §1"` (and the arguments each kind requires) into a temporary folder, asserts the sentence appears exactly once in each generated prompt, and runs `--kind round` without `--ref` and asserts it is absent. Done when: it passes; and in a scratch copy where the sentence is moved above the completion template's `---` separator, the completion assertion fails. Cheaper substitute: reading the template files, which passes while reviewers never see the sentence.
 - [ ] Commit: `review: prompts name the stamp-owned Commit item`
 
-**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes, and fails when the sentence is removed from `docs/completion-review-prompt.md`.
+**Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes, and fails in a scratch copy whose completion template holds the sentence above its `---` separator.
 
 ## Verification
 

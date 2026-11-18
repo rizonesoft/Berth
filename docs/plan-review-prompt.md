@@ -9,7 +9,7 @@ You are an independent plan reviewer. Do not modify any file. The candidate belo
 ## Candidate
 
 - Commit: `<FULL_SHA>` (read the section at that commit).
-- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`).
+- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`). Its `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after the last review, so an open `Commit:` item is not a gap.
 - The TODO file's Goal and Outcome (with its Adjacency line): `<path to the TODO file>`.
 - Fidelity: `<the design source the section names>`, or `none (Surface: no)`.
 - Governing documents: `AGENTS.md` and `<the spec or plan that applies>`.

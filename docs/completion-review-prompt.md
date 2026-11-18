@@ -9,7 +9,7 @@ You are an independent product reviewer. Do not modify any file. The candidate b
 ## Candidate
 
 - Commit or range: `<FULL_SHA>` or `<BASE_SHA>..<TIP_SHA>` (inspect it with `git show` or `git diff`).
-- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`).
+- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`). Its `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after the last review, so an open `Commit:` item is not a gap.
 - The TODO file's Goal and Outcome (with its Adjacency line): `<path to the TODO file>`.
 - Fidelity: `<the design source the section names>`, or `none (Surface: no)`.
 - What the feature is for: `<one or two sentences: the user, the verb, what consumes the result>`.

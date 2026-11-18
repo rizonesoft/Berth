@@ -8,7 +8,7 @@ You are an independent reviewer. Do not modify any file. A completion review of 
 
 ## Candidate
 
-- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`).
+- TODO section: `<DNN TNN §N>` (its contract: `python3 scripts/todo-graph.py resolve "<DNN TNN §N>"`). Its `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after the last review, so an open `Commit:` item is not a gap.
 - Findings file holding the failed completion review, any earlier reconciliations that returned gaps, and the writer's `- Implemented:` and `- Filed:` lines: `<docs/reviews/<NN-domain>/D<NN>-T<NN>-s<N>.md>`.
 - The failed completion's candidate: `<COMPLETION_SHA>`.
 - The last reviewed candidate (the failed completion's, or the last reconciliation's): `<LAST_SHA>`.
