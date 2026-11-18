@@ -270,13 +270,22 @@ public sealed class OperationLockTests
         }
     }
 
-    /// <summary>Whether <paramref name="thread"/> is seen in a wait (blocked) within <paramref name="deadline"/>.</summary>
+    /// <summary>
+    /// Whether <paramref name="thread"/> is seen staying in a wait (blocked) for <see cref="Settle"/> without a break,
+    /// within <paramref name="deadline"/>. A zero wait passes through the wait state for an instant, so a single
+    /// glimpse is not enough.
+    /// </summary>
     private static bool SeenBlocked(Thread thread, TimeSpan deadline)
     {
         var clock = Stopwatch.StartNew();
+        TimeSpan? since = null;
         while (clock.Elapsed < deadline && thread.IsAlive)
         {
-            if ((thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0)
+            if ((thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) == 0)
+            {
+                since = null;
+            }
+            else if ((since ??= clock.Elapsed) + Settle <= clock.Elapsed)
             {
                 return true;
             }
@@ -286,6 +295,8 @@ public sealed class OperationLockTests
 
         return false;
     }
+
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(100);
 
     /// <summary>What another thread finds at once: "free", "abandoned" (its holder closed it still owning it) or
     /// "held". It lets go of anything it takes.</summary>
