@@ -138,13 +138,36 @@ public sealed partial class JsonFileTests
 
         Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
             path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
-            afterFlush: _ => File.WriteAllBytes(path, first),
+            afterFlush: null,
+            afterCheck: () => File.WriteAllBytes(path, first),
             afterReplace: () => File.WriteAllBytes(path, second)));
 
         // The first arrival is back in place, and the second, which the rollback displaced, is kept beside it.
         Assert.Equal(first, File.ReadAllBytes(path));
         string keptFile = Assert.Single(Directory.GetFiles(data.Root, "layout.json" + JsonFile.KeptSuffix + "*"));
         Assert.Equal(second, File.ReadAllBytes(keptFile));
+        Assert.Empty(Temporaries(data.Root));
+    }
+
+    [Fact]
+    public void AFileThatChangedBeforeTheLastCheckIsNotReplacedAtAll()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+        byte[] arrived = "arrived while the temporary file was written"u8.ToArray();
+        bool replaced = false;
+
+        Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
+            path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: _ => File.WriteAllBytes(path, arrived),
+            afterCheck: null,
+            afterReplace: () => replaced = true));
+
+        Assert.False(replaced);
+        Assert.Equal(arrived, File.ReadAllBytes(path));
+        Assert.Empty(Directory.GetFiles(data.Root, "*" + JsonFile.KeptSuffix + "*"));
         Assert.Empty(Temporaries(data.Root));
     }
 
@@ -158,7 +181,8 @@ public sealed partial class JsonFileTests
 
         Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
             path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
-            afterFlush: _ => { using var big = new FileStream(path, FileMode.Create); big.SetLength(JsonFile.MaxBytes * 4); },
+            afterFlush: null,
+            afterCheck: () => { using var big = new FileStream(path, FileMode.Create); big.SetLength(JsonFile.MaxBytes * 4); },
             afterReplace: null));
 
         Assert.Equal(JsonFile.MaxBytes * 4, new FileInfo(path).Length);

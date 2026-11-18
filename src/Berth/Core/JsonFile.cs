@@ -50,11 +50,12 @@ internal static partial class JsonFile
     public static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush = null) =>
         Write(path, value, info, afterFlush, mustBeNew: false, expected);
 
-    /// <summary>As <see cref="WriteOver"/>; <paramref name="afterReplace"/> lets a test act between the replace and its check.</summary>
-    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterReplace) =>
-        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace);
+    /// <summary>As <see cref="WriteOver"/>; <paramref name="afterCheck"/> and <paramref name="afterReplace"/> let a test
+    /// act just after the last check and just after the replace.</summary>
+    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterCheck, Action? afterReplace) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace, afterCheck);
 
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null)
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null, Action? afterCheck = null)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -88,7 +89,7 @@ internal static partial class JsonFile
             }
             else if (expected is not null)
             {
-                ReplaceExpected(temp, path, expected, bytes, afterReplace);
+                ReplaceExpected(temp, path, expected, bytes, afterCheck, afterReplace);
             }
             else
             {
@@ -156,14 +157,22 @@ internal static partial class JsonFile
     public const string KeptSuffix = ".berth-replaced-";
 
     /// <summary>
-    /// Replaces <paramref name="path"/>, keeping what it held under a <see cref="KeptSuffix"/> name in the same step.
+    /// Replaces <paramref name="path"/> only if it still holds exactly what the caller read, keeping what it held
+    /// under a <see cref="KeptSuffix"/> name in the same step.
     /// That version is deleted only when it is exactly what the caller read; otherwise it goes back in place and the
     /// write fails, and whatever the rollback displaces is in turn kept unless it is exactly this write. Windows cannot
     /// stop another program writing the file meanwhile, but no version is lost: a crash at any point leaves the
     /// displaced one beside the file, where no clean-up deletes it.
     /// </summary>
-    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterReplace)
+    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace)
     {
+        // A file that changed while the temporary one was written is not replaced at all.
+        if (!HoldsExactly(path, expected))
+        {
+            throw new TargetChangedException(path);
+        }
+
+        afterCheck?.Invoke();
         string kept = path + KeptSuffix + Guid.NewGuid().ToString("N");
         File.Replace(temp, path, kept, ignoreMetadataErrors: false);
         afterReplace?.Invoke();
