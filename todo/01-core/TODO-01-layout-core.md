@@ -49,7 +49,7 @@ depends_on: ["dotnet-foundation"]
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [ ] |
 | 11 | §11 | Undo operation | §10 | [ ] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
-| 13 | §13 | Comparison of a layout with the desktop | §8 | [ ] |
+| 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
 | 14 | §14 | Operation lock across processes | §3 | [ ] |
 | 15 | §15 | Log file with a size cap | §3 | [ ] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
@@ -398,9 +398,12 @@ What the position map and the status line show: each saved icon is in place, mov
 - [x] For a saved position outside every monitor, set `OffScreen` `true` and `MonitorNumber` to the nearest monitor by distance to its rectangle (SPEC §7, last bullet). Done when: a test with an icon at `5000,5000` gets `OffScreen` and the nearest monitor. Cheaper substitute: dropping off-screen icons from the result. **Corrected 2026-11-18:** D01 T01 §13 plan review: with unequal monitors where the nearest edge belongs to a monitor other than number 1 and the nearest centre to another, asserting the exact number.
 - [x] Return the icons in reading order: by `Y`, then `X` (SPEC §7 automation order). Done when: a test with shuffled input gets sorted output. Cheaper substitute: file order. **Corrected 2026-11-18:** D01 T01 §13 plan review: by saved `Y` then saved `X`, asserted as an exact id sequence with two icons on one row and a moved icon whose live position would reverse the order.
 - [x] Add `tests/Berth.Tests/Core/LayoutComparisonTests.cs`. Done when: all pass, and the moved test fails when equality ignores `Y`. Cheaper substitute: one all-in-place test.
-- [ ] Commit: `core: comparison of a layout with the desktop`
+- [x] Commit: `core: comparison of a layout with the desktop`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutComparisonTests"` passes, and fails when position equality ignores `Y`.
+
+> **Verified:** 2026-11-18 | §13 | cddf524dbcb5afbe1834af24cea6d72a93e71f24
+> **Review:** `docs/reviews/d01-t01-s13.json`
 
 ## 14. Operation lock across processes
 

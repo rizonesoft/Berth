@@ -35,7 +35,7 @@ Sections: 19 | Checklist items: 118
 | [x]    | D01 T01 §6  | Settings store                                             | none  | 5     |
 | [ ]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
 | [x]    | D01 T01 §8  | Desktop and monitor seams with fakes                       | none  | 7     |
-| [ ]    | D01 T01 §13 | Comparison of a layout with the desktop                    | none  | 7     |
+| [x]    | D01 T01 §13 | Comparison of a layout with the desktop                    | none  | 7     |
 | [ ]    | D01 T01 §14 | Operation lock across processes                            | none  | 5     |
 | [ ]    | D01 T01 §15 | Log file with a size cap                                   | none  | 6     |
 | [ ]    | D01 T01 §9  | Save operation                                             | none  | 9     |
@@ -152,6 +152,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 16/83 verified sections, 4 ready to run now.
+Progress: 17/83 verified sections, 4 ready to run now.
 
-Checklist: 109/504 items completed (includes Commit items).
+Checklist: 110/504 items completed (includes Commit items).
