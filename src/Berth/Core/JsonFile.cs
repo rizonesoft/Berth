@@ -1,3 +1,4 @@
+using System.Text;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Security.AccessControl;
@@ -183,17 +184,29 @@ internal static partial class JsonFile
             throw new TargetChangedException(path);
         }
 
-        afterCheck?.Invoke();
         string kept = path + KeptSuffix + Guid.NewGuid().ToString("N");
 
         // Written before the replace, so a crash between the replace and its check is finished by Recover on the
         // next read: Berth's save never stays in place over a file that had changed.
+        // The note stays open, unshared, for the whole save: a reader that cannot open it knows a save is under way
+        // and leaves it alone; one it can open was left by a writer that ended, and only then is it acted on.
         string pending = path + PendingSuffix;
-        File.WriteAllText(pending, Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected)));
-        File.Replace(temp, path, kept, ignoreMetadataErrors: false);
-        afterReplace?.Invoke();
-        Settle(path, kept, expected, written);
+        bool stands;
+        using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        {
+            note.Write(Encoding.UTF8.GetBytes(Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected))));
+            note.Flush(flushToDisk: true);
+            afterCheck?.Invoke();
+            File.Replace(temp, path, kept, ignoreMetadataErrors: false);
+            afterReplace?.Invoke();
+            stands = Settle(path, kept, expected, written);
+        }
+
         File.Delete(pending);
+        if (!stands)
+        {
+            throw new TargetChangedException(path);
+        }
     }
 
     /// <summary>The suffix of the note a save over an existing file leaves until it has checked what it displaced.</summary>
@@ -214,8 +227,26 @@ internal static partial class JsonFile
             return;
         }
 
-        string[] note = File.ReadAllLines(pending);
-        string? keptName = note.Length == 2 ? note[0] : null;
+        string[] note;
+        try
+        {
+            using var stream = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.None);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            note = reader.ReadToEnd().Split('\n');
+        }
+        catch (IOException) when (File.Exists(pending))
+        {
+            // A save is under way and holds its note: it will finish or leave the note for a later read.
+            return;
+        }
+
+        // Only a note this writer makes is acted on: a sibling kept name it generates and a SHA-256 digest. Anything
+        // else is discarded without touching another file.
+        string target = Path.GetFileName(path);
+        string? keptName = note.Length == 2 && KeptName().IsMatch(note[0]) && note[0].StartsWith(target + KeptSuffix, StringComparison.Ordinal)
+            && note[0].Length == target.Length + KeptSuffix.Length + 32 && Digest().IsMatch(note[1])
+            ? note[0]
+            : null;
         string kept = keptName is null ? string.Empty : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, keptName);
         if (keptName is not null && File.Exists(kept) && !HashOf(kept).Equals(note[1], StringComparison.OrdinalIgnoreCase))
         {
@@ -236,13 +267,16 @@ internal static partial class JsonFile
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    /// <summary>Deletes the displaced version when it is the one that was read; otherwise puts it back (see ReplaceExpected).</summary>
-    private static void Settle(string path, string kept, byte[] expected, byte[] written)
+    /// <summary>
+    /// True when the displaced version is the one that was read, which is then deleted; otherwise it goes back in
+    /// place (see ReplaceExpected) and the answer is false.
+    /// </summary>
+    private static bool Settle(string path, string kept, byte[] expected, byte[] written)
     {
         if (HoldsExactly(kept, expected))
         {
             File.Delete(kept);
-            return;
+            return true;
         }
 
         string displaced = path + KeptSuffix + Guid.NewGuid().ToString("N");
@@ -252,8 +286,7 @@ internal static partial class JsonFile
             File.Delete(displaced);
         }
 
-        File.Delete(path + PendingSuffix);
-        throw new TargetChangedException(path);
+        return false;
     }
     /// <summary>Whether <paramref name="path"/> holds exactly <paramref name="bytes"/>, read only when the lengths agree.</summary>
     private static bool HoldsExactly(string path, byte[] bytes)
@@ -306,6 +339,12 @@ internal static partial class JsonFile
 
     [GeneratedRegex(@"^[0-9a-f]{32}\z")]
     private static partial Regex TemporarySuffix();
+
+    [GeneratedRegex(@"^[^\\/:*?""<>|]+\.berth-replaced-[0-9a-f]{32}\z")]
+    private static partial Regex KeptName();
+
+    [GeneratedRegex(@"^[0-9A-F]{64}\z")]
+    private static partial Regex Digest();
 
     /// <summary>
     /// Reads <paramref name="path"/> through <see cref="BerthJson.Parse"/>. False with <see cref="Missing"/> when the

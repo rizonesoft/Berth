@@ -69,6 +69,11 @@ internal sealed class SettingsStore(BerthPaths paths)
             {
                 JsonFile.WriteOver(paths.SettingsFile, value, BerthJson.Default.Settings, read!, beforeReplace is null ? null : _ => beforeReplace());
             }
+            catch (TargetChangedException changed) when (changed.InnerException is IOException or UnauthorizedAccessException)
+            {
+                // It could not be read just before the replace (another program held it): that is the refusal.
+                throw new UnreadableSettingsException(changed.InnerException.Message);
+            }
             catch (TargetChangedException) when (Load().Unreadable is { } arrived)
             {
                 // The file changed while it was being saved, into one that cannot be read: it was kept; say so.

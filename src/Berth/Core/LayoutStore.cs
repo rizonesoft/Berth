@@ -47,6 +47,11 @@ internal sealed class LayoutStore(BerthPaths paths)
             {
                 JsonFile.WriteOver(path, layout, BerthJson.Default.Layout, current.Bytes!, hook);
             }
+            catch (TargetChangedException changed) when (changed.InnerException is IOException or UnauthorizedAccessException)
+            {
+                // It could not be read just before the replace (another program held it): that is the refusal.
+                throw new UnreadableLayoutException(Path.GetFileName(path), changed.InnerException.Message);
+            }
             catch (TargetChangedException) when (Read(path, layout.Key).Unreadable is { } arrived)
             {
                 // The file changed while it was being saved, into one that cannot be read: it was kept; say so.

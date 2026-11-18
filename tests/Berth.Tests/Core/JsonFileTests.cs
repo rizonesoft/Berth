@@ -235,6 +235,60 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void AReaderDuringALiveSaveLeavesItsNoteAlone()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] arrived = "{ damaged by a sync"u8.ToArray();
+        bool noteSurvivedTheReader = false;
+
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null,
+            afterCheck: () =>
+            {
+                File.WriteAllBytes(paths.SettingsFile, arrived);
+
+                // Another reader comes along after this save wrote its note and before it replaces the file.
+                _ = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
+                noteSurvivedTheReader = File.Exists(paths.SettingsFile + JsonFile.PendingSuffix);
+            },
+            afterReplace: () => throw new SimulatedCrash()));
+
+        Assert.True(noteSurvivedTheReader);
+        Assert.False(string.IsNullOrWhiteSpace(new SettingsStore(paths).Load().Unreadable));
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+    }
+
+    [Theory]
+    [InlineData(@"..\outside.txt")]
+    [InlineData(@"C:\Windows\win.ini")]
+    [InlineData("other.json.berth-replaced-0123456789abcdef0123456789abcdef")]
+    [InlineData("settings.json.berth-replaced-xyz")]
+    public void ANoteThatIsNotBerthsOwnTouchesNoOtherFile(string named)
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, true, null));
+        byte[] settings = File.ReadAllBytes(paths.SettingsFile);
+        string outside = Path.Combine(data.Root, "outside.txt");
+        File.WriteAllText(outside, "the user's own file");
+        string other = Path.Combine(paths.DataRoot, "other.json.berth-replaced-0123456789abcdef0123456789abcdef");
+        File.WriteAllText(other, "another target's kept file");
+        string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("anything"u8));
+        File.WriteAllText(paths.SettingsFile + JsonFile.PendingSuffix, named + "\n" + digest);
+
+        SettingsLoad load = new SettingsStore(paths).Load();
+
+        Assert.Equal(new Settings(1, true, null), load.Value);
+        Assert.Equal(settings, File.ReadAllBytes(paths.SettingsFile));
+        Assert.Equal("the user's own file", File.ReadAllText(outside));
+        Assert.Equal("another target's kept file", File.ReadAllText(other));
+        Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+    }
+    [Fact]
     public void ACrashAfterTheReplaceLeavesTheSaveWhenNothingHadChanged()
     {
         using var data = new TestData();
