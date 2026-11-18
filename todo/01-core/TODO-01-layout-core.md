@@ -37,7 +37,7 @@ depends_on: ["dotnet-foundation"]
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Layout, monitor and icon records | D00 T01 §3 | [ ] |
+| 1 | §1 | Layout, monitor and icon records | D00 T01 §3 | [x] |
 | 2 | §2 | Arrangement key | §1 | [ ] |
 | 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [ ] |
 | 4 | §4 | Atomic JSON file with read-back | §3 | [ ] |
@@ -79,9 +79,12 @@ The data shapes of SPEC §14, as immutable records with their JSON names, so eve
 - [x] Add `BerthJson` in `src/Berth/Core/Model/BerthJson.cs`: a source-generated `JsonSerializerContext` for `Layout` with camelCase names, indented output, `RespectRequiredConstructorParameters` and `RespectNullableAnnotations` on, and a converter that writes every `DateTimeOffset` as UTC `yyyy-MM-ddTHH:mm:ssZ` (whole seconds, SPEC §14's `2026-11-15T07:14:03Z`) and reads any ISO 8601 offset back as UTC. Done when: the tests below pass. Cheaper substitute: reflection-based serialisation, which single-file trimming can break, or the default writer, which emits `+00:00` and keeps the offset.
 - [x] Add `tests/Berth.Tests/Core/LayoutJsonTests.cs`: parse the SPEC §14 example and assert each field against values written in the test (`schemaVersion` 1, key `3f9a61c2d0b47e15`, name `Docked`, `savedAt` 2026-11-15 07:14:03 UTC, one monitor `0,0,2560,1440,100,true`, one icon `::{645FF040-5081-101B-9F08-00AA002F954E}`, `Recycle Bin`, 76, 2, `previous` null); do the same for a fixture with a `previous` save holding different positions and times; serialise each and compare the output with the expected document structurally (`JsonNode.DeepEquals`), and check it is indented. Done when: all pass, and fail when `IconPosition.Id` is renamed or its JSON property is dropped. Cheaper substitute: asserting that one parse equals another parse, which agrees on a lost field.
 - [x] Add tests that a `savedAt` given with offset `+02:00` in the current and previous save is written back as the UTC `Z` string, and that a missing or null `id`, `name`, `x`, `y`, `width`, `height`, `scale` or `primary`, in `monitors`, `icons` or `previous.icons`, fails to parse with a `JsonException`, while a valid icon at `0,0` parses. Done when: all pass. Cheaper substitute: letting a missing `x` read as 0, which would restore an icon to the wrong place.
-- [ ] Commit: `core: layout, monitor and icon records`
+- [x] Commit: `core: layout, monitor and icon records`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutJsonTests"` passes, and fails when `IconPosition.Id` is renamed or a missing `x` parses as 0.
+
+> **Verified:** 2026-11-18 | §1 | 6f95d2903da89be139d7d2416138fb379065f619
+> **Review:** `docs/reviews/d01-t01-s1.json`
 
 ## 2. Arrangement key
 

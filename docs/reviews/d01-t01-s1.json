@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a71",
+  "title": "Layout, monitor and icon records",
+  "implementation_sha": "6f95d2903da89be139d7d2416138fb379065f619",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s1.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *LayoutJsonTests -> passed (99 suite total); IconPosition.Id renamed -> 7 failures; missing x with required parameters off -> 17 failures"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s1.md",
+    "verdict": "reconciled",
+    "candidate": "6f95d2903da89be139d7d2416138fb379065f619",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s1.md",
+    "candidate": "2a43d599fcbab72e860d50c40d0859dfa34520a3",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "2a43d599fcbab72e860d50c40d0859dfa34520a3",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
