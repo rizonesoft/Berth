@@ -50,12 +50,13 @@ depends_on: ["dotnet-foundation"]
 | 11 | §11 | Undo operation | §10 | [ ] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
-| 14 | §14 | Operation lock across processes | §3 | [ ] |
+| 14 | §14 | Operation lock across processes | §3 | [x] |
 | 15 | §15 | Log file with a size cap | §3 | [ ] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
+| 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -427,9 +428,12 @@ Save, restore, undo and revert run one at a time across the tray app and the com
 - [x] Treat an abandoned mutex (the holder crashed) as acquired. Done when: a test abandons the mutex on a thread that exits and the next `Run` calls `work`. Cheaper substitute: failing forever after one crash. **Corrected 2026-11-18:** D01 T01 §14 plan review: the test keeps a second handle open across the owner thread's exit, so the mutex is really abandoned rather than created again, and `Run` calls `work` once and releases.
 - [x] Prove it across processes: a small test helper process (the test assembly started with an argument, with `CreateNoWindow`, a 20 second bound and a tree kill in `finally`) holds the mutex for the same data root until told to release through its standard input, and `Run` in the test process returns `busy` while it holds. Done when: the test passes and no helper process remains. Cheaper substitute: assuming two wrapper objects in one process prove what two processes do.
 - [x] Add `tests/Berth.Tests/Core/OperationLockTests.cs`. Done when: all pass, and the busy test fails when `Run` calls `work` without acquiring. Cheaper substitute: a test that sleeps and hopes.
-- [ ] Commit: `core: operation lock across processes`
+- [x] Commit: `core: operation lock across processes`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*OperationLockTests"` passes, and fails when `OperationLock.Run` calls `work` without holding the mutex.
+
+> **Verified:** 2026-11-18 | §14 | 81d445e5cff16bdff457349291c21f110dca7d4b
+> **Review:** `docs/reviews/d01-t01-s14.json`
 
 ## 15. Log file with a size cap
 
@@ -543,6 +547,23 @@ Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blo
 
 > **Verified:** 2026-11-18 | §19 | d87058ecaad58505ac1a8442bee52f78c535418e
 > **Review:** `docs/reviews/d01-t01-s19.json`
+
+## 20. The waiting-lock test must see the contender blocked
+
+Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's blocking levels): `AWaitingRunTakesTheLockWhenItIsReleasedBeforeTheDeadline` polls up to ten seconds for the contender to block, then checks only that it is alive, so a contender the scheduler delayed past the release could pass with a run that never waits.
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Make seeing the blocked contender a condition of the test. Done when: the test fails when the contender is never seen blocked before the release.
+
+- [ ] In `tests/Berth.Tests/Core/OperationLockTests.cs`, assert that the contender was seen in `WaitSleepJoin` before `holder.Release()`, separately from its being alive. Done when: the test passes, and fails when `OperationLock.Run` waits 0 ms. Cheaper substitute: asserting only that the thread is alive.
+- [ ] Commit: `test: the waiting-lock test sees the contender blocked`
+
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*OperationLockTests"` passes, and fails when `Run` waits 0 ms.
 
 ## Verification
 
