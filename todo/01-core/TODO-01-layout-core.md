@@ -513,6 +513,8 @@ Filed 2026-11-18 from the phase 1 gap audit: SPEC §18 says every setting change
 
 ## 19. Fake contract tests all go through the seams
 
+> **Started:** 2026-11-18T06:24:14Z
+
 Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blocking levels): `SnapByShiftsOnlyTheChosenIcons` called the fake's own type, while the record says every fake test exercises `IDesktopIcons`. The change was made in 9a08deb, after the reviewed candidate; this section verifies and reviews it.
 
 **Phase:** 1
