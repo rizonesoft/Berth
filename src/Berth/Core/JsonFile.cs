@@ -74,31 +74,24 @@ internal static partial class JsonFile
     }
 
     /// <summary>
-    /// Creates the temporary file. When the target exists the copy gets exactly the target's effective access rules,
-    /// written as its own and shut off from inheritance, so neither a restricted layout's own rules nor a folder that
-    /// grants more than the target has can make the staged copy readable more widely, even after a crash.
+    /// Creates the temporary file. When a target exists the staged copy can be read and written by the writing user
+    /// alone (one explicit allow, shut off from inheritance), so it is never readable more widely than the target,
+    /// whatever the target's or the folder's rules are, even after a crash. The target's own descriptor is what the
+    /// final file keeps (<see cref="Replace"/>). A first save takes the folder's rules, as any new file does.
     /// </summary>
     private static FileStream CreateTemporary(string temp, string path)
     {
-        FileSecurity? security = null;
-        try
+        if (!File.Exists(path))
         {
-            FileSecurity target = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
-            security = new FileSecurity();
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            foreach (FileSystemAccessRule rule in target.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)))
-            {
-                security.AddAccessRule(new FileSystemAccessRule(rule.IdentityReference, rule.FileSystemRights, rule.AccessControlType));
-            }
-        }
-        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-        {
-            // No target yet: the new file takes the folder's rules, as any first save does.
+            return new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         }
 
-        return security is null
-            ? new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)
-            : new FileInfo(temp).Create(FileMode.CreateNew, FileSystemRights.Write | FileSystemRights.Read, FileShare.None, 4096, FileOptions.None, security);
+        SecurityIdentifier writer = WindowsIdentity.GetCurrent().User
+            ?? throw new IOException("The writing account has no security identifier.");
+        var ownerOnly = new FileSecurity();
+        ownerOnly.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        ownerOnly.AddAccessRule(new FileSystemAccessRule(writer, FileSystemRights.FullControl, AccessControlType.Allow));
+        return new FileInfo(temp).Create(FileMode.CreateNew, FileSystemRights.Write | FileSystemRights.Read, FileShare.None, 4096, FileOptions.None, ownerOnly);
     }
 
     /// <summary>

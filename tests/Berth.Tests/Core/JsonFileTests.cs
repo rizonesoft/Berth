@@ -209,8 +209,8 @@ public sealed partial class JsonFileTests
         JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, temp =>
             stagedRules = Rules(new FileInfo(temp).GetAccessControl()));
 
-        // The staged copy has the restricted target's rules and no more, so a crash cannot expose it either.
-        Assert.Equal(before, stagedRules);
+        // The staged copy is the writer's alone, so a crash cannot expose it either.
+        Assert.Equal(OwnerOnly(), stagedRules);
         var after = new FileInfo(path).GetAccessControl();
         Assert.True(after.AreAccessRulesProtected);
         Assert.Equal(before, Rules(after));
@@ -245,16 +245,15 @@ public sealed partial class JsonFileTests
         JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, temp =>
             stagedRules = Rules(new FileInfo(temp).GetAccessControl()));
 
-        // The staged copy has the target's rules, not the folder's wider ones.
-        Assert.NotNull(stagedRules);
-        Assert.DoesNotContain(everyone.Value, stagedRules, StringComparison.Ordinal);
-        Assert.Equal(WithoutFlag(targetBefore), WithoutFlag(stagedRules));
-        Assert.StartsWith("protected=True", stagedRules, StringComparison.Ordinal);
+        // The staged copy is the writer's alone, not open to the folder's wider grant.
+        Assert.Equal(OwnerOnly(), stagedRules);
+        Assert.DoesNotContain(everyone.Value, Rules(new FileInfo(path).GetAccessControl()), StringComparison.Ordinal);
     }
 
     private const int DaclSecurityInformation = 4;
 
-    private static string WithoutFlag(string rules) => rules[(rules.IndexOf(';', StringComparison.Ordinal) + 1)..];
+    private static string OwnerOnly() =>
+        $"protected=True;{System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value}:Allow:FullControl";
 
     private static partial class Native
     {
