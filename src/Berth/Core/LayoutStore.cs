@@ -268,7 +268,10 @@ internal sealed class LayoutStore(BerthPaths paths)
         DeleteLoaded(paths.LayoutFile(expected.Key), expected.Key, expected.Bytes, beforeDelete);
     }
 
-    private static void DeleteLoaded(string path, string key, byte[] expected, Action? beforeDelete)
+    /// <summary>Lets a test inject a read error after opening a layout file stream. Production leaves it null.</summary>
+    internal Action<string, FileStream, byte[]>? ReadStream { get; init; }
+
+    private void DeleteLoaded(string path, string key, byte[] expected, Action? beforeDelete)
     {
         try
         {
@@ -300,7 +303,7 @@ internal sealed class LayoutStore(BerthPaths paths)
     /// lowercase key, or that is a link (Berth never writes one), is unreadable, so no operation follows a link or a
     /// differently written name that another operation would refuse.
     /// </summary>
-    private static Lookup Read(string path, string fileKey, Action? beforeSettledRead = null)
+    private Lookup Read(string path, string fileKey, Action? beforeSettledRead = null)
     {
         string fileName = Path.GetFileName(path);
         FileInfo? entry = Entry(path);
@@ -339,7 +342,7 @@ internal sealed class LayoutStore(BerthPaths paths)
         bool held;
         try
         {
-            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, exactName: true, out layout, out reason, out bytes, out held);
+            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, exactName: true, out layout, out reason, out bytes, out held, afterRecover: null, afterRead: null, ReadStream);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {

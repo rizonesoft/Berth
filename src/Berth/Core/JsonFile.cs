@@ -311,16 +311,16 @@ internal static partial class JsonFile
 
     /// <summary>As the public overload; the two actions let a test interleave a save with the read.</summary>
     internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class =>
-        TryReadSettled(path, info, exactName, out value, out reason, out read, out _, afterRecover, afterRead);
+        TryReadSettled(path, info, exactName, out value, out reason, out read, out _, afterRecover, afterRead, readStream: null);
 
-    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, out bool held, Action? afterRecover, Action? afterRead) where T : class
+    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, bool exactName, out T? value, out string? reason, out byte[]? read, out bool held, Action? afterRecover, Action? afterRead, Action<string, FileStream, byte[]>? readStream = null) where T : class
     {
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
         for (int attempt = 0; attempt < SettleAttempts; attempt++)
         {
             Recover(path, exactName, afterNoteRead: null);
             afterRecover?.Invoke();
-            bool ok = TryRead(path, info, out value, out reason, out read, out held);
+            bool ok = TryRead(path, info, out value, out reason, out read, out held, readStream);
             afterRead?.Invoke();
             if (held && File.Exists(path) && DateTime.UtcNow < giveUp)
             {
@@ -807,26 +807,17 @@ internal static partial class JsonFile
     /// <summary>As <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string)"/>, also giving the bytes read
     /// (null when the file could not be opened), for <see cref="WriteOver"/>.</summary>
     public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class =>
-        TryRead(path, info, out value, out reason, out read, out _);
+        TryRead(path, info, out value, out reason, out read, out _, readStream: null);
 
-    private static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read, out bool held) where T : class
+    private static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read, out bool held, Action<string, FileStream, byte[]>? readStream = null) where T : class
     {
         value = null;
         read = null;
         held = false;
-        byte[] bytes;
+        FileStream stream;
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-            if (stream.Length > MaxBytes)
-            {
-                reason = $"The file is {stream.Length} bytes, more than the {MaxBytes} a Berth file can hold.";
-                return false;
-            }
-
-            bytes = new byte[stream.Length];
-            stream.ReadExactly(bytes);
-            read = bytes;
+            stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -837,6 +828,37 @@ internal static partial class JsonFile
         {
             reason = error.Message;
             held = true;
+            return false;
+        }
+
+        byte[] bytes;
+        try
+        {
+            using (stream)
+            {
+                if (stream.Length > MaxBytes)
+                {
+                    reason = $"The file is {stream.Length} bytes, more than the {MaxBytes} a Berth file can hold.";
+                    return false;
+                }
+
+                bytes = new byte[stream.Length];
+                if (readStream is null)
+                {
+                    stream.ReadExactly(bytes);
+                }
+                else
+                {
+                    readStream(path, stream, bytes);
+                }
+
+                read = bytes;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            reason = error.Message;
+            held = IsLockError(error);
             return false;
         }
 
@@ -852,6 +874,10 @@ internal static partial class JsonFile
             return false;
         }
     }
+
+    /// <summary>Win32 sharing (`ERROR_SHARING_VIOLATION`) and byte-range lock (`ERROR_LOCK_VIOLATION`) HResult codes.</summary>
+    private static bool IsLockError(Exception error) =>
+        error is IOException && error.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021);
 }
 
 /// <summary>A file appeared where a caller had just found none; it was left as it is.</summary>

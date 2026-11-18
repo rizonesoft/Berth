@@ -640,6 +640,78 @@ public sealed class LayoutEditTests
     }
 
     [Fact]
+    public void RenameSucceedsWhenNeighborFailsPostOpenReadAndRefusesHeldOrByteLockedNeighbor()
+    {
+        using var rig = new Rig(A);
+        rig.Service().Save("Docked");
+        string dockedKey = rig.Key;
+
+        rig.Monitors.Monitors = [Rig.Main];
+        rig.Service().Save("Laptop");
+        string neighborKey = rig.Key;
+        string neighborFile = rig.File;
+        byte[] neighborBytes = File.ReadAllBytes(neighborFile);
+
+        // Neighbor opens cleanly but fails with a persistent disk/CRC I/O error after open: Held stays false.
+        var faultyStore = new LayoutStore(rig.Paths)
+        {
+            ReadStream = (path, stream, buffer) =>
+            {
+                if (string.Equals(path, neighborFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new IOException("Data error (cyclic redundancy check).", unchecked((int)0x80070017));
+                }
+
+                stream.ReadExactly(buffer);
+            },
+        };
+        var faultyService = new LayoutService(new ThrowingDesktopIcons(), new ThrowingMonitors(), faultyStore, rig.Paths, rig.Gate, new Log(rig.Paths, rig.Clock), rig.Clock);
+
+        var scanWatch = System.Diagnostics.Stopwatch.StartNew();
+        LayoutSet loaded = faultyStore.LoadAll();
+        scanWatch.Stop();
+        UnreadableFile faultyEntry = Assert.Single(loaded.Unreadable);
+        Assert.Equal((neighborKey + ".json", false), (faultyEntry.FileName, faultyEntry.Held));
+        Assert.True(scanWatch.Elapsed < JsonFile.LiveSaveWait, $"{scanWatch.ElapsedMilliseconds} ms");
+
+        var renameWatch = System.Diagnostics.Stopwatch.StartNew();
+        OperationResult renamed = faultyService.Rename(dockedKey, "  Office ");
+        renameWatch.Stop();
+        Assert.Equal(OperationResult.Renamed("Office"), renamed);
+        Assert.Equal("Office", new LayoutStore(rig.Paths).Find(dockedKey)!.Name);
+        Assert.True(renameWatch.Elapsed < JsonFile.LiveSaveWait, $"{renameWatch.ElapsedMilliseconds} ms");
+        Assert.Equal(neighborBytes, File.ReadAllBytes(neighborFile));
+
+        // Renaming the damaged neighbor itself still refuses and preserves its bytes.
+        OperationResult targetFault = faultyService.Rename(neighborKey, "Desk");
+        Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, neighborKey + ".json"), (targetFault.Kind, targetFault.Refusal, targetFault.Path));
+        Assert.Equal(neighborBytes, File.ReadAllBytes(neighborFile));
+
+        // A genuinely held neighbor (FileShare.None failing open, or Win32 byte-range lock failing ReadExactly) still refuses.
+        using (new FileStream(neighborFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            OperationResult shareHeld = EditService(rig).Rename(dockedKey, "Home");
+            Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, neighborKey + ".json"), (shareHeld.Kind, shareHeld.Refusal, shareHeld.Path));
+        }
+
+        using (var byteLock = new FileStream(neighborFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            byteLock.Lock(0, 1);
+            try
+            {
+                OperationResult rangeHeld = EditService(rig).Rename(dockedKey, "Laptop");
+                Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, neighborKey + ".json"), (rangeHeld.Kind, rangeHeld.Refusal, rangeHeld.Path));
+            }
+            finally
+            {
+                byteLock.Unlock(0, 1);
+            }
+        }
+
+        Assert.Equal("Office", new LayoutStore(rig.Paths).Find(dockedKey)!.Name);
+    }
+
+    [Fact]
     public void DeleteRenameAndRevertWorkWhenFullPathExceedsMaxPath()
     {
         using var data = new TestData();
