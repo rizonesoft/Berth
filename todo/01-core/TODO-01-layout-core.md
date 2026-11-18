@@ -41,7 +41,7 @@ depends_on: ["dotnet-foundation"]
 | 2 | §2 | Arrangement key | §1 | [x] |
 | 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [x] |
 | 4 | §4 | Atomic JSON file with read-back | §1, §3 | [x] |
-| 5 | §5 | Layout store | §1, §2, §4 | [ ] |
+| 5 | §5 | Layout store | §1, §2, §4 | [x] |
 | 6 | §6 | Settings store | §4 | [ ] |
 | 7 | §7 | Layout names: defaults and validation | §1 | [ ] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [ ] |
@@ -195,9 +195,12 @@ Loads every layout, saves one, deletes one, and reports files it cannot read wit
 - [x] Add `Find(string key)`: the layout when its file is readable, `null` when there is none, and `UnreadableLayoutException` (file name and reason) when its file is unreadable, so a restore never uses it. Done when: tests with two good layouts find each by key, get `null` for a third key, and get the exception for an unreadable one that `LoadAll` still reports. Cheaper substitute: returning `null` for an unreadable file, which a later save would take as "no layout yet".
 - [x] Add `Delete(string key)`: re-read and check the file at deletion time; `false` when it does not exist, `UnreadableLayoutException` when it is unreadable (its bytes kept, SPEC §14), and otherwise delete it and return `true`. Done when: tests cover a missing file, a layout listed successfully whose file then became `{` before the delete (the exception names it and its bytes survive), and a good delete after which a fresh store's `LoadAll` holds only the other layout. Cheaper substitute: deleting whatever file has the key, which removes a file Berth must never touch.
 - [x] Add `tests/Berth.Tests/Core/LayoutStoreTests.cs` with those cases plus persistence through a fresh store: save two distinct layouts, replace one with changed positions and a filled `previous`, open a new `LayoutStore` on the same paths, and compare both complete records with values written in the test. Done when: all pass, and the key-mismatch and monitors-key tests fail when those checks are removed. Cheaper substitute: tests that share one folder and depend on order, or a round trip through one instance that a cache could satisfy.
-- [ ] Commit: `core: layout store`
+- [x] Commit: `core: layout store`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutStore*"` passes, and fails when the key and file name check or the monitors key check is removed.
+
+> **Verified:** 2026-11-18 | §5 | 17eb59545e781638727ea7afbef512942486e2f0
+> **Review:** `docs/reviews/d01-t01-s5.json`
 
 ## 6. Settings store
 
