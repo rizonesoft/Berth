@@ -29,9 +29,9 @@ depends_on: ["dotnet-foundation"]
 - A layout saved through `LayoutService` is on disk in the SPEC §14 shape, read back and compared, and survives a failed write untouched.
 - Restore, undo, revert, rename and delete behave as SPEC §10 and §15 say against `FakeDesktopIcons`, including every refusal.
 
-**Adjacency:** list=applicable @ D01 T01 §5; document=not-applicable (a layout is not carried or printed); settings=applicable @ D01 T01 §6; reporting=not-applicable (no summaries beyond the status line); notifications=not-applicable (the balloon is owned by D06 T01 §3); permissions=not-applicable (one user, no roles); audit=applicable @ D01 T01 §15; exchange=not-applicable (SPEC §20 rules out import and sync); reverse=applicable @ D01 T01 §11
+**Adjacency:** list=applicable @ D01 T01 §5; document=not-applicable (a layout is not carried or printed); settings=applicable @ D01 T01 §6; reporting=not-applicable (no summaries beyond the status line); notifications=not-applicable (the balloon is owned by D06 T01 §3); permissions=not-applicable (one user, no roles); audit=applicable @ D01 T01 §15; exchange=not-applicable (SPEC §20 rules out import and sync); reverse=applicable
 
-**Adjacency rationale:** Layouts are the records and `LayoutStore` lists them. The log is the audit trail. Every create has an undo: a restore has `Undo` (§11), a save over an earlier one has `Revert` (§12), and a layout has `Delete` (§12).
+**Adjacency rationale:** Layouts are the records and `LayoutStore` lists them. The log is the audit trail. Every create has an undo: a restore has `Undo` (§11), a save over an earlier one has `Revert` (§12), and a layout has `Delete` (§12). Corrected 2026-11-18 (D01 T01 §9 completion review): `reverse` names no single owner, since §11 and §12 share it as this paragraph says.
 
 ## Implementation Order
 

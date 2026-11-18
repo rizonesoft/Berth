@@ -248,6 +248,7 @@ public sealed class SaveTests
         using var rig = new Rig(Three);
         rig.Service().Save();
         byte[] before = System.IO.File.ReadAllBytes(rig.File);
+        int logged = rig.LogLines().Length;
         System.IO.File.SetAttributes(rig.File, FileAttributes.ReadOnly);
         try
         {
@@ -264,7 +265,10 @@ public sealed class SaveTests
         }
 
         Assert.Equal(before, System.IO.File.ReadAllBytes(rig.File));
-        Assert.Single(rig.LogLines(), line => line.Contains(" FAIL Save: Failed", StringComparison.Ordinal));
+
+        // The failed call added exactly one event: its FAIL line naming the file.
+        string added = Assert.Single(rig.LogLines().Skip(logged));
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed \"2 monitors\", " + rig.File + ": ", added, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -278,7 +282,7 @@ public sealed class SaveTests
 
         Assert.Equal((OperationKind.Failed, rig.Paths.LayoutsFolder), (result.Kind, result.Path));
         Assert.Equal("a file where the layouts folder belongs", System.IO.File.ReadAllText(rig.Paths.LayoutsFolder));
-        Assert.Single(rig.LogLines());
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed, " + rig.Paths.LayoutsFolder + ": ", Assert.Single(rig.LogLines()), StringComparison.Ordinal);
     }
 
     [Fact]
