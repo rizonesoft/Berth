@@ -217,7 +217,14 @@ internal sealed class LayoutStore(BerthPaths paths)
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new Lookup(null, new UnreadableFile(fileName, $"It could not be read as it was being saved: {error.Message}"));
+            return Renamed(path, fileKey) ?? new Lookup(null, new UnreadableFile(fileName, $"It could not be read as it was being saved: {error.Message}"));
+        }
+
+        // Read as Windows opens names: if the file was renamed to another case meanwhile, what was read is not
+        // Berth's file, and the rule refuses it under the name it now has, whatever its contents.
+        if (Renamed(path, fileKey) is { } renamed)
+        {
+            return renamed;
         }
 
         if (!readable)
@@ -225,16 +232,15 @@ internal sealed class LayoutStore(BerthPaths paths)
             return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
         }
 
-        // Read as Windows opens names: if the file was renamed to another case meanwhile, what was read is not
-        // Berth's file, and the rule refuses it under the name it now has.
-        if (Entry(path) is { } now && now.Name != fileKey + ".json")
-        {
-            return new Lookup(null, new UnreadableFile(now.Name, $"Its name is not the layout file name {fileKey}.json."));
-        }
-
         string? problem = LayoutRules.Check(layout!, fileKey);
         return problem is null ? new Lookup(layout, null, bytes) : new Lookup(null, new UnreadableFile(fileName, problem));
     }
+
+    /// <summary>The refusal for a file now at <paramref name="path"/> under another spelling than the key's, or null.</summary>
+    private static Lookup? Renamed(string path, string fileKey) =>
+        Entry(path) is { } now && now.Name != fileKey + ".json"
+            ? new Lookup(null, new UnreadableFile(now.Name, $"Its name is not the layout file name {fileKey}.json."))
+            : null;
 
     /// <summary>The entry at <paramref name="path"/> as the folder lists it (its real name), or null.</summary>
     /// <exception cref="IOException">The folder exists but cannot be read.</exception>

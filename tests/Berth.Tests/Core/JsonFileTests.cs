@@ -738,6 +738,28 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void ADamagedLayoutInAnotherCaseArrivingDuringAReadIsRefusedByItsRealName()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        string renamed = Path.Combine(paths.LayoutsFolder, layout.Key + ".JSON");
+        byte[] damaged = "{ not json"u8.ToArray();
+
+        UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() => store.Find(layout.Key, beforeSettledRead: () =>
+        {
+            File.Delete(path);
+            File.WriteAllBytes(renamed, damaged);
+        }));
+
+        Assert.Equal(layout.Key + ".JSON", error.FileName);
+        Assert.Equal(damaged, File.ReadAllBytes(renamed));
+    }
+
+    [Fact]
     public void ASaveNeverWritesThroughALinkAtTheFilesName()
     {
         using var data = new TestData();
