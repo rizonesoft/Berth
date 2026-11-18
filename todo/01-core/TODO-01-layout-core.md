@@ -116,6 +116,8 @@ The same monitors in the same places at the same scale must always map to the sa
 
 ## 3. Data paths that honour BERTH_DATA
 
+> **Started:** 2026-11-18T02:49:46Z
+
 One place decides where Berth's files live, and tests redirect it (SPEC §14, first bullet).
 
 **Phase:** 1
