@@ -132,6 +132,8 @@ The test project every later section adds to, with one real test so the runner i
 
 ## 4. One command that runs every gate
 
+> **Started:** 2026-11-18T00:52:38Z
+
 `scripts/check-all.ps1` is the gate the rest of the plan names in its checkpoints: plan, tooling tests, agent tiers, build and tests, in that order, stopping at the first failure.
 
 **Phase:** 0
