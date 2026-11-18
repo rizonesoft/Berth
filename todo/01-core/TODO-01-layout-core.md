@@ -257,6 +257,8 @@ The default name of a first save and the three naming rules of SPEC §10, in one
 
 ## 8. Desktop and monitor seams with fakes
 
+> **Started:** 2026-11-18T06:12:10Z
+
 The two interfaces that separate the rules from Windows, and the fakes every rule test uses (foundation plan, "Seams").
 
 **Phase:** 1
