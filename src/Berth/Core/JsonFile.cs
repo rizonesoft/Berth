@@ -198,7 +198,7 @@ internal static partial class JsonFile
 
         // Delete sharing lets this writer remove its own note while still holding it; a reader asks for exclusive
         // access, which any open handle denies, so it waits for this save rather than act on its note.
-        using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete))
+        using (var note = CreatePendingNote(pending))
         {
             note.Write(Encoding.UTF8.GetBytes(
                 Path.GetFileName(temp) + "\n" + Convert.ToHexString(SHA256.HashData(expected)) + "\n" + Convert.ToHexString(SHA256.HashData(written))));
@@ -240,6 +240,32 @@ internal static partial class JsonFile
         }
 
         File.Delete(temp);
+    }
+
+    /// <summary>
+    /// Creates the redo note, waiting out a brief delete-pending state if an earlier writer or recovery just called
+    /// <see cref="File.Delete(string)"/> before closing its handle.
+    /// </summary>
+    private static FileStream CreatePendingNote(string pending)
+    {
+        DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
+        bool retried = false;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete);
+            }
+            catch (UnauthorizedAccessException) when (!Directory.Exists(pending) && (!retried || (File.Exists(pending) && DateTime.UtcNow < giveUp)))
+            {
+                if (retried)
+                {
+                    Thread.Sleep(20);
+                }
+
+                retried = true;
+            }
+        }
     }
 
     /// <summary>
@@ -391,6 +417,12 @@ internal static partial class JsonFile
             catch (IOException) when (DateTime.UtcNow < giveUp)
             {
                 // A save or another recovery holds it: wait for it to finish, so the file is never read half written.
+                Thread.Sleep(20);
+            }
+            catch (UnauthorizedAccessException) when (!Directory.Exists(pending) && DateTime.UtcNow < giveUp)
+            {
+                // A writer or recovery that just called File.Delete(pending) while still holding its handle leaves the
+                // path delete-pending on Windows (opening as access denied) until the handle closes and the file goes.
                 Thread.Sleep(20);
             }
             catch (IOException error)

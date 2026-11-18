@@ -288,6 +288,88 @@ public sealed partial class JsonFileTests
         Assert.Equal(new Settings(1, false, null), new SettingsStore(paths).Load().Value);
         Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
     }
+
+    [Fact]
+    public void ANotePendingDeletionDoesNotFailRecoveryOrNextWrite()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new SettingsStore(paths);
+        store.Save(new Settings(1, false, null));
+        byte[] existing = File.ReadAllBytes(paths.SettingsFile);
+        string pending = paths.SettingsFile + JsonFile.PendingSuffix;
+
+        // Hold pending in Windows delete-pending state while Recover opens it.
+        Microsoft.Win32.SafeHandles.SafeFileHandle closing1 = OpenDeletePending(pending);
+        var closer1 = new Thread(() =>
+        {
+            Thread.Sleep(100);
+            closing1.Dispose();
+        });
+        closer1.Start();
+        try
+        {
+            JsonFile.Recover(paths.SettingsFile, exactName: false);
+        }
+        finally
+        {
+            Assert.True(closer1.Join(TimeSpan.FromSeconds(10)));
+        }
+
+        // Hold pending in delete-pending state right before ReplaceExpected creates the new note.
+        Microsoft.Win32.SafeHandles.SafeFileHandle? closing2 = null;
+        Thread? closer2 = null;
+        try
+        {
+            JsonFile.WriteOver(
+                paths.SettingsFile,
+                new Settings(1, true, null),
+                BerthJson.Default.Settings,
+                existing,
+                afterFlush: _ =>
+                {
+                    closing2 = OpenDeletePending(pending);
+                    closer2 = new Thread(() =>
+                    {
+                        Thread.Sleep(100);
+                        closing2.Dispose();
+                    });
+                    closer2.Start();
+                });
+        }
+        finally
+        {
+            if (closer2 is not null)
+            {
+                Assert.True(closer2.Join(TimeSpan.FromSeconds(10)));
+            }
+            else
+            {
+                closing2?.Dispose();
+            }
+        }
+
+        Assert.Equal(new Settings(1, true, null), store.Load().Value);
+    }
+
+    private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenDeletePending(string path)
+    {
+        const uint DeleteAndReadWrite = 0xC0010000u;
+        const uint ShareDelete = 4u;
+        const uint CreateNew = 1u;
+        const uint Normal = 0x80u;
+        const int FileDispositionInfo = 4;
+
+        Microsoft.Win32.SafeHandles.SafeFileHandle handle = Native.CreateFileW(
+            path, DeleteAndReadWrite, ShareDelete, IntPtr.Zero, CreateNew, Normal, IntPtr.Zero);
+        Assert.False(handle.IsInvalid, $"CreateFileW failed: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        byte deleteFile = 1;
+        Assert.True(
+            Native.SetFileInformationByHandle(handle, FileDispositionInfo, ref deleteFile, sizeof(byte)),
+            $"SetFileInformationByHandle failed: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        return handle;
+    }
+
     [Fact]
     public void NothingElseCanTouchTheFileWhileItIsBeingWritten()
     {
@@ -1011,6 +1093,13 @@ public sealed partial class JsonFileTests
         [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         internal static partial bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, IntPtr input, uint inputSize, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+
+        [System.Runtime.InteropServices.LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+        internal static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string fileName, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+        [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static partial bool SetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, int infoClass, ref byte info, int size);
     }
     [Fact]
     public void AStaleTemporaryLeftByACrashIsRemovedAndAFreshOneIsLeft()
