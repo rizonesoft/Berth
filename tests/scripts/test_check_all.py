@@ -10,18 +10,17 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
-import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+
+from support import make_scratch, remove_scratch, run_bounded
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check-all.ps1"
 _PWSH = shutil.which("pwsh")
 TIMEOUT_SECONDS = 120
-CREATE_NO_WINDOW = 0x08000000
 
 STEPS = [
     "plan-validate",
@@ -69,8 +68,8 @@ class CheckAllTests(unittest.TestCase):
         if _PWSH is None:
             self.fail("pwsh (PowerShell 7) is not on PATH; check-all.ps1 needs it")
         self.pwsh: str = _PWSH
-        self.folder = Path(tempfile.mkdtemp(prefix="berth-check-all-José-"))
-        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self.folder = make_scratch("berth-check-all-José-")
+        self.addCleanup(remove_scratch, self.folder)
         self.script = SCRIPT
         self.checkout = ROOT
         self.shims = self.folder / "shims"
@@ -110,29 +109,12 @@ class CheckAllTests(unittest.TestCase):
         launch = (
             ["-Command", command] if command is not None else ["-File", str(self.script), *args]
         )
-        process = subprocess.Popen(
+        return run_bounded(
             [self.pwsh, "-NoProfile", "-NonInteractive", *launch],
+            timeout=TIMEOUT_SECONDS,
             cwd=self.folder,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
         )
-        try:
-            out, err = process.communicate(timeout=TIMEOUT_SECONDS)
-        finally:
-            # On a timeout, Ctrl+C or any other exit, stop the whole tree, never only the direct child (AGENTS.md),
-            # before the temporary shim folder is removed.
-            if process.poll() is None:
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                    capture_output=True,
-                    creationflags=CREATE_NO_WINDOW,
-                    check=False,
-                )
-                process.communicate()
-        return subprocess.CompletedProcess(process.args, process.returncode, out, err)
 
     def entries(self) -> list[dict[str, object]]:
         if not self.log.exists():

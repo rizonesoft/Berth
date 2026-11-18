@@ -7,12 +7,11 @@ templates: text above a template's `---` separator is not sent.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+
+from support import make_scratch, remove_scratch, run_bounded
 
 ROOT = Path(__file__).resolve().parents[2]
 SENTENCE = (
@@ -22,13 +21,12 @@ SENTENCE = (
 REF = "D00 T01 §1"
 FINDINGS = "docs/reviews/00-workspace/D00-T01-s3.md"
 TIMEOUT_SECONDS = 60
-CREATE_NO_WINDOW = 0x08000000
 
 
 class ReviewPromptTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.folder = Path(tempfile.mkdtemp(prefix="berth-review-prompts-"))
-        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self.folder = make_scratch("berth-review-prompts-")
+        self.addCleanup(remove_scratch, self.folder)
         self.gates = self.folder / "gates.txt"
         self.gates.write_text("gate output\n", encoding="utf-8")
 
@@ -47,15 +45,7 @@ class ReviewPromptTests(unittest.TestCase):
             str(out),
             *extra,
         ]
-        result = subprocess.run(
-            command,
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS,
-            creationflags=CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-            check=False,
-        )
+        result = run_bounded(command, timeout=TIMEOUT_SECONDS, cwd=ROOT)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return out.read_text(encoding="utf-8")
 
