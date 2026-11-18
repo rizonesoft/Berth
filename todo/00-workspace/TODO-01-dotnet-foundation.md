@@ -234,6 +234,8 @@ Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking
 
 ## 8. Script test scratch folder that falls back to R:\scratch
 
+> **Started:** 2026-11-18T01:21:36Z
+
 Filed 2026-11-18 from the D00 T01 §7 completion review (P3): `tests/scripts/support.py` `scratch_root()` reads `paths.scratch` from `.conclave/local.toml` and otherwise uses the operating system's temporary folder, but `AGENTS.md` ("Working rules") names `R:\scratch` on Windows, and its test compares the folder with the same helper that chose it.
 
 **Phase:** 0
