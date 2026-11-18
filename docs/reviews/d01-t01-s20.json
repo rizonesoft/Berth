@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a720",
+  "title": "The waiting-lock test must see the contender blocked",
+  "implementation_sha": "9a534f888ab57ac71eeed3a20a84961e4cbae64a",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s20.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *OperationLockTests -> 12 passed (305 suite total); with Run waiting 0 ms the waiting test fails at \"the run was never seen waiting for the lock\""
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s20.md",
+    "verdict": "reconciled",
+    "candidate": "9a534f888ab57ac71eeed3a20a84961e4cbae64a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s20.md",
+    "candidate": "df822c59362bf81ca1c0739cd2f4f1975467977c",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "df822c59362bf81ca1c0739cd2f4f1975467977c",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
