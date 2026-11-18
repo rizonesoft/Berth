@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a77",
+  "title": "Layout names: defaults and validation",
+  "implementation_sha": "f2a0bd96e24fac4d42414d5135c9305b9f1a13d5",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s7.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *LayoutNamesTests -> total: 10, failed: 0, succeeded: 10, skipped: 0; case-sensitive Validate mutant -> fails ANameUsedByAnotherLayoutIsTakenIgnoringCaseAfterTrimming; identity Trimmed mutant -> fails AGivenNameIsStoredTrimmedOnAFirstAndALaterSave and RenameStoresTrimmedNameAndPreservesOtherFields"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s7.md",
+    "verdict": "reconciled",
+    "candidate": "f2a0bd96e24fac4d42414d5135c9305b9f1a13d5",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s7.md",
+    "candidate": "9ed650a42410a43386f1a03bba7bfcb5507df563",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "9ed650a42410a43386f1a03bba7bfcb5507df563",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 8,
+  "pass_cap": 33
+}

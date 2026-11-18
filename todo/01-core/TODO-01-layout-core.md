@@ -43,7 +43,7 @@ depends_on: ["dotnet-foundation"]
 | 4 | §4 | Atomic JSON file with read-back | §1, §3 | [x] |
 | 5 | §5 | Layout store | §1, §2, §4 | [x] |
 | 6 | §6 | Settings store | §4 | [x] |
-| 7 | §7 | Layout names: defaults and validation | §1, §9, §12 | [ ] |
+| 7 | §7 | Layout names: defaults and validation | §1, §9, §12 | [x] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
 | 9 | §9 | Save operation | §5, §8, §14, §15 | [x] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [x] |
@@ -255,9 +255,12 @@ The default name of a first save and the three naming rules of SPEC §10, in one
 > **Resolved:** the stored read-back of a trimmed name through `Save` (first and later save), by `SaveTests.AGivenNameIsStoredTrimmedOnAFirstAndALaterSave` -> XREF: D01 T01 §9
 > **Resolved:** the stored read-back of a trimmed name through `Rename`, by `LayoutEditTests.RenameStoresTrimmedNameAndPreservesOtherFields` -> XREF: D01 T01 §12
 - [x] Add `tests/Berth.Tests/Core/LayoutNamesTests.cs`. Done when: all pass, and the clash test fails when comparison becomes case-sensitive. Cheaper substitute: one test of the default name.
-- [ ] Commit: `core: layout names`
+- [x] Commit: `core: layout names`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutNamesTests"` passes, and fails when name comparison is made case-sensitive.
+
+> **Verified:** 2026-11-19 | §7 | f2a0bd96e24fac4d42414d5135c9305b9f1a13d5
+> **Review:** `docs/reviews/d01-t01-s7.json`
 
 ## 8. Desktop and monitor seams with fakes
 
