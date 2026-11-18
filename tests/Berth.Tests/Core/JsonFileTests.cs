@@ -202,6 +202,73 @@ public sealed partial class JsonFileTests
 
         Assert.Equal("kept", File.ReadAllText(kept));
     }
+    private sealed class SimulatedCrash : Exception
+    {
+    }
+
+    [Fact]
+    public void ACrashAfterTheReplaceIsFinishedByTheNextReadWhenTheFileHadChanged()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new SettingsStore(paths);
+        store.Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] arrived = "{ damaged by a sync"u8.ToArray();
+
+        // The process ends between the replace and its check.
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null,
+            afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
+            afterReplace: () => throw new SimulatedCrash()));
+        Assert.True(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+
+        SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
+
+        Assert.True(load.Exists);
+        Assert.False(string.IsNullOrWhiteSpace(load.Unreadable));
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+        Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+        string keptSave = Assert.Single(Directory.GetFiles(paths.DataRoot, "settings.json" + JsonFile.KeptSuffix + "*"));
+        Assert.Contains("\"restoreAutomatically\": true", File.ReadAllText(keptSave), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACrashAfterTheReplaceLeavesTheSaveWhenNothingHadChanged()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null, afterCheck: null, afterReplace: () => throw new SimulatedCrash()));
+
+        Assert.Equal(new SettingsLoad(new Settings(1, true, null), Exists: true, Unreadable: null), new SettingsStore(paths).Load());
+        Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+    }
+
+    [Fact]
+    public void TheLayoutStoreFinishesAnInterruptedSaveToo()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        byte[] arrived = "{ damaged"u8.ToArray();
+
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => File.WriteAllBytes(path, arrived), afterReplace: () => throw new SimulatedCrash()));
+
+        Assert.Throws<UnreadableLayoutException>(() => new LayoutStore(paths).Find(layout.Key));
+        Assert.Equal(arrived, File.ReadAllBytes(path));
+    }
     [Fact]
     public void WriteOverReplacesAFileThatIsStillWhatWasRead()
     {

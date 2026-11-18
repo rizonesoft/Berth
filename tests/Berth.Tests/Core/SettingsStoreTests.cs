@@ -155,6 +155,29 @@ public sealed class SettingsStoreTests
         }
     }
     [Fact]
+    public void AFileLockedDuringASaveIsReportedAsUnreadableNotAsAWriteFailure()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] before = File.ReadAllBytes(paths.SettingsFile);
+            FileStream? held = null;
+            try
+            {
+                UnreadableSettingsException error = Assert.Throws<UnreadableSettingsException>(() =>
+                    store.Save(Settings.Default, beforeReplace: () => held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None)));
+                Assert.False(string.IsNullOrWhiteSpace(error.Reason));
+            }
+            finally
+            {
+                held?.Dispose();
+            }
+
+            Assert.Equal(before, File.ReadAllBytes(paths.SettingsFile));
+        }
+    }
+    [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

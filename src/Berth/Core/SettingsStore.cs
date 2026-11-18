@@ -1,3 +1,4 @@
+using System.IO;
 using Berth.Core.Model;
 
 namespace Berth.Core;
@@ -15,6 +16,16 @@ internal sealed class SettingsStore(BerthPaths paths)
 
     private SettingsLoad Load(out byte[]? read)
     {
+        read = null;
+        try
+        {
+            JsonFile.Recover(paths.SettingsFile);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new SettingsLoad(Settings.Default, Exists: true, Unreadable: $"An earlier save could not be finished: {error.Message}");
+        }
+
         if (!JsonFile.TryRead(paths.SettingsFile, BerthJson.Default.Settings, out Settings? value, out string? reason, out read))
         {
             return reason == JsonFile.Missing

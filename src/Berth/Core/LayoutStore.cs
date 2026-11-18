@@ -150,6 +150,15 @@ internal sealed class LayoutStore(BerthPaths paths)
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
+        try
+        {
+            JsonFile.Recover(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}"));
+        }
+
         FileInfo? entry;
         try
         {

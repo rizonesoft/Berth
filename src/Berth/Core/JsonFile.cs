@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Security.AccessControl;
 using System.Text.RegularExpressions;
@@ -166,16 +167,78 @@ internal static partial class JsonFile
     /// </summary>
     private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace)
     {
-        // A file that changed while the temporary one was written is not replaced at all.
-        if (!HoldsExactly(path, expected))
+        // A file that changed (or was locked) while the temporary one was written is not replaced at all.
+        bool same;
+        try
+        {
+            same = HoldsExactly(path, expected);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new TargetChangedException(path, error);
+        }
+
+        if (!same)
         {
             throw new TargetChangedException(path);
         }
 
         afterCheck?.Invoke();
         string kept = path + KeptSuffix + Guid.NewGuid().ToString("N");
+
+        // Written before the replace, so a crash between the replace and its check is finished by Recover on the
+        // next read: Berth's save never stays in place over a file that had changed.
+        string pending = path + PendingSuffix;
+        File.WriteAllText(pending, Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected)));
         File.Replace(temp, path, kept, ignoreMetadataErrors: false);
         afterReplace?.Invoke();
+        Settle(path, kept, expected, written);
+        File.Delete(pending);
+    }
+
+    /// <summary>The suffix of the note a save over an existing file leaves until it has checked what it displaced.</summary>
+    public const string PendingSuffix = ".berth-pending";
+
+    /// <summary>
+    /// Finishes a save over <paramref name="path"/> that ended between its replace and its check (a crash, Task
+    /// Manager): when the version it displaced is not the one it had read, that version goes back in place and the
+    /// unverified save is kept beside it. Every reader of a Berth file calls this first; with no note it does nothing.
+    /// </summary>
+    /// <exception cref="IOException">The interrupted save cannot be finished now.</exception>
+    /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
+    public static void Recover(string path)
+    {
+        string pending = path + PendingSuffix;
+        if (!File.Exists(pending))
+        {
+            return;
+        }
+
+        string[] note = File.ReadAllLines(pending);
+        string? keptName = note.Length == 2 ? note[0] : null;
+        string kept = keptName is null ? string.Empty : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, keptName);
+        if (keptName is not null && File.Exists(kept) && !HashOf(kept).Equals(note[1], StringComparison.OrdinalIgnoreCase))
+        {
+            // The displaced version is not what the save had read: put it back, keep the unverified save beside it.
+            File.Replace(kept, path, path + KeptSuffix + Guid.NewGuid().ToString("N"), ignoreMetadataErrors: false);
+        }
+        else if (keptName is not null && File.Exists(kept))
+        {
+            File.Delete(kept);
+        }
+
+        File.Delete(pending);
+    }
+
+    private static string HashOf(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    /// <summary>Deletes the displaced version when it is the one that was read; otherwise puts it back (see ReplaceExpected).</summary>
+    private static void Settle(string path, string kept, byte[] expected, byte[] written)
+    {
         if (HoldsExactly(kept, expected))
         {
             File.Delete(kept);
@@ -189,9 +252,9 @@ internal static partial class JsonFile
             File.Delete(displaced);
         }
 
+        File.Delete(path + PendingSuffix);
         throw new TargetChangedException(path);
     }
-
     /// <summary>Whether <paramref name="path"/> holds exactly <paramref name="bytes"/>, read only when the lengths agree.</summary>
     private static bool HoldsExactly(string path, byte[] bytes)
     {
@@ -327,8 +390,8 @@ internal sealed class TargetChangedException : IOException
     {
     }
 
-    public TargetChangedException(string message, Exception innerException)
-        : base(message, innerException)
+    public TargetChangedException(string path, Exception innerException)
+        : base($"'{path}' could not be checked just before it was replaced, so it was left as it is.", innerException)
     {
     }
 }
