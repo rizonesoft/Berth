@@ -43,6 +43,7 @@ internal enum Refusal
     None,
     AutoArrange,
     NoLayout,
+    NoPreviousSave,
     DesktopUnavailable,
     NothingToUndo,
     Busy,

@@ -570,7 +570,11 @@ internal static partial class JsonFile
     /// Names compare as Windows compares them, unless <paramref name="exactName"/> asks for the name exactly as given
     /// (the layout store's rule), so a file renamed to another case is not taken for the caller's file.
     /// </summary>
-    internal static bool IsTheFileItself(FileStream opened, string path, bool exactName = false)
+    internal static bool IsTheFileItself(FileStream opened, string path, bool exactName = false) =>
+        IsTheFileItself(opened.SafeFileHandle, path, exactName);
+
+    /// <summary>As <see cref="IsTheFileItself(FileStream, string, bool)"/> over an already opened file handle.</summary>
+    internal static bool IsTheFileItself(Microsoft.Win32.SafeHandles.SafeFileHandle handle, string path, bool exactName = false)
     {
         string full = Path.GetFullPath(path);
         if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
@@ -578,9 +582,63 @@ internal static partial class JsonFile
             return false;
         }
 
-        string final = FinalPath(opened.SafeFileHandle);
+        string final = FinalPath(handle);
         return string.Equals(Path.GetDirectoryName(final), FinalFolderPath(Path.GetDirectoryName(full)!), StringComparison.OrdinalIgnoreCase)
             && string.Equals(Path.GetFileName(final), Path.GetFileName(full), exactName ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Deletes <paramref name="path"/> under an exclusive handle only when it is the file itself and still holds
+    /// <paramref name="expected"/>, leaving any link, mis-cased file, or concurrent change untouched and throwing
+    /// <see cref="TargetChangedException"/> when the file changed or another program held it unreadable.
+    /// </summary>
+    public static void DeleteExpected(string path, byte[] expected, Action? afterCheck = null, bool exactName = false)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentNullException.ThrowIfNull(expected);
+        using Microsoft.Win32.SafeHandles.SafeFileHandle handle = NativeMethods.CreateFile(
+            path, NativeMethods.GenericRead | NativeMethods.DeleteAccess, NativeMethods.ShareNone, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.OpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            int err = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
+            if (err == NativeMethods.ErrorFileNotFound)
+            {
+                throw new FileNotFoundException($"Could not find file '{path}'.", path);
+            }
+
+            if (err == NativeMethods.ErrorPathNotFound)
+            {
+                throw new DirectoryNotFoundException($"Could not find a part of the path '{path}'.");
+            }
+
+            Exception error = Win32ExceptionFor(err, path);
+            if (!CanRead(path))
+            {
+                throw new TargetChangedException(path, error);
+            }
+
+            throw error;
+        }
+
+        if (!IsTheFileItself(handle, path, exactName) || !HoldsExactly(handle, expected))
+        {
+            throw new TargetChangedException(path);
+        }
+
+        afterCheck?.Invoke();
+        byte delete = 1;
+        if (!NativeMethods.SetFileInformationByHandle(handle, NativeMethods.FileDispositionInfoClass, ref delete, 1))
+        {
+            throw Win32ExceptionFor(System.Runtime.InteropServices.Marshal.GetLastPInvokeError(), path);
+        }
+    }
+
+    private static Exception Win32ExceptionFor(int win32Error, string path)
+    {
+        string detail = System.Runtime.InteropServices.Marshal.GetPInvokeErrorMessage(win32Error);
+        return win32Error == NativeMethods.ErrorAccessDenied
+            ? new UnauthorizedAccessException($"Access to the path '{path}' is denied. {detail}".TrimEnd())
+            : new IOException(detail, unchecked((int)0x80070000 | (win32Error & 0xFFFF)));
     }
 
     /// <summary>
@@ -617,6 +675,30 @@ internal static partial class JsonFile
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    /// <summary>Whether <paramref name="handle"/> holds exactly <paramref name="bytes"/> from byte 0; reads only when lengths agree.</summary>
+    private static bool HoldsExactly(Microsoft.Win32.SafeHandles.SafeFileHandle handle, byte[] bytes)
+    {
+        if (RandomAccess.GetLength(handle) != bytes.Length)
+        {
+            return false;
+        }
+
+        byte[] actual = new byte[bytes.Length];
+        int offset = 0;
+        while (offset < actual.Length)
+        {
+            int read = RandomAccess.Read(handle, actual.AsSpan(offset), offset);
+            if (read == 0)
+            {
+                return false;
+            }
+
+            offset += read;
+        }
+
+        return actual.AsSpan().SequenceEqual(bytes);
     }
 
     /// <summary>Whether <paramref name="stream"/>, from its start, holds exactly <paramref name="bytes"/>; read only when the lengths agree.</summary>
@@ -783,11 +865,24 @@ internal static partial class NativeMethods
     internal static partial uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, ref char path, uint size, uint flags);
 
     internal const uint FileReadAttributes = 0x80;
+    internal const uint GenericRead = 0x80000000;
+    internal const uint DeleteAccess = 0x00010000;
+    internal const uint ShareNone = 0;
     internal const uint ShareAll = 0x7;
     internal const uint OpenExisting = 3;
+    internal const uint OpenReparsePoint = 0x00200000;
     internal const uint BackupSemantics = 0x02000000;
+    internal const int FileDispositionInfoClass = 4;
+    internal const int ErrorFileNotFound = 2;
+    internal const int ErrorPathNotFound = 3;
+    internal const int ErrorAccessDenied = 5;
 
-    /// <summary>CreateFileW, for a folder handle (BACKUP_SEMANTICS), which .NET does not open.</summary>
+    /// <summary>CreateFileW, for a folder handle (BACKUP_SEMANTICS) or an exclusive handle to a file/reparse point.</summary>
     [System.Runtime.InteropServices.LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
     internal static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    /// <summary>SetFileInformationByHandle, for marking disposition directly on the validated handle.</summary>
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    internal static partial bool SetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, int fileInformationClass, ref byte deleteFile, uint bufferSize);
 }

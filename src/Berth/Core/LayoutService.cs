@@ -63,8 +63,29 @@ internal sealed class LayoutService(
     /// </summary>
     public OperationResult Undo() => Logged("Undo", UndoLocked, origin: null);
 
-    /// <summary>Lets a test act between the save's read of the layouts and its write. Production leaves it null.</summary>
+    /// <summary>
+    /// Renames the saved layout of <paramref name="key"/> to trimmed <paramref name="name"/> (SPEC §10), validating
+    /// against the other layouts' names and reading the file back before reporting.
+    /// </summary>
+    public OperationResult Rename(string key, string name) => Logged("Rename", () => RenameLocked(key, name), origin: null);
+
+    /// <summary>
+    /// Swaps the saved layout of <paramref name="key"/> with its <c>previous</c> save (SPEC §10) and reads the file
+    /// back before reporting; moves no icons and leaves <c>undo.json</c> untouched.
+    /// </summary>
+    public OperationResult Revert(string key) => Logged("Revert", () => RevertLocked(key), origin: null);
+
+    /// <summary>
+    /// Deletes the saved layout of <paramref name="key"/> (SPEC §10) and reads the folder back before reporting; moves
+    /// no icons and leaves <c>undo.json</c> untouched.
+    /// </summary>
+    public OperationResult Delete(string key) => Logged("Delete", () => DeleteLocked(key), origin: null);
+
+    /// <summary>Lets a test act between an operation's read of the layouts and its write. Production leaves it null.</summary>
     internal Action? BeforeWrite { get; init; }
+
+    /// <summary>Lets a test act after a write or delete and before the post-operation read-back. Production leaves it null.</summary>
+    internal Action? AfterWrite { get; init; }
 
     private OperationResult SaveLocked(string? name)
     {
@@ -369,6 +390,211 @@ internal sealed class LayoutService(
         return OperationResult.Undone(snapshot.Icons.Length, inPlace, notPlaced, missing);
     }
 
+    private OperationResult RenameLocked(string key, string name)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(name);
+        if (!BerthPaths.IsKey(key))
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (!TryReadSnapshot(key, out LayoutSnapshot? snapshot, out OperationResult? failure))
+        {
+            return failure!;
+        }
+
+        if (snapshot!.Layout is not { } current)
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        NameError shapeProblem = LayoutNames.Validate(name, []);
+        if (shapeProblem != NameError.None)
+        {
+            return OperationResult.Refused(Refusal.InvalidName, nameError: shapeProblem);
+        }
+
+        LayoutSet all;
+        try
+        {
+            all = store.LoadAll();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(FailureKind.ReadFailed, paths.LayoutsFolder, error.Message);
+        }
+
+        if (all.Unreadable.FirstOrDefault(u => u.Held) is { } held)
+        {
+            return OperationResult.Refused(Refusal.UnreadableLayout, path: held.FileName, detail: held.Reason);
+        }
+
+        string[] others = [.. all.Layouts.Where(l => l.Key != key).Select(l => l.Name)];
+        NameError problem = LayoutNames.Validate(name, others);
+        if (problem != NameError.None)
+        {
+            return OperationResult.Refused(Refusal.InvalidName, nameError: problem);
+        }
+
+        string trimmed = LayoutNames.Trimmed(name);
+        Layout renamed = current with { Name = trimmed };
+        return SaveAndVerify(key, renamed, snapshot, () => OperationResult.Renamed(trimmed));
+    }
+
+    private OperationResult RevertLocked(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (!BerthPaths.IsKey(key))
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (!TryReadSnapshot(key, out LayoutSnapshot? snapshot, out OperationResult? failure))
+        {
+            return failure!;
+        }
+
+        if (snapshot!.Layout is not { } current)
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (current.Previous is not { } previous)
+        {
+            return OperationResult.Refused(Refusal.NoPreviousSave);
+        }
+
+        Layout reverted = current with
+        {
+            SavedAt = previous.SavedAt,
+            Icons = previous.Icons,
+            Previous = new PreviousSave(current.SavedAt, current.Icons),
+        };
+        return SaveAndVerify(key, reverted, snapshot, () => OperationResult.Reverted(current.Name, previous.SavedAt));
+    }
+
+    private OperationResult DeleteLocked(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (!BerthPaths.IsKey(key))
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (!TryReadSnapshot(key, out LayoutSnapshot? snapshot, out OperationResult? failure))
+        {
+            return failure!;
+        }
+
+        if (snapshot!.Layout is not { } current)
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        string file = paths.LayoutFile(key);
+        BeforeWrite?.Invoke();
+        try
+        {
+            store.Delete(snapshot);
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            return OperationResult.Refused(Refusal.UnreadableLayout, path: unreadable.FileName, detail: unreadable.Reason);
+        }
+        catch (TargetChangedException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, "The layout file changed before it could be deleted. It was left as it is.", current.Name);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, current.Name);
+        }
+
+        AfterWrite?.Invoke();
+        try
+        {
+            Layout? remaining = store.Find(key);
+            if (remaining is not null)
+            {
+                return OperationResult.Failed(FailureKind.WriteFailed, file, "The layout file is still there after it was deleted.", current.Name);
+            }
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, unreadable.Reason, current.Name);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, current.Name);
+        }
+
+        return OperationResult.Deleted(current.Name);
+    }
+
+    private bool TryReadSnapshot(string key, out LayoutSnapshot? snapshot, out OperationResult? failure)
+    {
+        try
+        {
+            snapshot = store.Snapshot(key);
+            failure = null;
+            return true;
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            snapshot = null;
+            failure = OperationResult.Refused(Refusal.UnreadableLayout, path: unreadable.FileName, detail: unreadable.Reason);
+            return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            snapshot = null;
+            failure = OperationResult.Failed(FailureKind.ReadFailed, paths.LayoutsFolder, error.Message);
+            return false;
+        }
+    }
+
+    private OperationResult SaveAndVerify(string key, Layout updated, LayoutSnapshot snapshot, Func<OperationResult> onMatch)
+    {
+        string file = paths.LayoutFile(key);
+        BeforeWrite?.Invoke();
+        try
+        {
+            store.Save(updated, snapshot);
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            return OperationResult.Refused(Refusal.UnreadableLayout, path: unreadable.FileName, detail: unreadable.Reason);
+        }
+        catch (TargetChangedException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, "The layout file changed while it was being saved. It was left as it is.", updated.Name);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, updated.Name);
+        }
+
+        AfterWrite?.Invoke();
+        Layout? readBack;
+        try
+        {
+            readBack = store.Find(key);
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, unreadable.Reason, updated.Name);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, updated.Name);
+        }
+
+        return updated.Equals(readBack)
+            ? onMatch()
+            : OperationResult.Failed(FailureKind.WriteFailed, file, "The layout file read back after saving does not match what was written.", updated.Name);
+    }
+
     private UndoSnapshot? ReadUndoSnapshot()
     {
         byte[] bytes;
@@ -492,6 +718,7 @@ internal sealed class LayoutService(
         $"{operation}: {result.Kind}"
         + (result.LayoutName is null ? string.Empty : $" \"{result.LayoutName}\"")
         + (result.Kind == OperationKind.Saved ? $", {result.Total} icons" : string.Empty)
+        + (result.SavedAt is null ? string.Empty : $", {result.SavedAt.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}")
         + (result.Refusal == Refusal.None ? string.Empty : $", {result.Refusal}")
         + (result.NameError == NameError.None ? string.Empty : $" ({result.NameError})")
         + (result.Path is null ? string.Empty : $", {result.Path}")

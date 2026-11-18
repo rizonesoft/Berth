@@ -226,9 +226,13 @@ internal sealed class LayoutStore(BerthPaths paths)
 
     /// <summary>Deletes the layout of <paramref name="key"/>; false when there is none.</summary>
     /// <exception cref="UnreadableLayoutException">Its file cannot be read now, so it is kept.</exception>
+    /// <exception cref="TargetChangedException">The file changed into another readable file before deletion, so it is kept.</exception>
     /// <exception cref="IOException">The file cannot be deleted.</exception>
     /// <exception cref="UnauthorizedAccessException">The file may not be deleted.</exception>
-    public bool Delete(string key)
+    public bool Delete(string key) => Delete(key, beforeDelete: null);
+
+    /// <summary>As <see cref="Delete(string)"/>; <paramref name="beforeDelete"/> lets a test act after the byte check while the exclusive handle is open.</summary>
+    internal bool Delete(string key, Action? beforeDelete)
     {
         string path = paths.LayoutFile(key);
         Lookup found = Read(path, key);
@@ -242,8 +246,52 @@ internal sealed class LayoutStore(BerthPaths paths)
             return false;
         }
 
-        File.Delete(path);
+        DeleteLoaded(path, key, found.Bytes!, beforeDelete);
         return true;
+    }
+
+    /// <summary>
+    /// Deletes the layout over exactly the version in <paramref name="expected"/>: a file that changed since is kept
+    /// and the deletion fails with <see cref="TargetChangedException"/> or <see cref="UnreadableLayoutException"/>.
+    /// </summary>
+    public void Delete(LayoutSnapshot expected) => Delete(expected, beforeDelete: null);
+
+    /// <summary>As <see cref="Delete(LayoutSnapshot)"/>; <paramref name="beforeDelete"/> lets a test act after the byte check while the exclusive handle is open.</summary>
+    internal void Delete(LayoutSnapshot expected, Action? beforeDelete)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        if (expected.Layout is null || expected.Bytes is null)
+        {
+            throw new ArgumentException($"The snapshot of {expected.Key} holds no layout to delete.", nameof(expected));
+        }
+
+        DeleteLoaded(paths.LayoutFile(expected.Key), expected.Key, expected.Bytes, beforeDelete);
+    }
+
+    private static void DeleteLoaded(string path, string key, byte[] expected, Action? beforeDelete)
+    {
+        try
+        {
+            JsonFile.DeleteExpected(path, expected, beforeDelete, exactName: true);
+        }
+        catch (TargetChangedException changed) when (changed.InnerException is IOException or UnauthorizedAccessException)
+        {
+            throw new UnreadableLayoutException(Path.GetFileName(path), changed.InnerException.Message);
+        }
+        catch (TargetChangedException)
+        {
+            if (Read(path, key).Unreadable is { } arrived)
+            {
+                throw new UnreadableLayoutException(arrived.FileName, arrived.Reason);
+            }
+
+            throw;
+        }
+
+        if (Entry(path) is not null)
+        {
+            throw new IOException($"'{path}' is still there after it was deleted.");
+        }
     }
 
     /// <summary>
