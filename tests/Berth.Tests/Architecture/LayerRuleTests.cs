@@ -91,6 +91,9 @@ public sealed class LayerRuleTests
     [InlineData("/* namespace Berth.Core; */\ninternal enum Global { A }", false)]
     [InlineData("internal class NoNamespace { }", false)]
     [InlineData("", false)]
+    [InlineData("#if !WINDOWS\nnamespace Berth.Core;\n#endif\ninternal class Hidden { }", false)]
+    [InlineData("#define X\nnamespace Berth.Core;\ninternal class X1 { }", false)]
+    [InlineData("#nullable enable\nnamespace Berth.Core;\n#pragma warning disable CA1812\ninternal sealed class X { }", true)]
     public void ASourceFileMustBeOneFileScopedCoreNamespace(string source, bool accepted)
     {
         Assert.Equal(accepted, DeclaresCoreNamespace(source));
@@ -113,7 +116,8 @@ public sealed class LayerRuleTests
     {
         SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
         BaseNamespaceDeclarationSyntax[] namespaces = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToArray();
-        return namespaces is [FileScopedNamespaceDeclarationSyntax only]
+        return !HasConditionalCompilation(root)
+            && namespaces is [FileScopedNamespaceDeclarationSyntax only]
             && InCore(only.Name.ToString())
             && StrayTypes(source).Count == 0;
     }
@@ -130,6 +134,14 @@ public sealed class LayerRuleTests
             .Select(t => t.Namespace.Length == 0 ? t.Name : t.Namespace + "." + t.Name)
             .ToList();
     }
+
+    /// <summary>
+    /// Core has no use for conditional compilation, and a file that has it can show this parser one structure and
+    /// the Windows compiler (which defines WINDOWS and more) another, so it is refused outright.
+    /// </summary>
+    private static bool HasConditionalCompilation(SyntaxNode root) => root.DescendantTrivia(descendIntoTrivia: true).Any(trivia =>
+        trivia.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia or SyntaxKind.ElseDirectiveTrivia
+            or SyntaxKind.EndIfDirectiveTrivia or SyntaxKind.DefineDirectiveTrivia or SyntaxKind.UndefDirectiveTrivia);
 
     private static bool InCore(string name) => name == "Berth.Core" || name.StartsWith("Berth.Core.", StringComparison.Ordinal);
     private static string Namespace(SyntaxNode node) => string.Join(
