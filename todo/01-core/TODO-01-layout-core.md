@@ -523,9 +523,10 @@ Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blo
 
 **Build order:**
 
-1. Check every fake test reaches the fakes through the interfaces. Done when: no test in `FakeDesktopIconsTests` calls a desktop member on the fake's own type.
+1. Check every fake test reaches the fakes through the interfaces. Done when: no test in `FakeDesktopIconsTests` calls a desktop or monitor member on a fake's own type (**Corrected 2026-11-18:** plan review, monitors too).
 
-- [ ] Route `SnapByShiftsOnlyTheChosenIcons` through `IDesktopIcons` (`Seam(fake)`) for all three cases, keeping its exact coordinates. Done when: the test passes and every `SetPositions` and `ReadIcons` call in `tests/Berth.Tests/Fakes/FakeDesktopIconsTests.cs` is on an `IDesktopIcons`. Cheaper substitute: narrowing the record's claim instead.
+- [x] Route `SnapByShiftsOnlyTheChosenIcons` through `IDesktopIcons` (`Seam(fake)`) for all three cases, keeping its exact coordinates. Done when: the test passes and every `SetPositions` and `ReadIcons` call in `tests/Berth.Tests/Fakes/FakeDesktopIconsTests.cs` is on an `IDesktopIcons`. Cheaper substitute: narrowing the record's claim instead.
+- [x] Make the contract members of `FakeDesktopIcons` and `FakeMonitors` explicit interface implementations, so a test that calls them on the fake's own type does not compile; setup and inspection members (`Calls`, `Unavailable`, `SnapBy`, `Monitors`) stay on the fake (**Corrected 2026-11-18:** plan review). Done when: the suite builds and passes, and calling `fake.ReadIcons()` or `fake.Read()` in a test is a compile error. Cheaper substitute: a grep that a later edit can slip past.
 - [ ] Commit: `test: fake contract tests go through the seams`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FakeDesktopIconsTests"` passes.

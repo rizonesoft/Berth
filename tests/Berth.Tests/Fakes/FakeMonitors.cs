@@ -13,9 +13,9 @@ internal sealed class FakeMonitors : IMonitors
 
     public List<MonitorInfo> Monitors { get; set; }
 
-    /// <summary>When true, <see cref="Read"/> throws <see cref="DesktopUnavailableException"/>, as it does for an empty list.</summary>
+    /// <summary>When true, <see cref="IMonitors.Read"/> throws <see cref="DesktopUnavailableException"/>, as it does for an empty list.</summary>
     public bool Unavailable { get; set; }
 
-    public IReadOnlyList<MonitorInfo> Read() =>
+    IReadOnlyList<MonitorInfo> IMonitors.Read() =>
         Unavailable || Monitors.Count == 0 ? throw new DesktopUnavailableException("No monitor can be read.") : [.. Monitors];
 }

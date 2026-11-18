@@ -23,7 +23,7 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 19 | Checklist items: 117
+Sections: 19 | Checklist items: 118
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
@@ -45,7 +45,7 @@ Sections: 19 | Checklist items: 117
 | [ ]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
 | [ ]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
 | [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
-| [ ]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 2     |
+| [ ]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
 
 ### Phase 2: Desktop access
 
@@ -154,4 +154,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 15/83 verified sections, 5 ready to run now.
 
-Checklist: 100/503 items completed (includes Commit items).
+Checklist: 102/504 items completed (includes Commit items).

@@ -5,7 +5,7 @@ namespace Berth.Tests.Fakes;
 
 /// <summary>
 /// A desktop for rule tests: it moves only icons that are on it (matched by parsing name ignoring case, never by
-/// display name), records every <see cref="SetPositions"/> call, and can imitate Windows adjusting positions, keeping
+/// display name), records every <see cref="IDesktopIcons.SetPositions"/> call, and can imitate Windows adjusting positions, keeping
 /// auto arrange on, or being unreachable.
 /// </summary>
 internal sealed class FakeDesktopIcons : IDesktopIcons
@@ -18,14 +18,14 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         this.icons = [.. icons];
     }
 
-    /// <summary>Every <see cref="SetPositions"/> call, with a copy of the icons it asked for, recorded before anything
+    /// <summary>Every <see cref="IDesktopIcons.SetPositions"/> call, with a copy of the icons it asked for, recorded before anything
     /// moves and before an unavailable desktop refuses it, so a test can prove a write was never attempted.</summary>
     public List<IReadOnlyList<IconPosition>> Calls { get; } = [];
 
     /// <summary>When true, every member throws <see cref="DesktopUnavailableException"/> and changes nothing.</summary>
     public bool Unavailable { get; set; }
 
-    /// <summary>When true, <see cref="TryTurnAutoArrangeOff"/> returns false and auto arrange stays on.</summary>
+    /// <summary>When true, <see cref="IDesktopIcons.TryTurnAutoArrangeOff"/> returns false and auto arrange stays on.</summary>
     public bool KeepsAutoArrange { get; set; }
 
     /// <summary>How far Windows shifts a set position, in both directions (0: it lands exactly).</summary>
@@ -37,7 +37,7 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
     /// <summary>Sets auto arrange directly, as the owner would in Explorer.</summary>
     public void SetAutoArrange(bool on) => autoArrange = on;
 
-    public bool AutoArrange
+    bool IDesktopIcons.AutoArrange
     {
         get
         {
@@ -46,13 +46,13 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         }
     }
 
-    public IReadOnlyList<IconPosition> ReadIcons()
+    IReadOnlyList<IconPosition> IDesktopIcons.ReadIcons()
     {
         ThrowIfUnavailable();
         return [.. icons];
     }
 
-    public void SetPositions(IReadOnlyList<IconPosition> requested)
+    void IDesktopIcons.SetPositions(IReadOnlyList<IconPosition> requested)
     {
         ArgumentNullException.ThrowIfNull(requested);
         Calls.Add([.. requested]);
@@ -71,7 +71,7 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         }
     }
 
-    public bool TryTurnAutoArrangeOff()
+    bool IDesktopIcons.TryTurnAutoArrangeOff()
     {
         ThrowIfUnavailable();
         if (KeepsAutoArrange)
