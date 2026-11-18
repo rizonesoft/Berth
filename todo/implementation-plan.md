@@ -23,11 +23,11 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 18 | Checklist items: 111
+Sections: 18 | Checklist items: 112
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
-| [ ]    | D01 T01 §1  | Layout, monitor and icon records                           | none  | 6     |
+| [ ]    | D01 T01 §1  | Layout, monitor and icon records                           | none  | 7     |
 | [ ]    | D01 T01 §2  | Arrangement key                                            | none  | 4     |
 | [ ]    | D01 T01 §3  | Data paths that honour BERTH_DATA                          | none  | 5     |
 | [ ]    | D01 T01 §4  | Atomic JSON file with read-back                            | none  | 5     |
@@ -153,4 +153,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 8/82 verified sections, 2 ready to run now.
 
-Checklist: 53/496 items completed (includes Commit items).
+Checklist: 59/497 items completed (includes Commit items).
