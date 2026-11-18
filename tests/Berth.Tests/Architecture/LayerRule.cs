@@ -185,6 +185,12 @@ internal static class LayerRule
             {
                 Use(member, token);
             }
+
+            // A catch clause names its exception type in the region table, not in the IL.
+            foreach (ExceptionRegion region in body.ExceptionRegions)
+            {
+                Use(member, region.CatchType);
+            }
         }
 
         private static IEnumerable<EntityHandle> Tokens(byte[]? il)
@@ -244,10 +250,85 @@ internal static class LayerRule
 
         private void Attributes(string member, CustomAttributeHandleCollection attributes)
         {
-            foreach (CustomAttributeHandle attribute in attributes)
+            foreach (CustomAttributeHandle handle in attributes)
             {
-                Use(member, md.GetCustomAttribute(attribute).Constructor);
+                CustomAttribute attribute = md.GetCustomAttribute(handle);
+                Use(member, attribute.Constructor);
+
+                // typeof(...) values are serialized into the attribute blob, outside every signature.
+                CustomAttributeValue<ImmutableArray<Ref>> value;
+                try
+                {
+                    value = attribute.DecodeValue(new AttributeTypes(this));
+                }
+                catch (BadImageFormatException error)
+                {
+                    // Fail closed: an attribute the rule cannot read is reported, never passed.
+                    violations.Add($"{member} has an attribute whose value cannot be read: {error.Message}");
+                    continue;
+                }
+                foreach (CustomAttributeTypedArgument<ImmutableArray<Ref>> argument in value.FixedArguments)
+                {
+                    Check(member, ArgumentTypes(argument));
+                }
+
+                foreach (CustomAttributeNamedArgument<ImmutableArray<Ref>> argument in value.NamedArguments)
+                {
+                    Check(member, argument.Type.AddRange(ArgumentTypes(new(argument.Type, argument.Value))));
+                }
             }
+        }
+
+        private static ImmutableArray<Ref> ArgumentTypes(CustomAttributeTypedArgument<ImmutableArray<Ref>> argument) =>
+            argument.Value switch
+            {
+                ImmutableArray<Ref> type => type,
+                ImmutableArray<CustomAttributeTypedArgument<ImmutableArray<Ref>>> items => items.SelectMany(item => ArgumentTypes(item)).ToImmutableArray(),
+                _ => [],
+            };
+
+        /// <summary>The type an attribute blob names by its serialized name, "Namespace.Name, Assembly, ...".</summary>
+        internal ImmutableArray<Ref> FromSerializedName(string serialized)
+        {
+            int comma = serialized.IndexOf(',', StringComparison.Ordinal);
+            string typeName = (comma < 0 ? serialized : serialized[..comma]).Trim();
+            int dot = typeName.LastIndexOf('.');
+            string ns = dot < 0 ? string.Empty : typeName[..dot];
+            string name = dot < 0 ? typeName : typeName[(dot + 1)..];
+            if (comma >= 0)
+            {
+                string assembly = serialized[(comma + 1)..].Split(',')[0].Trim();
+                if (!assembly.Equals(OwnAssembly, StringComparison.OrdinalIgnoreCase))
+                {
+                    return [new Ref(assembly, ns, name, default)];
+                }
+            }
+
+            // Unqualified: this assembly when it defines the type, else the core library.
+            TypeDefinitionHandle own = md.TypeDefinitions.FirstOrDefault(d => FullName(d) == typeName);
+            return own.IsNil ? [new Ref("System.Private.CoreLib", ns, name, default)] : [Definition(own)];
+        }
+
+        /// <summary>An enum's underlying type: read from its value__ field when this assembly defines it.</summary>
+        internal PrimitiveTypeCode UnderlyingEnumType(ImmutableArray<Ref> type)
+        {
+            if (type.Length == 1 && !type[0].Definition.IsNil)
+            {
+                foreach (FieldDefinitionHandle handle in md.GetTypeDefinition(type[0].Definition).GetFields())
+                {
+                    FieldDefinition field = md.GetFieldDefinition(handle);
+                    if (md.GetString(field.Name) == "value__")
+                    {
+                        BlobReader blob = md.GetBlobReader(field.Signature);
+                        blob.ReadSignatureHeader();
+                        return (PrimitiveTypeCode)blob.ReadCompressedInteger();
+                    }
+                }
+            }
+
+            // A base-runtime enum in an attribute (AttributeTargets and the like) is an int; anything else fails
+            // to decode and is reported by the caller.
+            return PrimitiveTypeCode.Int32;
         }
 
         private void Use(string member, EntityHandle handle) => Check(member, Resolve(handle));
@@ -364,13 +445,23 @@ internal static class LayerRule
                 || HasAttribute(type.GetCustomAttributes(), "System.Runtime.InteropServices.Marshalling", "GeneratedComInterfaceAttribute");
         }
 
-        /// <summary>A type the compiler adds to the assembly itself (nullable attributes, private details).</summary>
+        /// <summary>
+        /// A type the compiler itself adds to the assembly, and nothing else: a top-level type whose name C# cannot
+        /// spell (<c>&lt;PrivateImplementationDetails&gt;</c>), or an attribute the compiler embeds (nullable,
+        /// ref-safety and the like) in the namespaces it uses for them. A source type marked [CompilerGenerated] is
+        /// not exempt.
+        /// </summary>
         private bool IsCompilerHelper(TypeDefinitionHandle handle)
         {
             TypeDefinition type = md.GetTypeDefinition(handle);
-            return md.GetString(type.Name).StartsWith('<')
-                || HasAttribute(type.GetCustomAttributes(), "System.Runtime.CompilerServices", "CompilerGeneratedAttribute")
-                || HasAttribute(type.GetCustomAttributes(), "Microsoft.CodeAnalysis", "EmbeddedAttribute");
+            string ns = md.GetString(type.Namespace);
+            if (ns.Length == 0 && md.GetString(type.Name).StartsWith('<'))
+            {
+                return true;
+            }
+
+            return ns is "System.Runtime.CompilerServices" or "Microsoft.CodeAnalysis" or "System.Diagnostics.CodeAnalysis"
+                && HasAttribute(type.GetCustomAttributes(), "Microsoft.CodeAnalysis", "EmbeddedAttribute");
         }
 
         private bool HasAttribute(CustomAttributeHandleCollection attributes, string ns, string name)
@@ -431,5 +522,29 @@ internal static class LayerRule
 
         public ImmutableArray<Ref> GetFunctionPointerType(MethodSignature<ImmutableArray<Ref>> signature) =>
             signature.ReturnType.AddRange(signature.ParameterTypes.SelectMany(p => p));
+    }
+
+    /// <summary>Decodes attribute blobs into the types they name.</summary>
+    private sealed class AttributeTypes(Scan scan) : ICustomAttributeTypeProvider<ImmutableArray<Ref>>
+    {
+        private static readonly ImmutableArray<Ref> SystemType = [new Ref("System.Private.CoreLib", "System", "Type", default)];
+
+        public ImmutableArray<Ref> GetPrimitiveType(PrimitiveTypeCode typeCode) => [];
+
+        public ImmutableArray<Ref> GetSystemType() => SystemType;
+
+        public ImmutableArray<Ref> GetSZArrayType(ImmutableArray<Ref> elementType) => elementType;
+
+        public ImmutableArray<Ref> GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+            scan.GetTypeFromDefinition(reader, handle, rawTypeKind);
+
+        public ImmutableArray<Ref> GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+            scan.GetTypeFromReference(reader, handle, rawTypeKind);
+
+        public ImmutableArray<Ref> GetTypeFromSerializedName(string name) => scan.FromSerializedName(name);
+
+        public PrimitiveTypeCode GetUnderlyingEnumType(ImmutableArray<Ref> type) => scan.UnderlyingEnumType(type);
+
+        public bool IsSystemType(ImmutableArray<Ref> type) => type.Length == 1 && type[0].FullName == "System.Type";
     }
 }

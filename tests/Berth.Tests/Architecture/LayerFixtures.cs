@@ -48,6 +48,36 @@ namespace Berth.Tests.LayerFixtures.Core
         internal Berth.Tests.LayerFixtures.Outside.OuterLayer? outer;
     }
 
+    internal sealed class CatchOnly
+    {
+        internal static void Run(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (System.Windows.Markup.XamlParseException)
+            {
+                return;
+            }
+        }
+    }
+
+    [System.Diagnostics.DebuggerTypeProxy(typeof(System.Windows.Window))]
+    internal sealed class AttributeValue
+    {
+    }
+
+    [System.Diagnostics.DebuggerDisplay("x", Target = typeof(System.Windows.Forms.Form))]
+    internal sealed class NamedAttributeValue
+    {
+    }
+
+    internal sealed class MarkedGeneratedUser
+    {
+        internal Berth.Tests.LayerFixtures.Outside.MarkedGenerated? marked;
+    }
+
     internal sealed class Clean
     {
         internal Dictionary<string, int> Counts { get; } = [];
@@ -72,6 +102,12 @@ namespace Berth.Tests.LayerFixtures.Outside
     }
 
     internal sealed class OuterLayer
+    {
+    }
+
+    // Source code that calls itself generated is still outside Core.
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    internal sealed class MarkedGenerated
     {
     }
 }
