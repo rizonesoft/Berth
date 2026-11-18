@@ -107,6 +107,24 @@ public sealed class LogTests
     }
 
     [Fact]
+    public void TheShippedLogRollsAtExactlyOneMebibyte()
+    {
+        using var data = new TestData();
+        var log = new Log(BerthPaths.ForRoot(data.Root), At);
+        int length = Encoding.UTF8.GetByteCount(log.Record(LogLevel.Info, "hello", null));
+        BerthPaths.EnsureFolderFor(LogFile(data));
+        File.WriteAllBytes(LogFile(data), Enumerable.Repeat((byte)'.', 1_048_576 - length).ToArray());
+
+        log.Info("hello");
+        Assert.Equal(1_048_576, new FileInfo(LogFile(data)).Length); // an exact fit stays
+        Assert.False(File.Exists(LogFile(data) + ".1"));
+
+        log.Info("hello");
+        Assert.Equal(1_048_576, new FileInfo(LogFile(data) + ".1").Length);
+        Assert.Equal(length, new FileInfo(LogFile(data)).Length);
+    }
+
+    [Fact]
     public void ARecordOneByteOverTheCapRolls()
     {
         // Counted in characters the second record would still fit (its umlauts are one character but two bytes).
