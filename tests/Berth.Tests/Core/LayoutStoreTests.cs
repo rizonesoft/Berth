@@ -484,6 +484,27 @@ public sealed class LayoutStoreTests
         }
     }
     [Fact]
+    public void ALayoutMovedAwayDuringASaveIsAWriteFailureAndSurvives()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            store.Save(layout);
+            string path = paths.LayoutFile(layout.Key);
+            byte[] before = File.ReadAllBytes(path);
+            string aside = Path.Combine(data.Root, "moved-aside.json");
+
+            Exception error = Assert.ThrowsAny<Exception>(() => store.Save(layout with { Name = "Desk" }, beforeReplace: () => File.Move(path, aside)));
+
+            Assert.True(error is IOException, error.GetType().FullName);
+            Assert.False(error is TargetChangedException);
+            Assert.IsNotType<UnreadableLayoutException>(error);
+            Assert.Equal(before, File.ReadAllBytes(aside));
+            Assert.Empty(Directory.GetFiles(paths.LayoutsFolder));
+        }
+    }
+    [Fact]
     public void AFirstSaveMakesItsOwnFolder()
     {
         (TestData data, BerthPaths paths, LayoutStore store) = Fresh();

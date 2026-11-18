@@ -168,8 +168,9 @@ public sealed partial class JsonFileTests
     [Theory]
     [InlineData(@"..\outside.txt")]
     [InlineData(@"C:\Windows\win.ini")]
-    [InlineData("other.json.berth-replaced-0123456789abcdef0123456789abcdef")]
-    [InlineData("settings.json.berth-replaced-xyz")]
+    [InlineData("other.json.tmp-0123456789abcdef0123456789abcdef")]
+    [InlineData("settings.json.tmp-xyz")]
+    [InlineData("settings.json.berth-replaced-0123456789abcdef0123456789abcdef")]
     public void ANoteThatIsNotBerthsOwnTouchesNoOtherFile(string named)
     {
         using var data = new TestData();
@@ -178,10 +179,10 @@ public sealed partial class JsonFileTests
         byte[] settings = File.ReadAllBytes(paths.SettingsFile);
         string outside = Path.Combine(data.Root, "outside.txt");
         File.WriteAllText(outside, "the user's own file");
-        string other = Path.Combine(paths.DataRoot, "other.json.berth-replaced-0123456789abcdef0123456789abcdef");
+        string other = Path.Combine(paths.DataRoot, "other.json.tmp-0123456789abcdef0123456789abcdef");
         File.WriteAllText(other, "another target's kept file");
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("anything"u8));
-        File.WriteAllText(paths.SettingsFile + JsonFile.PendingSuffix, named + "\n" + digest);
+        File.WriteAllText(paths.SettingsFile + JsonFile.PendingSuffix, named + "\n" + "settings.json.tmp-" + Guid.NewGuid().ToString("N") + "\n" + digest + "\n" + digest);
 
         SettingsLoad load = new SettingsStore(paths).Load();
 
@@ -346,6 +347,40 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void AWriteCutShortByACrashIsFinishedByTheNextRead()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, true, new WindowPlacement(-1600, 120, 1100, 700)));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] written = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new Settings(1, false, null), BerthJson.Default.Settings);
+        Assert.True(written.Length < read.Length);
+
+        // The process ends after writing the shorter new contents and before trimming the file: new bytes, old tail.
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, false, null), BerthJson.Default.Settings, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+        byte[] torn = [.. written, .. read.AsSpan(written.Length).ToArray()];
+        File.WriteAllBytes(paths.SettingsFile, torn);
+
+        Assert.Equal(new SettingsLoad(new Settings(1, false, null), Exists: true, Unreadable: null), new SettingsStore(paths).Load());
+        Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
+    }
+
+    [Theory]
+    [InlineData("old-old-old", "new", "old-old-old", true)]
+    [InlineData("old-old-old", "new", "newold-old", false)]
+    [InlineData("old-old-old", "new", "new-old-old", true)]
+    [InlineData("old-old-old", "new", "nld-old-old", true)]
+    [InlineData("old-old-old", "new", "other-thing", false)]
+    [InlineData("old", "new-and-longer", "new-and", true)]
+    [InlineData("old", "new-and-longer", "new-and-longer", true)]
+    [InlineData("old", "new-and-longer", "neX", false)]
+    public void ACutShortWriteIsToldFromAnyOtherChange(string previous, string written, string now, bool cutShort)
+    {
+        Assert.Equal(cutShort, JsonFile.CutShort(System.Text.Encoding.UTF8.GetBytes(now), System.Text.Encoding.UTF8.GetBytes(previous), System.Text.Encoding.UTF8.GetBytes(written)));
+    }
+    [Fact]
     public void ACrashAfterTheFileIsWrittenLeavesTheSave()
     {
         using var data = new TestData();
@@ -410,6 +445,50 @@ public sealed partial class JsonFileTests
         Assert.Equal(new SettingsLoad(new Settings(1, true, null), Exists: true, Unreadable: null), seen);
     }
 
+    [Fact]
+    public void AReaderThatMeetsTheSavesLockWaitsAndGetsTheNewVersion()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        using var locked = new ManualResetEventSlim();
+        using var go = new ManualResetEventSlim();
+        var writer = new Thread(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null,
+            afterCheck: () =>
+            {
+                locked.Set();
+                go.Wait(TimeSpan.FromSeconds(20));
+            },
+            afterReplace: null));
+        bool started = false;
+        bool released = false;
+
+        // The reader passes recovery before the save starts, then meets the save's lock, which goes before it looks again.
+        SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load(
+            afterRecover: () =>
+            {
+                if (!started)
+                {
+                    started = true;
+                    writer.Start();
+                    Assert.True(locked.Wait(TimeSpan.FromSeconds(20)));
+                }
+            },
+            afterRead: () =>
+            {
+                if (!released)
+                {
+                    released = true;
+                    go.Set();
+                    Assert.True(writer.Join(TimeSpan.FromSeconds(20)));
+                }
+            });
+
+        Assert.Equal(new SettingsLoad(new Settings(1, true, null), Exists: true, Unreadable: null), load);
+    }
     [Fact]
     public void TwoRecoveriesOfOneAbandonedNoteTakeTurns()
     {
