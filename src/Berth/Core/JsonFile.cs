@@ -73,7 +73,7 @@ internal static partial class JsonFile
         bool replaced = false;
         try
         {
-            using (FileStream stream = CreateTemporary(temp, path))
+            using (FileStream stream = CreateTemporary(temp, path, forceOwnerOnly: expected is not null))
             {
                 stream.Write(bytes);
                 stream.Flush(flushToDisk: true);
@@ -139,9 +139,11 @@ internal static partial class JsonFile
     /// whatever the target's or the folder's rules are, even after a crash. The target's own descriptor is what the
     /// final file keeps (<see cref="Replace"/>). A first save takes the folder's rules, as any new file does.
     /// </summary>
-    private static FileStream CreateTemporary(string temp, string path)
+    private static FileStream CreateTemporary(string temp, string path, bool forceOwnerOnly = false)
     {
-        if (!File.Exists(path))
+        // A save over a file it has read stages owner-only even if that file has just gone missing (moved by a sync):
+        // the copy carries the same contents, which must not take a wider folder's rules.
+        if (!forceOwnerOnly && !File.Exists(path))
         {
             return new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         }

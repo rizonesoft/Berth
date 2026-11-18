@@ -182,7 +182,7 @@ public sealed partial class JsonFileTests
         string other = Path.Combine(paths.DataRoot, "other.json.tmp-0123456789abcdef0123456789abcdef");
         File.WriteAllText(other, "another target's kept file");
         string digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("anything"u8));
-        File.WriteAllText(paths.SettingsFile + JsonFile.PendingSuffix, named + "\n" + "settings.json.tmp-" + Guid.NewGuid().ToString("N") + "\n" + digest + "\n" + digest);
+        File.WriteAllText(paths.SettingsFile + JsonFile.PendingSuffix, named + "\n" + digest + "\n" + digest);
 
         SettingsLoad load = new SettingsStore(paths).Load();
 
@@ -559,6 +559,65 @@ public sealed partial class JsonFileTests
         Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
     }
 
+    [Fact]
+    public void AnOverwriteStagesItsCopyOwnerOnlyEvenWhenTheFileHasGone()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+        File.Delete(path);
+        string? stagedRules = null;
+
+        Assert.ThrowsAny<IOException>(() => JsonFile.WriteOver(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: temp => stagedRules = Rules(new FileInfo(temp).GetAccessControl()), afterCheck: null, afterReplace: null));
+
+        Assert.Equal(OwnerOnly(), stagedRules);
+        Assert.Empty(Leftovers.Of(data.Root, "layout.json"));
+    }
+
+    [Fact]
+    public void ALayoutInterruptedAndThenMovedAwayIsFinishedAndItsSaveKept()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+        File.Move(path, Path.Combine(data.Root, "moved.json"));
+
+        Assert.Null(new LayoutStore(paths).Find(layout.Key));
+
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        string kept = Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
+        Assert.Contains("\"name\": \"Desk\"", File.ReadAllText(kept), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ListingFinishesANoteLeftWithoutItsLayout()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+        File.Move(path, Path.Combine(data.Root, "moved.json"));
+
+        Assert.Empty(new LayoutStore(paths).LoadAll().Layouts);
+
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
+    }
     [Fact]
     public void TheLayoutStoreFinishesAnInterruptedSaveToo()
     {

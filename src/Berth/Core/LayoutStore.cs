@@ -92,6 +92,25 @@ internal sealed class LayoutStore(BerthPaths paths)
         }
 
         afterList?.Invoke();
+
+        // A save interrupted after its file was moved away leaves only its note: finish it, which keeps the save
+        // beside the missing file.
+        foreach (string note in files.Where(f => f.EndsWith(".json" + JsonFile.PendingSuffix, StringComparison.OrdinalIgnoreCase)))
+        {
+            string target = note[..^JsonFile.PendingSuffix.Length];
+            if (!files.Contains(target, StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    JsonFile.Recover(target);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // Reported when that layout is next read; the listing goes on.
+                }
+            }
+        }
+
         var layouts = new List<Layout>();
         var unreadable = new List<UnreadableFile>();
         foreach (string path in files.Order(StringComparer.OrdinalIgnoreCase))
@@ -155,6 +174,16 @@ internal sealed class LayoutStore(BerthPaths paths)
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
+        try
+        {
+            // An interrupted save is finished first, even when its file has been moved away since.
+            JsonFile.Recover(path);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}"));
+        }
+
 
         FileInfo? entry;
         try
