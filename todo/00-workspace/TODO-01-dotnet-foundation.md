@@ -40,7 +40,7 @@ title: "TODO-01 -- .NET foundation"
 | 2 | §2 | Application project that builds berth.exe | §1 | [x] |
 | 3 | §3 | Test project with a first failing-capable test | §2 | [x] |
 | 4 | §4 | One command that runs every gate | §3 | [x] |
-| 5 | §5 | Build and test workflow in CI | §4 | [ ] |
+| 5 | §5 | Build and test workflow in CI | §4 | [x] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
 | 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [x] |
 | 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [x] |
@@ -187,9 +187,12 @@ The plan workflow already checks the TODO graph. This adds the build and the tes
 - [x] Create `.conclave/ci.json` with `{"workflows": ["build.yml", "plan.yml"]}`. Done when: the file parses to exactly that list, and `python scripts/ci_status.py` names exactly those two. Cheaper substitute: leaving the watch list implicit, so a future workflow that is allowed to be red blocks the run.
 - [x] After the push, prove the commit on GitHub. Done when: `gh run list --commit <pushed SHA>` shows a completed `success` run of both `build` and `plan`, and the Build log shows all seven `== <step>:` lines and `check-all: 7 step(s) passed`. Cheaper substitute: `ci_status.py` alone, which can report an earlier green run while the candidate is queued.
 - [x] Prove the failures on a throwaway branch with `gh workflow run build.yml --ref <branch>`: with `AppInfoTests.VersionIsThreeNumbers` asserting `^x$`, Build fails in the `check-all` step with that test named in its log while `plan` on the same commit passes; with `global.json` naming SDK `99.0.100`, Build fails in the `setup-dotnet` step and `check-all` never starts. Delete the branch afterwards. Done when: both runs' conclusions and failed steps are recorded in the findings file and `git ls-remote --heads origin <branch>` prints nothing. Cheaper substitute: trusting that a red run of any cause proves the gate.
-- [ ] Commit: `ci: build and test workflow`
+- [x] Commit: `ci: build and test workflow`
 
 **Test checkpoint:** before the push, the YAML, badge, Dependabot and `ci.json` read-backs pass; after it, `gh run list --commit <SHA>` shows `build` and `plan` both `success`, and the throwaway-branch runs fail at the named assertion and at `setup-dotnet` respectively.
+
+> **Verified:** 2026-11-18 | §5 | 8619e5cbc31af7f19ad5203a21c9ab0b063d1ab1
+> **Review:** `docs/reviews/d00-t01-s5.json`
 
 ## 6. Test that keeps Core free of UI and COM types
 
