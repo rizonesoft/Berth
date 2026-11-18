@@ -12,21 +12,29 @@ internal sealed record SettingsLoad(Settings Value, bool Exists, string? Unreada
 /// <summary><c>settings.json</c> under the data root (SPEC §14), read and written through <see cref="JsonFile"/>.</summary>
 internal sealed class SettingsStore(BerthPaths paths)
 {
-    public SettingsLoad Load() => Load(out _);
+    public SettingsLoad Load() => Load(out _, afterRecover: null, afterRead: null);
 
-    private SettingsLoad Load(out byte[]? read)
+    /// <summary>As <see cref="Load()"/>; the two actions let a test interleave a save with the read.</summary>
+    internal SettingsLoad Load(Action? afterRecover, Action? afterRead) => Load(out _, afterRecover, afterRead);
+
+    private SettingsLoad Load(out byte[]? read, Action? afterRecover = null, Action? afterRead = null)
     {
         read = null;
+        Settings? value;
+        string? reason;
         try
         {
-            JsonFile.Recover(paths.SettingsFile);
+            if (JsonFile.TryReadSettled(paths.SettingsFile, BerthJson.Default.Settings, out value, out reason, out read, afterRecover, afterRead))
+            {
+                reason = null;
+            }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new SettingsLoad(Settings.Default, Exists: true, Unreadable: $"An earlier save could not be finished: {error.Message}");
+            return new SettingsLoad(Settings.Default, Exists: true, Unreadable: $"It could not be read as it was being saved: {error.Message}");
         }
 
-        if (!JsonFile.TryRead(paths.SettingsFile, BerthJson.Default.Settings, out Settings? value, out string? reason, out read))
+        if (reason is not null)
         {
             return reason == JsonFile.Missing
                 ? new SettingsLoad(Settings.Default, Exists: false, Unreadable: null)

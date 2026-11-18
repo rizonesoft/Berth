@@ -209,6 +209,51 @@ internal static partial class JsonFile
         }
     }
 
+    /// <summary>
+    /// Reads <paramref name="path"/> as <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string, out byte[])"/>
+    /// does, but only a settled version: an interrupted save is finished first and a save under way is waited for,
+    /// and a read that a save overlapped (a note is there now, or the file no longer holds what was read) is made
+    /// again, so a proposed save that is then taken back is never returned.
+    /// </summary>
+    /// <exception cref="IOException">The file did not settle, or an interrupted save cannot be finished.</exception>
+    /// <exception cref="UnauthorizedAccessException">An interrupted save may not be finished.</exception>
+    public static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class =>
+        TryReadSettled(path, info, out value, out reason, out read, afterRecover: null, afterRead: null);
+
+    /// <summary>As the public overload; the two actions let a test interleave a save with the read.</summary>
+    internal static bool TryReadSettled<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read, Action? afterRecover, Action? afterRead) where T : class
+    {
+        for (int attempt = 0; attempt < SettleAttempts; attempt++)
+        {
+            Recover(path);
+            afterRecover?.Invoke();
+            bool ok = TryRead(path, info, out value, out reason, out read);
+            afterRead?.Invoke();
+            bool noteNow = File.Exists(path + PendingSuffix);
+            bool unchanged = read is null ? !File.Exists(path) || reason != Missing : HoldsExactlyOrMissing(path, read);
+            if (!noteNow && unchanged)
+            {
+                return ok;
+            }
+        }
+
+        throw new IOException($"'{path}' kept changing while it was read.");
+    }
+
+    private const int SettleAttempts = 5;
+
+    private static bool HoldsExactlyOrMissing(string path, byte[] bytes)
+    {
+        try
+        {
+            return HoldsExactly(path, bytes);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The suffix of the note a save over an existing file leaves until it has checked what it displaced.</summary>
     public const string PendingSuffix = ".berth-pending";
 

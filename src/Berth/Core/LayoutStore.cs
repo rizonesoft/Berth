@@ -155,14 +155,6 @@ internal sealed class LayoutStore(BerthPaths paths)
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
-        try
-        {
-            JsonFile.Recover(path);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}"));
-        }
 
         FileInfo? entry;
         try
@@ -191,7 +183,20 @@ internal sealed class LayoutStore(BerthPaths paths)
             return new Lookup(null, new UnreadableFile(entry.Name, "It is a link, which Berth never writes."));
         }
 
-        if (!JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? layout, out string? reason, out byte[]? bytes))
+        bool readable;
+        Layout? layout;
+        string? reason;
+        byte[]? bytes;
+        try
+        {
+            readable = JsonFile.TryReadSettled(path, BerthJson.Default.Layout, out layout, out reason, out bytes);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new Lookup(null, new UnreadableFile(fileName, $"It could not be read as it was being saved: {error.Message}"));
+        }
+
+        if (!readable)
         {
             return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
         }

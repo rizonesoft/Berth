@@ -312,6 +312,62 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void AReaderThatCheckedBeforeTheSaveStartedNeverReturnsTheProposedSave()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] arrived = "{ damaged by a sync"u8.ToArray();
+        using var replaced = new ManualResetEventSlim();
+        using var readerRead = new ManualResetEventSlim();
+        Exception? writerError = null;
+        var writer = new Thread(() =>
+        {
+            try
+            {
+                JsonFile.WriteOver(
+                    paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+                    afterFlush: null,
+                    afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
+                    afterReplace: () =>
+                    {
+                        replaced.Set();
+                        Assert.True(readerRead.Wait(TimeSpan.FromSeconds(20)));
+                    });
+            }
+            catch (Exception error)
+            {
+                writerError = error;
+            }
+        });
+
+        // The reader finds no note, then the save starts and replaces the file, then the reader reads it, then the
+        // save sees the damaged arrival and takes its proposal back.
+        SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load(
+            afterRecover: () =>
+            {
+                if (!writer.IsAlive && !replaced.IsSet)
+                {
+                    writer.Start();
+                    Assert.True(replaced.Wait(TimeSpan.FromSeconds(20)));
+                }
+            },
+            afterRead: () =>
+            {
+                if (writer.IsAlive)
+                {
+                    readerRead.Set();
+                    Assert.True(writer.Join(TimeSpan.FromSeconds(20)));
+                }
+            });
+
+        Assert.IsType<TargetChangedException>(writerError);
+        Assert.NotEqual(new Settings(1, true, null), load.Value);
+        Assert.False(string.IsNullOrWhiteSpace(load.Unreadable));
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+    }
+    [Fact]
     public void AnOversizedNoteIsDiscardedUnread()
     {
         using var data = new TestData();
