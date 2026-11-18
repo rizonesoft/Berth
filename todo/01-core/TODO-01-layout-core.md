@@ -550,6 +550,8 @@ Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blo
 
 ## 20. The waiting-lock test must see the contender blocked
 
+> **Started:** 2026-11-18T07:12:10Z
+
 Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's blocking levels): `AWaitingRunTakesTheLockWhenItIsReleasedBeforeTheDeadline` polls up to ten seconds for the contender to block, then checks only that it is alive, so a contender the scheduler delayed past the release could pass with a run that never waits.
 
 **Phase:** 1
