@@ -38,7 +38,7 @@ depends_on: ["dotnet-foundation"]
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Layout, monitor and icon records | D00 T01 §3 | [x] |
-| 2 | §2 | Arrangement key | §1 | [ ] |
+| 2 | §2 | Arrangement key | §1 | [x] |
 | 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [ ] |
 | 4 | §4 | Atomic JSON file with read-back | §3 | [ ] |
 | 5 | §5 | Layout store | §1, §2, §4 | [ ] |
@@ -107,9 +107,12 @@ The same monitors in the same places at the same scale must always map to the sa
 - [x] Refuse an empty list with `ArgumentException`. Done when: a test asserts the exception. Cheaper substitute: returning the hash of an empty string, which would make "no monitors" a real layout.
 - [x] Add `tests/Berth.Tests/Core/ArrangementKeyTests.cs` covering: the two exact keys above with the three-monitor input in all six orders; a different key when `X`, `Y`, `Width`, `Height` or `Scale` of one monitor changes by one; the same key when only `Primary` changes; the same three-monitor key with the current culture set to `en-US` and to `sv-SE` on the test's own thread (restored in `finally`); 16 characters of `[0-9a-f]`. Done when: all pass, and the three-monitor test fails when the sort is removed, reversed, or the separator becomes `,`. Cheaper substitute: one happy-path assertion.
 - [x] Assert in `ArrangementKeyTests` that `ArrangementKey.From` of the SPEC §14 example's monitors equals its `key`, and update the SPEC §14 example text in `tests/Berth.Tests/Core/LayoutJsonTests.cs` (and its literal `Key` assertion) to `c7f017905ce518e6`, as the corrected SPEC reads. Done when: both test classes pass on the same example. Cheaper substitute: leaving the two tests to disagree about which file a layout lives in.
-- [ ] Commit: `core: arrangement key`
+- [x] Commit: `core: arrangement key`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ArrangementKeyTests"` passes, and fails when the sort in `ArrangementKey.From` is removed or reversed.
+
+> **Verified:** 2026-11-18 | §2 | 37b9f3c14246b8c72a92d84c30412cfe21eb9d1c
+> **Review:** `docs/reviews/d01-t01-s2.json`
 
 ## 3. Data paths that honour BERTH_DATA
 
