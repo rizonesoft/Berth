@@ -49,8 +49,8 @@ public sealed class BerthPathsTests
         BerthPaths paths = BerthPaths.FromEnvironment(name => name == "BERTH_DATA" ? value : null);
 
         // Built from the special folders and compared, never written.
-        string roaming = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Berth");
-        string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Berth");
+        string roaming = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Berth");
+        string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify), "Berth");
         AssertPaths(paths, roaming, local);
         Assert.False(paths.TestMode);
     }
