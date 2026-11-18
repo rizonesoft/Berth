@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Text.RegularExpressions;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -10,7 +12,7 @@ namespace Berth.Core;
 /// flushed, read back from disk and compared, and only then moved over the target in one step. A failure at any
 /// point leaves the old file as it was and no temporary file behind.
 /// </summary>
-internal static class JsonFile
+internal static partial class JsonFile
 {
     /// <summary>The <c>reason</c> <see cref="TryRead"/> gives for a file or folder that does not exist.</summary>
     public const string Missing = "missing";
@@ -33,6 +35,12 @@ internal static class JsonFile
     internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
+        if (bytes.Length > MaxBytes)
+        {
+            // A save Berth could not read back must never replace the last one it can.
+            throw new IOException($"'{path}' would be {bytes.Length} bytes, more than the {MaxBytes} a Berth file can hold.");
+        }
+
         string folder = Path.GetDirectoryName(Path.GetFullPath(path))
             ?? throw new ArgumentException($"'{path}' has no folder.", nameof(path));
         RemoveStaleTemporaries(folder, Path.GetFileName(path));
@@ -40,7 +48,7 @@ internal static class JsonFile
         bool replaced = false;
         try
         {
-            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (FileStream stream = CreateTemporary(temp, path))
             {
                 stream.Write(bytes);
                 stream.Flush(flushToDisk: true);
@@ -62,6 +70,27 @@ internal static class JsonFile
                 File.Delete(temp);
             }
         }
+    }
+
+    /// <summary>
+    /// Creates the temporary file. When the target exists it is created with the target's own access rules, so a
+    /// layout its owner restricted is never readable more widely while it is being saved, nor after a crash.
+    /// </summary>
+    private static FileStream CreateTemporary(string temp, string path)
+    {
+        FileSecurity? security = null;
+        try
+        {
+            security = new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // No target yet: the new file takes the folder's rules, as any first save does.
+        }
+
+        return security is null
+            ? new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)
+            : new FileInfo(temp).Create(FileMode.CreateNew, FileSystemRights.Write | FileSystemRights.Read, FileShare.None, 4096, FileOptions.None, security);
     }
 
     /// <summary>
@@ -102,12 +131,17 @@ internal static class JsonFile
         DateTime cutoff = DateTime.UtcNow - StaleAfter;
         foreach (string stale in Directory.EnumerateFiles(folder, fileName + ".tmp-*"))
         {
-            if (File.GetLastWriteTimeUtc(stale) < cutoff)
+            // Only a name this writer makes (".tmp-" and a 32-digit GUID): a user's own backup is never touched.
+            string suffix = Path.GetFileName(stale)[(fileName.Length + ".tmp-".Length)..];
+            if (TemporarySuffix().IsMatch(suffix) && File.GetLastWriteTimeUtc(stale) < cutoff)
             {
                 File.Delete(stale);
             }
         }
     }
+
+    [GeneratedRegex(@"^[0-9a-f]{32}\z")]
+    private static partial Regex TemporarySuffix();
 
     /// <summary>
     /// Reads <paramref name="path"/> through <see cref="BerthJson.Parse"/>. False with <see cref="Missing"/> when the

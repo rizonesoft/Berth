@@ -18,6 +18,15 @@ public sealed class JsonFileTests
 
     private static string[] Temporaries(string folder) => Directory.GetFiles(folder, "*.tmp-*");
 
+    /// <summary>Who may do what to a file, and whether it ignores its folder's rules: what decides who can read it.</summary>
+    private static string Rules(System.Security.AccessControl.FileSecurity security) =>
+        $"protected={security.AreAccessRulesProtected};" + string.Join(
+            ";",
+            security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(System.Security.Principal.SecurityIdentifier))
+                .Cast<System.Security.AccessControl.FileSystemAccessRule>()
+                .Select(r => $"{r.IdentityReference}:{r.AccessControlType}:{r.FileSystemRights}")
+                .Order(StringComparer.Ordinal));
+
     [Fact]
     public void AWriteCanBeReadBackAndLeavesNoTemporaryFile()
     {
@@ -148,6 +157,22 @@ public sealed class JsonFileTests
     }
 
     [Fact]
+    public void ASaveTooLargeToReadBackIsRefusedAndTheOldFileStays()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] before = File.ReadAllBytes(path);
+        Layout huge = Sample with { Name = new string('x', (int)JsonFile.MaxBytes + 1) };
+
+        var error = Assert.Throws<IOException>(() => JsonFile.Write(path, huge, BerthJson.Default.Layout));
+
+        Assert.Contains("more than", error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        Assert.Empty(Temporaries(data.Root));
+    }
+
+    [Fact]
     public void AnOversizedFileIsRefusedBeforeItIsRead()
     {
         using var data = new TestData();
@@ -178,13 +203,17 @@ public sealed class JsonFileTests
             System.Security.AccessControl.FileSystemRights.FullControl,
             System.Security.AccessControl.AccessControlType.Allow));
         new FileInfo(path).SetAccessControl(restricted);
-        string before = new FileInfo(path).GetAccessControl().GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access);
+        string before = Rules(new FileInfo(path).GetAccessControl());
 
-        JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout);
+        string? stagedRules = null;
+        JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, temp =>
+            stagedRules = Rules(new FileInfo(temp).GetAccessControl()));
 
+        // The staged copy is no more readable than the restricted target, so a crash cannot expose it either.
+        Assert.Equal(before, stagedRules);
         var after = new FileInfo(path).GetAccessControl();
         Assert.True(after.AreAccessRulesProtected);
-        Assert.Equal(before, after.GetSecurityDescriptorSddlForm(System.Security.AccessControl.AccessControlSections.Access));
+        Assert.Equal(before, Rules(after));
         Assert.True(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? read, out _));
         Assert.Equal("Desk", read!.Name);
     }
@@ -194,20 +223,27 @@ public sealed class JsonFileTests
     {
         using var data = new TestData();
         string path = Path.Combine(data.Root, "layout.json");
-        string stale = path + ".tmp-crashed";
-        string fresh = path + ".tmp-writing";
-        string other = Path.Combine(data.Root, "settings.json.tmp-crashed");
-        File.WriteAllText(stale, "{");
-        File.WriteAllText(fresh, "{");
-        File.WriteAllText(other, "{");
-        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow - JsonFile.StaleAfter - TimeSpan.FromMinutes(1));
-        File.SetLastWriteTimeUtc(other, DateTime.UtcNow - JsonFile.StaleAfter - TimeSpan.FromMinutes(1));
+        string stale = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        string fresh = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        string backup = path + ".tmp-backup";
+        string other = Path.Combine(data.Root, "settings.json.tmp-" + Guid.NewGuid().ToString("N"));
+        DateTime old = DateTime.UtcNow - JsonFile.StaleAfter - TimeSpan.FromMinutes(1);
+        foreach (string file in new[] { stale, fresh, backup, other })
+        {
+            File.WriteAllText(file, "{ \"kept\": true }");
+        }
+
+        File.SetLastWriteTimeUtc(stale, old);
+        File.SetLastWriteTimeUtc(backup, old);
+        File.SetLastWriteTimeUtc(other, old);
+        byte[] backupBytes = File.ReadAllBytes(backup);
 
         JsonFile.Write(path, Sample, BerthJson.Default.Layout);
 
         Assert.False(File.Exists(stale));
         Assert.True(File.Exists(fresh));
         Assert.True(File.Exists(other));
+        Assert.Equal(backupBytes, File.ReadAllBytes(backup));
     }
 
     [Theory]
