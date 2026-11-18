@@ -45,6 +45,8 @@ title: "TODO-01 -- .NET foundation"
 
 ## 1. Solution, SDK pin and shared build properties
 
+> **Started:** 2026-11-18T00:21:00Z
+
 Every project shares one SDK pin, one set of compiler settings and one place for package versions, so a later section never decides them again.
 
 **Phase:** 0
