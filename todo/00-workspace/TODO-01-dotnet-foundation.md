@@ -196,6 +196,8 @@ The plan workflow already checks the TODO graph. This adds the build and the tes
 
 ## 6. Test that keeps Core free of UI and COM types
 
+> **Started:** 2026-11-18T01:46:26Z
+
 The foundation plan's one architectural rule, enforced by a test instead of by convention.
 
 **Phase:** 0
