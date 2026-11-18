@@ -154,18 +154,23 @@ public sealed class LayoutStoreTests
             LayoutSet set = reopened.LoadAll();
 
             Assert.Empty(set.Unreadable);
-            Assert.Equal(2, set.Layouts.Count);
-            Layout gotSingle = set.Layouts.Single(l => l.Key == "c7f017905ce518e6");
-            Assert.Equal("1 monitor", gotSingle.Name);
-            Assert.Equal(new DateTimeOffset(2026, 11, 16, 9, 0, 0, TimeSpan.Zero), gotSingle.SavedAt);
-            Assert.Equal([new IconPosition(@"C:\Desk\a.txt", "a.txt", 300, 400)], gotSingle.Icons);
-            Assert.Equal(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), gotSingle.Previous!.SavedAt);
-            Assert.Equal([new IconPosition(@"C:\Desk\a.txt", "a.txt", 10, 20)], gotSingle.Previous.Icons);
-            Assert.Equal([new MonitorInfo(0, 0, 2560, 1440, 100, true)], gotSingle.Monitors);
-            Layout gotTwo = set.Layouts.Single(l => l.Key != "c7f017905ce518e6");
-            Assert.Equal("2 monitors", gotTwo.Name);
-            Assert.Equal([new IconPosition(@"C:\Desk\b.txt", "b.txt", -1800, 40)], gotTwo.Icons);
-            Assert.Null(gotTwo.Previous);
+            var expectedSingle = new Layout(
+                1,
+                "c7f017905ce518e6",
+                "1 monitor",
+                new DateTimeOffset(2026, 11, 16, 9, 0, 0, TimeSpan.Zero),
+                [new MonitorInfo(0, 0, 2560, 1440, 100, true)],
+                [new IconPosition(@"C:\Desk\a.txt", "a.txt", 300, 400)],
+                new PreviousSave(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), [new IconPosition(@"C:\Desk\a.txt", "a.txt", 10, 20)]));
+            var expectedTwo = new Layout(
+                1,
+                ArrangementKey.From([new MonitorInfo(-1920, 0, 1920, 1080, 100, false), new MonitorInfo(0, 0, 2560, 1440, 100, true)]),
+                "2 monitors",
+                new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero),
+                [new MonitorInfo(-1920, 0, 1920, 1080, 100, false), new MonitorInfo(0, 0, 2560, 1440, 100, true)],
+                [new IconPosition(@"C:\Desk\b.txt", "b.txt", -1800, 40)],
+                null);
+            Assert.Equal([expectedSingle, expectedTwo], set.Layouts.OrderBy(l => l.Name, StringComparer.Ordinal));
             Assert.True(File.Exists(paths.LayoutFile("c7f017905ce518e6")));
 
             Assert.True(reopened.Delete("c7f017905ce518e6"));
@@ -314,6 +319,107 @@ public sealed class LayoutStoreTests
 
             Assert.Equal(layout.Key + ".json", error.FileName);
             Assert.Equal(before, File.ReadAllBytes(paths.LayoutFile(layout.Key)));
+        }
+    }
+
+    [Fact]
+    public void AFileWhoseNameIsNotTheLowercaseKeyIsRefusedByEveryOperation()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            Put(paths, layout.Key.ToUpperInvariant() + ".json", Json(layout));
+            string path = Path.Combine(paths.LayoutsFolder, layout.Key.ToUpperInvariant() + ".json");
+            byte[] before = File.ReadAllBytes(path);
+
+            Assert.Empty(store.LoadAll().Layouts);
+            Assert.Equal([layout.Key.ToUpperInvariant() + ".json"], store.LoadAll().Unreadable.Select(u => u.FileName));
+            Assert.Equal(layout.Key.ToUpperInvariant() + ".json", Assert.Throws<UnreadableLayoutException>(() => store.Find(layout.Key)).FileName);
+            Assert.Throws<UnreadableLayoutException>(() => store.Save(layout with { Name = "Desk" }));
+            Assert.Throws<UnreadableLayoutException>(() => store.Delete(layout.Key));
+            Assert.Equal(before, File.ReadAllBytes(path));
+            Assert.Equal([layout.Key.ToUpperInvariant() + ".json"], Directory.GetFiles(paths.LayoutsFolder).Select(Path.GetFileName));
+        }
+    }
+
+    [Fact]
+    public void ADanglingLinkIsReportedNotIgnored()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            Directory.CreateDirectory(paths.LayoutsFolder);
+            string target = Path.Combine(data.Root, "gone.json");
+            File.WriteAllText(target, Json(layout));
+            File.CreateSymbolicLink(paths.LayoutFile(layout.Key), target);
+            File.Delete(target);
+
+            Assert.Equal([layout.Key + ".json"], store.LoadAll().Unreadable.Select(u => u.FileName));
+            Assert.Throws<UnreadableLayoutException>(() => store.Find(layout.Key));
+            Assert.Throws<UnreadableLayoutException>(() => store.Save(layout with { Name = "Desk" }));
+            Assert.Throws<UnreadableLayoutException>(() => store.Delete(layout.Key));
+            Assert.NotNull(new FileInfo(paths.LayoutFile(layout.Key)).LinkTarget);
+        }
+    }
+
+    [Fact]
+    public void ALiveLinkIsRefusedTooBecauseBerthNeverWritesOne()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            Directory.CreateDirectory(paths.LayoutsFolder);
+            string target = Path.Combine(data.Root, "elsewhere.json");
+            File.WriteAllText(target, Json(layout));
+            File.CreateSymbolicLink(paths.LayoutFile(layout.Key), target);
+            byte[] before = File.ReadAllBytes(target);
+
+            Assert.Empty(store.LoadAll().Layouts);
+            Assert.Contains("link", Assert.Single(store.LoadAll().Unreadable).Reason, StringComparison.Ordinal);
+            Assert.Throws<UnreadableLayoutException>(() => store.Save(layout with { Name = "Desk" }));
+            Assert.Equal(before, File.ReadAllBytes(target));
+        }
+    }
+
+    [Fact]
+    public void AFolderThatMayNotBeListedIsAnErrorNotAFreshProfile()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            store.Save(Layouts.Single());
+            // The folder's attributes cannot be read and it cannot be listed, as when a redirected profile share
+            // withdraws access: Directory.Exists then says false, and that must not read as a fresh profile.
+            var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+            var denyFolder = new System.Security.AccessControl.FileSystemAccessRule(me,
+                System.Security.AccessControl.FileSystemRights.ListDirectory | System.Security.AccessControl.FileSystemRights.ReadAttributes,
+                System.Security.AccessControl.AccessControlType.Deny);
+            var denyParent = new System.Security.AccessControl.FileSystemAccessRule(me, System.Security.AccessControl.FileSystemRights.ListDirectory, System.Security.AccessControl.AccessControlType.Deny);
+            var folder = new DirectoryInfo(paths.LayoutsFolder);
+            var parent = new DirectoryInfo(paths.DataRoot);
+            System.Security.AccessControl.DirectorySecurity folderRules = folder.GetAccessControl();
+            System.Security.AccessControl.DirectorySecurity parentRules = parent.GetAccessControl();
+            folderRules.AddAccessRule(denyFolder);
+            parentRules.AddAccessRule(denyParent);
+            folder.SetAccessControl(folderRules);
+            parent.SetAccessControl(parentRules);
+            try
+            {
+                Assert.False(Directory.Exists(paths.LayoutsFolder));
+                Assert.ThrowsAny<Exception>(() => store.LoadAll());
+                Exception error = Record.Exception(() => store.LoadAll())!;
+                Assert.True(error is UnauthorizedAccessException or IOException, error.GetType().FullName);
+            }
+            finally
+            {
+                parentRules.RemoveAccessRule(denyParent);
+                parent.SetAccessControl(parentRules);
+                folderRules.RemoveAccessRule(denyFolder);
+                folder.SetAccessControl(folderRules);
+            }
         }
     }
 

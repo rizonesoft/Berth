@@ -44,14 +44,20 @@ internal sealed class LayoutStore(BerthPaths paths)
     /// <exception cref="UnauthorizedAccessException">The layouts folder may not be listed.</exception>
     public LayoutSet LoadAll()
     {
-        if (!Directory.Exists(paths.LayoutsFolder) && !File.Exists(paths.LayoutsFolder))
+        string[] files;
+        try
         {
+            files = Directory.GetFiles(paths.LayoutsFolder);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // A fresh profile: nothing has been saved yet. Any other failure to list reaches the caller.
             return new LayoutSet([], []);
         }
 
         var layouts = new List<Layout>();
         var unreadable = new List<UnreadableFile>();
-        foreach (string path in Directory.GetFiles(paths.LayoutsFolder).Order(StringComparer.OrdinalIgnoreCase))
+        foreach (string path in files.Order(StringComparer.OrdinalIgnoreCase))
         {
             if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
             {
@@ -102,12 +108,36 @@ internal sealed class LayoutStore(BerthPaths paths)
         return true;
     }
 
+    /// <summary>
+    /// What is stored at <paramref name="path"/>, judged the same way for every operation: nothing, a readable
+    /// layout, or an unreadable file under the name it really has on disk. An entry whose name is not exactly the
+    /// lowercase key, or that is a link (Berth never writes one), is unreadable, so no operation follows a link or a
+    /// differently written name that another operation would refuse.
+    /// </summary>
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
+        FileInfo? entry = new DirectoryInfo(Path.GetDirectoryName(path)!).Exists
+            ? new DirectoryInfo(Path.GetDirectoryName(path)!).EnumerateFiles(fileName).FirstOrDefault()
+            : null;
+        if (entry is null)
+        {
+            return new Lookup(null, null);
+        }
+
+        if (entry.Name != fileKey + ".json")
+        {
+            return new Lookup(null, new UnreadableFile(entry.Name, $"Its name is not the layout file name {fileKey}.json."));
+        }
+
+        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return new Lookup(null, new UnreadableFile(entry.Name, "It is a link, which Berth never writes."));
+        }
+
         if (!JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? layout, out string? reason))
         {
-            return reason == JsonFile.Missing ? new Lookup(null, null) : new Lookup(null, new UnreadableFile(fileName, reason!));
+            return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
         }
 
         string? problem = LayoutRules.Check(layout!, fileKey);
