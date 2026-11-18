@@ -23,7 +23,7 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 20 | Checklist items: 127
+Sections: 21 | Checklist items: 129
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
@@ -47,6 +47,7 @@ Sections: 20 | Checklist items: 127
 | [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
 | [x]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
 | [x]    | D01 T01 §20 | The waiting-lock test must see the contender blocked       | none  | 2     |
+| [ ]    | D01 T01 §21 | The reverse adjacency names its owner                      | none  | 2     |
 
 ### Phase 2: Desktop access
 
@@ -153,6 +154,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 20/84 verified sections, 2 ready to run now.
+Progress: 20/85 verified sections, 2 ready to run now.
 
-Checklist: 132/513 items completed (includes Commit items).
+Checklist: 132/515 items completed (includes Commit items).

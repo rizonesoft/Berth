@@ -57,6 +57,7 @@ depends_on: ["dotnet-foundation"]
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
+| 21 | §21 | The reverse adjacency names its owner | §9 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -580,6 +581,23 @@ Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's bl
 
 > **Verified:** 2026-11-18 | §20 | 9a534f888ab57ac71eeed3a20a84961e4cbae64a
 > **Review:** `docs/reviews/d01-t01-s20.json`
+
+## 21. The reverse adjacency names its owner
+
+Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocking levels): the Outcome's `reverse=applicable` names no owner, while the rationale gives undo of a restore to §11 and revert and delete of a save to §12. The adjacency format takes one owner per key.
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Name the owner on the formal line. Done when: `python scripts/todo-graph.py query adjacency` shows `reverse` owned by `D01 T01 §12` for this file.
+
+- [ ] Set `reverse=applicable @ D01 T01 §12` in `todo/01-core/TODO-01-layout-core.md` (the save's reverse paths, revert and delete) and keep the rationale naming §11 for the undo of a restore. Done when: `validate` passes and `query adjacency` lists the owner. Cheaper substitute: an owner-less `reverse=applicable`, which no tool can follow.
+- [ ] Commit: `todo: the reverse adjacency names its owner`
+
+**Test checkpoint:** `python scripts/todo-graph.py query adjacency` shows `reverse` at `D01 T01 §12` for `TODO-01-layout-core.md`.
 
 ## Verification
 
