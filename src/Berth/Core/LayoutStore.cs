@@ -43,7 +43,16 @@ internal sealed class LayoutStore(BerthPaths paths)
         Action<string>? hook = beforeReplace is null ? null : _ => beforeReplace();
         if (current.Layout is not null)
         {
-            JsonFile.Write(path, layout, BerthJson.Default.Layout, hook);
+            try
+            {
+                JsonFile.WriteOver(path, layout, BerthJson.Default.Layout, current.Bytes!, hook);
+            }
+            catch (TargetChangedException) when (Read(path, layout.Key).Unreadable is { } arrived)
+            {
+                // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
+                throw new UnreadableLayoutException(arrived.FileName, arrived.Reason);
+            }
+
             return;
         }
 
@@ -168,14 +177,14 @@ internal sealed class LayoutStore(BerthPaths paths)
             return new Lookup(null, new UnreadableFile(entry.Name, "It is a link, which Berth never writes."));
         }
 
-        if (!JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? layout, out string? reason))
+        if (!JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? layout, out string? reason, out byte[]? bytes))
         {
             return new Lookup(null, new UnreadableFile(fileName, reason == JsonFile.Missing ? "It went away while it was being read." : reason!));
         }
 
         string? problem = LayoutRules.Check(layout!, fileKey);
-        return problem is null ? new Lookup(layout, null) : new Lookup(null, new UnreadableFile(fileName, problem));
+        return problem is null ? new Lookup(layout, null, bytes) : new Lookup(null, new UnreadableFile(fileName, problem));
     }
 
-    private sealed record Lookup(Layout? Layout, UnreadableFile? Unreadable);
+    private sealed record Lookup(Layout? Layout, UnreadableFile? Unreadable, byte[]? Bytes = null);
 }

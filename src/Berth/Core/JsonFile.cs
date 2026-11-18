@@ -41,7 +41,16 @@ internal static partial class JsonFile
 
     /// <summary>As <see cref="Write{T}(string, T, JsonTypeInfo{T})"/>; <paramref name="afterFlush"/> lets a test
     /// reach the flushed temporary file before it is read back. Production passes null.</summary>
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false)
+    /// <summary>
+    /// As <see cref="Write{T}(string, T, JsonTypeInfo{T})"/> for a caller that read <paramref name="expected"/> from
+    /// <paramref name="path"/> and decided to replace it: if the file is anything else by the time it is replaced (a
+    /// profile sync, another program), the file that arrived is put back as it was and the write fails with
+    /// <see cref="TargetChangedException"/>.
+    /// </summary>
+    public static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush = null) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected);
+
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -72,6 +81,10 @@ internal static partial class JsonFile
             if (mustBeNew)
             {
                 MoveNew(temp, path);
+            }
+            else if (expected is not null)
+            {
+                ReplaceExpected(temp, path, expected);
             }
             else
             {
@@ -135,6 +148,24 @@ internal static partial class JsonFile
         }
     }
 
+    /// <summary>
+    /// Replaces <paramref name="path"/> keeping what it held as a backup in the same step, then checks the backup is
+    /// what the caller read; when it is not, the backup goes back in place, so a file that arrived meanwhile is kept.
+    /// </summary>
+    private static void ReplaceExpected(string temp, string path, byte[] expected)
+    {
+        string backup = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        File.Replace(temp, path, backup, ignoreMetadataErrors: false);
+        if (File.ReadAllBytes(backup).AsSpan().SequenceEqual(expected))
+        {
+            File.Delete(backup);
+            return;
+        }
+
+        File.Replace(backup, path, destinationBackupFileName: null, ignoreMetadataErrors: false);
+        throw new TargetChangedException(path);
+    }
+
     private static void MoveNew(string temp, string path)
     {
         try
@@ -178,9 +209,15 @@ internal static partial class JsonFile
     /// file or its folder does not exist; false with the system's or the parser's message when it cannot be opened
     /// or parsed. It never deletes or rewrites the file.
     /// </summary>
-    public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason) where T : class
+    public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason) where T : class =>
+        TryRead(path, info, out value, out reason, out _);
+
+    /// <summary>As <see cref="TryRead{T}(string, JsonTypeInfo{T}, out T, out string)"/>, also giving the bytes read
+    /// (null when the file could not be opened), for <see cref="WriteOver"/>.</summary>
+    public static bool TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason, out byte[]? read) where T : class
     {
         value = null;
+        read = null;
         byte[] bytes;
         try
         {
@@ -193,6 +230,7 @@ internal static partial class JsonFile
 
             bytes = new byte[stream.Length];
             stream.ReadExactly(bytes);
+            read = bytes;
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -233,6 +271,24 @@ internal sealed class TargetAppearedException : IOException
 
     public TargetAppearedException(string message)
         : base(message)
+    {
+    }
+}
+
+/// <summary>The file changed between the caller reading it and the write replacing it; what arrived was kept.</summary>
+internal sealed class TargetChangedException : IOException
+{
+    public TargetChangedException(string path)
+        : base($"'{path}' changed while it was being saved, and the version that arrived was kept.")
+    {
+    }
+
+    public TargetChangedException()
+    {
+    }
+
+    public TargetChangedException(string message, Exception innerException)
+        : base(message, innerException)
     {
     }
 }

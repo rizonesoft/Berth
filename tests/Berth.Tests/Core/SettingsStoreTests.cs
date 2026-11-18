@@ -132,11 +132,28 @@ public sealed class SettingsStoreTests
                 store.Save(Settings.Default with { RestoreAutomatically = true }, beforeReplace: () => Put(paths, "{")));
 
             Assert.False(string.IsNullOrWhiteSpace(error.Reason));
-            Assert.Equal("{", File.ReadAllText(paths.SettingsFile));
+            Assert.Equal("{"u8.ToArray(), File.ReadAllBytes(paths.SettingsFile));
             Assert.Empty(Directory.GetFiles(paths.DataRoot, "*.tmp-*"));
         }
     }
 
+    [Fact]
+    public void ADamagedFileArrivingDuringASaveOverAGoodOneIsKept()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] damaged = [0xEF, 0xBB, 0xBF, (byte)'{'];
+
+            UnreadableSettingsException error = Assert.Throws<UnreadableSettingsException>(() =>
+                store.Save(Settings.Default, beforeReplace: () => File.WriteAllBytes(paths.SettingsFile, damaged)));
+
+            Assert.False(string.IsNullOrWhiteSpace(error.Reason));
+            Assert.Equal(damaged, File.ReadAllBytes(paths.SettingsFile));
+            Assert.Empty(Directory.GetFiles(paths.DataRoot, "*.tmp-*"));
+        }
+    }
     [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {

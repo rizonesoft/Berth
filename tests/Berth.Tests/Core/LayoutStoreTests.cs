@@ -461,7 +461,25 @@ public sealed class LayoutStoreTests
                 store.Save(layout, beforeReplace: () => Put(paths, layout.Key + ".json", "{")));
 
             Assert.Equal(layout.Key + ".json", error.FileName);
-            Assert.Equal("{", File.ReadAllText(paths.LayoutFile(layout.Key)));
+            Assert.Equal("{"u8.ToArray(), File.ReadAllBytes(paths.LayoutFile(layout.Key)));
+            Assert.Empty(Directory.GetFiles(paths.LayoutsFolder, "*.tmp-*"));
+        }
+    }
+    [Fact]
+    public void ADamagedFileArrivingDuringASaveOverAGoodOneIsKept()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            store.Save(layout);
+            byte[] damaged = "{ not a layout"u8.ToArray();
+
+            UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() =>
+                store.Save(layout with { Name = "Desk" }, beforeReplace: () => File.WriteAllBytes(paths.LayoutFile(layout.Key), damaged)));
+
+            Assert.Equal(layout.Key + ".json", error.FileName);
+            Assert.Equal(damaged, File.ReadAllBytes(paths.LayoutFile(layout.Key)));
             Assert.Empty(Directory.GetFiles(paths.LayoutsFolder, "*.tmp-*"));
         }
     }

@@ -11,9 +11,11 @@ internal sealed record SettingsLoad(Settings Value, bool Exists, string? Unreada
 /// <summary><c>settings.json</c> under the data root (SPEC §14), read and written through <see cref="JsonFile"/>.</summary>
 internal sealed class SettingsStore(BerthPaths paths)
 {
-    public SettingsLoad Load()
+    public SettingsLoad Load() => Load(out _);
+
+    private SettingsLoad Load(out byte[]? read)
     {
-        if (!JsonFile.TryRead(paths.SettingsFile, BerthJson.Default.Settings, out Settings? value, out string? reason))
+        if (!JsonFile.TryRead(paths.SettingsFile, BerthJson.Default.Settings, out Settings? value, out string? reason, out read))
         {
             return reason == JsonFile.Missing
                 ? new SettingsLoad(Settings.Default, Exists: false, Unreadable: null)
@@ -43,7 +45,7 @@ internal sealed class SettingsStore(BerthPaths paths)
             throw new ArgumentException($"These settings must not be saved: {problem}", nameof(value));
         }
 
-        SettingsLoad current = Load();
+        SettingsLoad current = Load(out byte[]? read);
         if (current.Unreadable is { } unreadable)
         {
             throw new UnreadableSettingsException(unreadable);
@@ -52,7 +54,16 @@ internal sealed class SettingsStore(BerthPaths paths)
         BerthPaths.EnsureFolderFor(paths.SettingsFile);
         if (current.Exists)
         {
-            JsonFile.Write(paths.SettingsFile, value, BerthJson.Default.Settings, beforeReplace is null ? null : _ => beforeReplace());
+            try
+            {
+                JsonFile.WriteOver(paths.SettingsFile, value, BerthJson.Default.Settings, read!, beforeReplace is null ? null : _ => beforeReplace());
+            }
+            catch (TargetChangedException) when (Load().Unreadable is { } arrived)
+            {
+                // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
+                throw new UnreadableSettingsException(arrived);
+            }
+
             return;
         }
 

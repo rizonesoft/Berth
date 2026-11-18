@@ -111,6 +111,35 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void WriteOverKeepsAFileThatChangedSinceItWasRead()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+        byte[] arrived = "arrived from elsewhere"u8.ToArray();
+
+        Assert.Throws<TargetChangedException>(() =>
+            JsonFile.WriteOver(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read, _ => File.WriteAllBytes(path, arrived)));
+
+        Assert.Equal(arrived, File.ReadAllBytes(path));
+        Assert.Empty(Temporaries(data.Root));
+    }
+
+    [Fact]
+    public void WriteOverReplacesAFileThatIsStillWhatWasRead()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+
+        JsonFile.WriteOver(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, File.ReadAllBytes(path));
+
+        Assert.True(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? read, out _));
+        Assert.Equal("Desk", read!.Name);
+        Assert.Empty(Temporaries(data.Root));
+    }
+    [Fact]
     public void AWriteIntoAMissingFolderThrowsAndCreatesNothing()
     {
         using var data = new TestData();
