@@ -407,6 +407,8 @@ What the position map and the status line show: each saved icon is in place, mov
 
 ## 14. Operation lock across processes
 
+> **Started:** 2026-11-18T06:58:16Z
+
 Save, restore, undo and revert run one at a time across the tray app and the command line (SPEC §15, last bullet).
 
 **Phase:** 1
