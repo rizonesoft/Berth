@@ -88,6 +88,8 @@ The data shapes of SPEC §14, as immutable records with their JSON names, so eve
 
 ## 2. Arrangement key
 
+> **Started:** 2026-11-18T02:41:01Z
+
 The same monitors in the same places at the same scale must always map to the same layout file (SPEC §14, last bullet).
 
 **Phase:** 1
