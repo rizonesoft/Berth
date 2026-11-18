@@ -22,7 +22,7 @@ python scripts/todo-graph.py validate                 # the TODO tree
 python scripts/todo-graph.py plan --check             # the generated plan is current
 python -m unittest discover -s scripts/tests          # the plan and review tooling
 node scripts/verify-agent-tiers.mjs                   # the Claude subagent definitions
-pwsh scripts/check-all.ps1                            # all of the above plus the build and tests (after D00 T01 §4)
+pwsh scripts/check-all.ps1                            # all of the above, the project script tests, the build and the tests
 ```
 
 Rules specific to Berth:

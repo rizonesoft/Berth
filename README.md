@@ -6,7 +6,7 @@
 
 **Your desktop, where you left it. Berth saves the positions of your Windows desktop icons and puts them back.**
 
-[![Plan](https://github.com/rizonetech/Berth/actions/workflows/plan.yml/badge.svg?branch=main)](https://github.com/rizonetech/Berth/actions/workflows/plan.yml)
+[![Plan](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml/badge.svg?branch=main)](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-0F6CBD)](LICENSE)
 ![Platform: Windows 11 24H2 or later](https://img.shields.io/badge/platform-Windows%2011%2024H2%2B-1A1A1A)
 ![.NET 11](https://img.shields.io/badge/.NET-11-4CA6F0)
@@ -96,7 +96,7 @@ The plan is built section by section, and each section is reviewed by a differen
 
 ## How do I contribute?
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md). Bugs and ideas go through the [issue forms](https://github.com/rizonetech/Berth/issues/new/choose), and security problems through [SECURITY.md](SECURITY.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Bugs and ideas go through the [issue forms](https://github.com/rizonesoft/Berth/issues/new/choose), and security problems through [SECURITY.md](SECURITY.md).
 
 ## What is the licence?
 

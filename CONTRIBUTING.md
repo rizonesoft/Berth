@@ -11,20 +11,23 @@ Berth is built section by section from a validated TODO graph in [`todo/`](todo/
 ## What do I need?
 
 - Windows 11, version 24H2 or later.
-- The .NET SDK that [`global.json`](global.json) names, once the solution exists.
+- The .NET SDK that [`global.json`](global.json) pins (11.0.100 or a later 11.0 feature band).
+- PowerShell 7 (`pwsh`), for `scripts/check-all.ps1`.
 - Python 3.11 or later, for the plan tooling in `scripts/`.
 - Node.js, for `scripts/verify-agent-tiers.mjs`.
 
 ## Which checks must pass?
 
-```
-python scripts/todo-graph.py validate
-python scripts/todo-graph.py plan --check
-python -m unittest discover -s scripts/tests
-node scripts/verify-agent-tiers.mjs
+```powershell
+pwsh scripts/check-all.ps1
 ```
 
-Once the solution exists (`D00 T01 §4`), one command runs these and the build and tests: `pwsh scripts/check-all.ps1`.
+It runs every gate in order and stops at the first failure, printing `FAILED <step>: <command> (exit <code>)`: the TODO graph, the generated plan, the plan and review tooling tests, the project's script tests, the agent tiers, the Release build and the tests. The build and the tests go through `bosun run --` when Bosun is installed. To see the steps or run some of them:
+
+```powershell
+pwsh scripts/check-all.ps1 -List
+pwsh scripts/check-all.ps1 -Only build,test
+```
 
 `todo/implementation-plan.md` is generated. Edit the TODO sections, then run `python scripts/todo-graph.py plan --sync`.
 
@@ -40,7 +43,7 @@ Once the solution exists (`D00 T01 §4`), one command runs these and the build a
 
 ## How do I report something?
 
-Use the [issue forms](https://github.com/rizonetech/Berth/issues/new/choose) for bugs and ideas. Security problems go through [SECURITY.md](SECURITY.md), never a public issue.
+Use the [issue forms](https://github.com/rizonesoft/Berth/issues/new/choose) for bugs and ideas. Security problems go through [SECURITY.md](SECURITY.md), never a public issue.
 
 ## Under what licence are contributions made?
 
