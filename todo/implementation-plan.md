@@ -80,11 +80,11 @@ Sections: 8 | Checklist items: 44
 
 ### Phase 4: Application shell
 
-Sections: 11 | Checklist items: 71
+Sections: 11 | Checklist items: 72
 
 | Status | Reference   | Deliverable                                   | Needs                         | Items |
 | ------ | ----------- | --------------------------------------------- | ----------------------------- | ----- |
-| [ ]    | D04 T01 §1  | Entry routing and the first-run rule          | none                          | 5     |
+| [ ]    | D04 T01 §1  | Entry routing and the first-run rule          | none                          | 6     |
 | [ ]    | D04 T01 §2  | Single instance and activation                | none                          | 7     |
 | [ ]    | D04 T01 §3  | Crash handling                                | none                          | 5     |
 | [ ]    | D04 T01 §4  | Tokens generated into resource dictionaries   | none                          | 8     |
@@ -153,4 +153,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 13/82 verified sections, 5 ready to run now.
 
-Checklist: 84/499 items completed (includes Commit items).
+Checklist: 84/500 items completed (includes Commit items).

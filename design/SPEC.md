@@ -251,11 +251,13 @@ Every refusal and failure has one message, used in the status line, on standard 
 | Another operation is running | "Berth is busy with another save or restore. Try again in a moment." |
 | A file cannot be written | "Berth could not write `<path>`: `<the system's reason>`." |
 | A file cannot be read | "The layout file `<file name>` could not be read. It was left untouched." |
+| The settings file cannot be read | "The settings file `settings.json` could not be read. It was left untouched." |
 | Auto arrange would not turn off | "Windows did not turn auto arrange off. Turn it off from the desktop: right-click, View, Auto arrange icons." |
 | The `Run` value cannot be written | "Berth could not change the Start with Windows setting: `<the system's reason>`." |
 | Anything else | "Something went wrong: `<the exception's message>`. The details are in the log." |
 
 - The log is `logs\berth.log` under the local root: one line per event, `2026-11-15T07:14:03Z INFO Saved 42 icons to "Docked".`, with the level INFO, WARN or FAIL. Every save, restore, undo, revert, rename, delete, setting change, automatic restore and failure writes a line. An unexpected error also writes the exception with its stack.
+- An unreadable `settings.json` is logged as a `WARN` line with its message when the tray app starts, Berth runs on the defaults without writing the file, and a setting change is refused with that message instead of a write failure. Added 2026-11-18 (D01 T01 §6): SPEC §14 asked for the file to be reported without saying how.
 - A setting change writes `INFO Restore automatically turned on.`, `INFO Restore automatically turned off.`, `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.`, from the window or the tray alike; one that fails writes a `FAIL` line with its message from the table above. Added 2026-11-18 (D01 T01 §18): the bullet above asks for a line per setting change without giving its words.
 - The log is capped at 1 MB: when it passes that, it is renamed `berth.log.1`, replacing the last one, and a new file starts.
 - An unhandled exception in the tray app is logged, shown in a message box that names the log file, and ends the process with code 1.
