@@ -212,12 +212,18 @@ internal static partial class JsonFile
     /// <summary>The suffix of the note a save over an existing file leaves until it has checked what it displaced.</summary>
     public const string PendingSuffix = ".berth-pending";
 
+    /// <summary>How long a reader waits for a save under way on the same file to settle.</summary>
+    internal static readonly TimeSpan LiveSaveWait = TimeSpan.FromSeconds(2);
+
+    /// <summary>A note holds a file name and a digest; anything longer is not one of Berth's.</summary>
+    private const int MaxNoteBytes = 512;
+
     /// <summary>
     /// Finishes a save over <paramref name="path"/> that ended between its replace and its check (a crash, Task
     /// Manager): when the version it displaced is not the one it had read, that version goes back in place and the
     /// unverified save is kept beside it. Every reader of a Berth file calls this first; with no note it does nothing.
     /// </summary>
-    /// <exception cref="IOException">The interrupted save cannot be finished now.</exception>
+    /// <exception cref="IOException">The interrupted save cannot be finished now, or another Berth is still saving.</exception>
     /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
     public static void Recover(string path)
     {
@@ -227,17 +233,37 @@ internal static partial class JsonFile
             return;
         }
 
-        string[] note;
-        try
+        string[] note = [];
+        DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
+        while (true)
         {
-            using var stream = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.None);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            note = reader.ReadToEnd().Split('\n');
-        }
-        catch (IOException) when (File.Exists(pending))
-        {
-            // A save is under way and holds its note: it will finish or leave the note for a later read.
-            return;
+            try
+            {
+                using var stream = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.None);
+                if (stream.Length <= MaxNoteBytes)
+                {
+                    byte[] bytes = new byte[stream.Length];
+                    stream.ReadExactly(bytes);
+                    note = Encoding.UTF8.GetString(bytes).Split('\n');
+                }
+
+                break;
+            }
+            catch (FileNotFoundException)
+            {
+                // The save that held it finished meanwhile.
+                return;
+            }
+            catch (IOException) when (DateTime.UtcNow < giveUp)
+            {
+                // A save is under way and holds its note: wait for it to settle, so the file it is replacing is
+                // never read half way (its proposed version may still be taken back).
+                Thread.Sleep(20);
+            }
+            catch (IOException error)
+            {
+                throw new IOException($"'{path}' is still being saved by another Berth.", error);
+            }
         }
 
         // Only a note this writer makes is acted on: a sibling kept name it generates and a SHA-256 digest. Anything

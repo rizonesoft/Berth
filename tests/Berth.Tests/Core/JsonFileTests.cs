@@ -289,6 +289,45 @@ public sealed partial class JsonFileTests
         Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
     }
     [Fact]
+    public void AReaderBetweenTheReplaceAndItsCheckNeverSeesTheProposedSave()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] arrived = "{ damaged by a sync"u8.ToArray();
+        SettingsLoad? seen = null;
+
+        Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null,
+            afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
+            afterReplace: () => seen = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load()));
+
+        // The proposed save was in place, then taken back: the reader must not have reported it as the settings.
+        Assert.NotNull(seen);
+        Assert.NotEqual(new Settings(1, true, null), seen.Value);
+        Assert.False(string.IsNullOrWhiteSpace(seen.Unreadable));
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+    }
+
+    [Fact]
+    public void AnOversizedNoteIsDiscardedUnread()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, true, null));
+        using (var note = new FileStream(paths.SettingsFile + JsonFile.PendingSuffix, FileMode.CreateNew))
+        {
+            // Sparse, so it takes no disk, and past the 2 GB a byte array can hold: a reader that reads it whole fails.
+            Assert.True(Native.DeviceIoControl(note.SafeFileHandle, FsctlSetSparse, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero), $"FSCTL_SET_SPARSE failed: {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+            note.SetLength(3L * 1024 * 1024 * 1024);
+        }
+
+        Assert.Equal(new SettingsLoad(new Settings(1, true, null), Exists: true, Unreadable: null), new SettingsStore(paths).Load());
+        Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+    }
+    [Fact]
     public void ACrashAfterTheReplaceLeavesTheSaveWhenNothingHadChanged()
     {
         using var data = new TestData();
@@ -511,6 +550,8 @@ public sealed partial class JsonFileTests
 
     private const int DaclSecurityInformation = 4;
 
+    private const uint FsctlSetSparse = 0x000900C4;
+
     private static string OwnerOnly() =>
         $"protected=True;{System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value}:Allow:FullControl";
 
@@ -519,6 +560,10 @@ public sealed partial class JsonFileTests
         [System.Runtime.InteropServices.LibraryImport("advapi32.dll", EntryPoint = "SetFileSecurityW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         internal static partial bool SetFileSecurityW(string fileName, int securityInformation, byte[] securityDescriptor);
+
+        [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static partial bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, IntPtr input, uint inputSize, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
     }
     [Fact]
     public void AStaleTemporaryLeftByACrashIsRemovedAndAFreshOneIsLeft()
