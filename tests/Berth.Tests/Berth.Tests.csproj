@@ -25,4 +25,14 @@
     <ProjectReference Include="..\..\src\Berth\Berth.csproj" />
   </ItemGroup>
 
+  <!-- The layer rule parses Core's sources with the symbols berth.exe is compiled with, so #if cannot hide a type. -->
+  <Target Name="EmbedBerthDefineConstants" BeforeTargets="GetAssemblyAttributes">
+    <MSBuild Projects="..\..\src\Berth\Berth.csproj" Targets="GetBerthDefineConstants" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" PropertyName="BerthDefineConstants" />
+    </MSBuild>
+    <ItemGroup>
+      <AssemblyMetadata Include="BerthDefineConstants" Value="$(BerthDefineConstants)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

@@ -92,11 +92,21 @@ public sealed class LayerRuleTests
     [InlineData("internal class NoNamespace { }", false)]
     [InlineData("", false)]
     [InlineData("#if !WINDOWS\nnamespace Berth.Core;\n#endif\ninternal class Hidden { }", false)]
-    [InlineData("#define X\nnamespace Berth.Core;\ninternal class X1 { }", false)]
+    [InlineData("#define X\nnamespace Berth.Core;\ninternal class X1 { }", true)]
+    [InlineData("namespace Berth.Core;\ninternal static class X\n{\n    internal static int Level()\n    {\n#if DEBUG\n        return 1;\n#else\n        return 2;\n#endif\n    }\n}", true)]
+    [InlineData("#if WINDOWS\nnamespace Berth.Core;\n#else\nnamespace Berth.Elsewhere;\n#endif\ninternal class Chosen { }", true)]
     [InlineData("#nullable enable\nnamespace Berth.Core;\n#pragma warning disable CA1812\ninternal sealed class X { }", true)]
     public void ASourceFileMustBeOneFileScopedCoreNamespace(string source, bool accepted)
     {
         Assert.Equal(accepted, DeclaresCoreNamespace(source));
+    }
+
+    [Fact]
+    public void TheProductionSymbolsAreThoseOfAWindowsBuild()
+    {
+        Assert.Contains("WINDOWS", ProductionSymbols);
+        Assert.Contains("NET", ProductionSymbols);
+        Assert.Contains(ProductionSymbols, s => s is "DEBUG" or "RELEASE");
     }
 
     [Fact]
@@ -114,10 +124,9 @@ public sealed class LayerRuleTests
     /// </summary>
     internal static bool DeclaresCoreNamespace(string source)
     {
-        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        SyntaxNode root = Parse(source);
         BaseNamespaceDeclarationSyntax[] namespaces = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().ToArray();
-        return !HasConditionalCompilation(root)
-            && namespaces is [FileScopedNamespaceDeclarationSyntax only]
+        return namespaces is [FileScopedNamespaceDeclarationSyntax only]
             && InCore(only.Name.ToString())
             && StrayTypes(source).Count == 0;
     }
@@ -125,7 +134,7 @@ public sealed class LayerRuleTests
     /// <summary>The top-level types a source file declares outside Berth.Core, read with the C# parser.</summary>
     internal static IReadOnlyList<string> StrayTypes(string source)
     {
-        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        SyntaxNode root = Parse(source);
         return root.DescendantNodes()
             .Where(node => node is BaseTypeDeclarationSyntax or DelegateDeclarationSyntax)
             .Where(node => !node.Ancestors().Any(a => a is BaseTypeDeclarationSyntax))
@@ -135,14 +144,16 @@ public sealed class LayerRuleTests
             .ToList();
     }
 
-    /// <summary>
-    /// Core has no use for conditional compilation, and a file that has it can show this parser one structure and
-    /// the Windows compiler (which defines WINDOWS and more) another, so it is refused outright.
-    /// </summary>
-    private static bool HasConditionalCompilation(SyntaxNode root) => root.DescendantTrivia(descendIntoTrivia: true).Any(trivia =>
-        trivia.Kind() is SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia or SyntaxKind.ElseDirectiveTrivia
-            or SyntaxKind.EndIfDirectiveTrivia or SyntaxKind.DefineDirectiveTrivia or SyntaxKind.UndefDirectiveTrivia);
+    /// <summary>The preprocessor symbols berth.exe is compiled with, embedded by the test project's build.</summary>
+    internal static IReadOnlyList<string> ProductionSymbols { get; } = typeof(LayerRuleTests).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), inherit: false)
+        .Cast<System.Reflection.AssemblyMetadataAttribute>()
+        .Single(a => a.Key == "BerthDefineConstants").Value!
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    /// <summary>Parses as the production compiler does, so #if decides the same structure it decides there.</summary>
+    private static SyntaxNode Parse(string source) =>
+        CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest).WithPreprocessorSymbols(ProductionSymbols)).GetRoot();
     private static bool InCore(string name) => name == "Berth.Core" || name.StartsWith("Berth.Core.", StringComparison.Ordinal);
     private static string Namespace(SyntaxNode node) => string.Join(
         ".",
