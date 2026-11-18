@@ -74,16 +74,16 @@ public sealed class FakeDesktopIconsTests
         IconPosition[] wanted = [A with { X = 100 }, B with { X = 200 }, C with { X = 300 }];
 
         var exact = new FakeDesktopIcons(A, B, C);
-        exact.SetPositions(wanted);
-        Assert.Equal(wanted, exact.ReadIcons());
+        Seam(exact).SetPositions(wanted);
+        Assert.Equal(wanted, Seam(exact).ReadIcons());
 
         var one = new FakeDesktopIcons(A, B, C) { SnapBy = 4, SnapIds = new HashSet<string>([@"C:\DESK\B.TXT"]) };
-        one.SetPositions(wanted);
-        Assert.Equal([wanted[0], wanted[1] with { X = 204, Y = 44 }, wanted[2]], one.ReadIcons());
+        Seam(one).SetPositions(wanted);
+        Assert.Equal([wanted[0], wanted[1] with { X = 204, Y = 44 }, wanted[2]], Seam(one).ReadIcons());
 
         var all = new FakeDesktopIcons(A, B, C) { SnapBy = 4 };
-        all.SetPositions(wanted);
-        Assert.Equal([wanted[0] with { X = 104, Y = 24 }, wanted[1] with { X = 204, Y = 44 }, wanted[2] with { X = 304, Y = 64 }], all.ReadIcons());
+        Seam(all).SetPositions(wanted);
+        Assert.Equal([wanted[0] with { X = 104, Y = 24 }, wanted[1] with { X = 204, Y = 44 }, wanted[2] with { X = 304, Y = 64 }], Seam(all).ReadIcons());
     }
 
     [Fact]
