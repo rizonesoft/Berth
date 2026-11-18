@@ -4,6 +4,9 @@
     <TargetFramework>net11.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <UseWPF>true</UseWPF>
+    <!-- The layer rule's fixtures reference Windows Forms and a generated COM interface. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Berth.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <!-- Program.cs replaces xUnit's generated entry point so the test assembly can also run as a helper process. -->
