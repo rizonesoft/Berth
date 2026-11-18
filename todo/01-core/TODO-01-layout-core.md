@@ -39,7 +39,7 @@ depends_on: ["dotnet-foundation"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Layout, monitor and icon records | D00 T01 §3 | [x] |
 | 2 | §2 | Arrangement key | §1 | [x] |
-| 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [ ] |
+| 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [x] |
 | 4 | §4 | Atomic JSON file with read-back | §3 | [ ] |
 | 5 | §5 | Layout store | §1, §2, §4 | [ ] |
 | 6 | §6 | Settings store | §4 | [ ] |
@@ -136,9 +136,12 @@ One place decides where Berth's files live, and tests redirect it (SPEC §14, fi
 - [x] Make `LayoutFile` refuse a key that is not exactly 16 characters of `[0-9a-f]` with `ArgumentException`. Done when: tests refuse `..\x`, 15 and 17 characters, 16 uppercase hex characters, and 16 characters with a `g`, and two valid keys give two different exact paths. Cheaper substitute: accepting any string, which lets a crafted key escape the layouts folder (`SECURITY.md`).
 - [x] Add `static EnsureFolderFor(string file)` that creates the folder holding `file` (with its parents) and throws the system's `IOException` or `UnauthorizedAccessException` when it cannot; each writer in §5, §6, §10 and §15 calls it for its own destination only, so a broken log folder never stops a layout save. Done when: a test calls it twice for a layout file on an empty temporary root and only the layouts folder exists, and with a file where `logs` should be, the layouts folder is still made and the log folder throws. **Corrected 2026-11-18:** one `EnsureFolders()` for both made a save depend on the log folder (round 1 P2 2). Cheaper substitute: creating folders at each write site, or once at startup, which a first `berth save` on a fresh profile could miss.
 - [x] Add `tests/Berth.Tests/Core/BerthPathsTests.cs` with those cases. Done when: all pass, and the override test fails when `FromEnvironment` ignores the variable. Cheaper substitute: a test that writes into the real `%APPDATA%`.
-- [ ] Commit: `core: data paths that honour BERTH_DATA`
+- [x] Commit: `core: data paths that honour BERTH_DATA`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BerthPathsTests"` passes, and fails when `FromEnvironment` ignores `BERTH_DATA` or `TestMode` is always `true`.
+
+> **Verified:** 2026-11-18 | §3 | 99e168fa42ac9dfc6190724d637f4bb911d9feaa
+> **Review:** `docs/reviews/d01-t01-s3.json`
 
 ## 4. Atomic JSON file with read-back
 
