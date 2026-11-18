@@ -1,0 +1,331 @@
+using Berth.Core;
+using Berth.Core.Model;
+using Berth.Tests.Fakes;
+
+namespace Berth.Tests.Core;
+
+public sealed class RestoreTests
+{
+    private const string Auto = "automatic, display change";
+
+    private static IconPosition Icon(string name, int x, int y) => new(@"C:\Desk\" + name, name, x, y);
+
+    private static readonly IconPosition A = Icon("a.txt", 10, 20), B = Icon("b.txt", 300, 40), C = Icon("c.txt", 900, 700);
+
+    /// <summary>A rig whose current arrangement has a layout of <paramref name="saved"/>, then a desktop of <paramref name="now"/>.</summary>
+    private static Rig Saved(IconPosition[] saved, params IconPosition[] now)
+    {
+        var rig = new Rig(saved);
+        Assert.Equal(OperationKind.Saved, rig.Service().Save().Kind);
+        rig.Desktop = new FakeDesktopIcons(now);
+        return rig;
+    }
+
+    private static byte[] SeedUndo(Rig rig)
+    {
+        BerthPaths.EnsureFolderFor(rig.Paths.UndoFile);
+        JsonFile.Write(rig.Paths.UndoFile, new UndoSnapshot(1, "0123456789abcdef", DateTimeOffset.UnixEpoch, [Icon("old.txt", 1, 1)]), BerthJson.Default.UndoSnapshot);
+        return File.ReadAllBytes(rig.Paths.UndoFile);
+    }
+
+    private static UndoSnapshot ReadUndo(Rig rig) => BerthJson.Parse(File.ReadAllBytes(rig.Paths.UndoFile), BerthJson.Default.UndoSnapshot);
+
+    private static string[] LinesAfter(Rig rig, int count) => [.. rig.LogLines().Skip(count)];
+
+    [Fact]
+    public void AnUnreachableDesktopIsRefusedFirstAndMovesNothing()
+    {
+        using Rig rig = Saved([A, B], A with { X = 1 }, B);
+        byte[] undo = SeedUndo(rig);
+        rig.Desktop.Unavailable = true;
+        rig.Desktop.SetAutoArrange(true);
+
+        Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), rig.Service().Restore());
+
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void NoLayoutIsRefusedBeforeAutoArrange()
+    {
+        using var rig = new Rig(A, B);
+        rig.Desktop.SetAutoArrange(true);
+
+        Assert.Equal(OperationResult.Refused(Refusal.NoLayout), rig.Service().Restore());
+
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.False(File.Exists(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void AnUnreadableLayoutIsItsOwnRefusalAndIsKept()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
+        File.WriteAllText(rig.File, "{");
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, Path.GetFileName(rig.File)), (result.Kind, result.Refusal, result.Path));
+        Assert.NotNull(result.Detail);
+        Assert.Equal("{", File.ReadAllText(rig.File));
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        Assert.Empty(rig.Desktop.Calls);
+    }
+
+    [Fact]
+    public void AutoArrangeIsRefusedAndMovesNothing()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
+        rig.Desktop.SetAutoArrange(true);
+
+        Assert.Equal(OperationResult.Refused(Refusal.AutoArrange, "2 monitors"), rig.Service().Restore());
+
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void ADesktopLostWhileReadingAutoArrangeIsUnreachable()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        int reads = rig.Monitors.Reads;
+
+        // Lost just after the restore's capture (its second monitor read), before auto arrange is read.
+        rig.Monitors.AfterRead = read =>
+        {
+            if (read == reads + 2)
+            {
+                rig.Desktop.Unavailable = true;
+            }
+        };
+
+        Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable, "2 monitors"), rig.Service().Restore());
+        Assert.False(File.Exists(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void ADisplayChangeDuringTheCaptureRestoresTheNewArrangement()
+    {
+        // Each arrangement has its own layout; the displays change between the monitors and the icons.
+        using var rig = new Rig(A);
+        rig.Service().Save("Docked");
+        rig.Monitors.Monitors = [Rig.Main];
+        rig.Desktop = new FakeDesktopIcons(B);
+        rig.Service().Save("Laptop");
+        rig.Monitors.Monitors = [Rig.Left, Rig.Main];
+        rig.Desktop = new FakeDesktopIcons(A with { X = 5 }, B with { X = 5 });
+        int reads = rig.Monitors.Reads;
+        rig.Monitors.AfterRead = read =>
+        {
+            if (read == reads + 1)
+            {
+                rig.Monitors.Monitors = [Rig.Main];
+            }
+        };
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal(("Laptop", OperationKind.Restored), (result.LayoutName, result.Kind));
+        Assert.Equal([B], Assert.Single(rig.Desktop.Calls));
+        Assert.Equal(ArrangementKey.From([Rig.Main]), ReadUndo(rig).Key);
+    }
+
+    [Fact]
+    public void DisplaysThatKeepChangingAreRefusedAndKeepTheEarlierUndo()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
+        rig.Monitors.AfterRead = read => rig.Monitors.Monitors = read % 2 == 0 ? [Rig.Left, Rig.Main] : [Rig.Main];
+
+        Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), rig.Service().Restore());
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void TheWayBackIsOnDiskBeforeTheFirstMove()
+    {
+        IconPosition unsaved = Icon("new.txt", 50, 50);
+        using Rig rig = Saved([A, B], A with { X = 1 }, B with { Y = 2 }, unsaved);
+        SeedUndo(rig);
+        rig.Clock.Now = new DateTimeOffset(2026, 11, 16, 8, 0, 0, TimeSpan.Zero);
+        UndoSnapshot? seen = null;
+        rig.Desktop.BeforeSet = () => seen = ReadUndo(rig);
+
+        rig.Service().Restore();
+
+        Assert.Equal(
+            new UndoSnapshot(1, rig.Key, new DateTimeOffset(2026, 11, 16, 8, 0, 0, TimeSpan.Zero), [A with { X = 1 }, B with { Y = 2 }, unsaved]),
+            seen);
+    }
+
+    [Fact]
+    public void OnlySavedIconsStillOnTheDesktopAreMovedToTheirSavedPositions()
+    {
+        // The live ids differ in case, a live icon carries a saved icon's name, and every icon starts elsewhere.
+        IconPosition liveA = new(@"c:\DESK\A.TXT", "b.txt", 600, 600);
+        IconPosition liveB = new(@"C:\DESK\b.TXT", "a.txt", 700, 700);
+        IconPosition unsaved = new(@"C:\Desk\other.txt", "c.txt", 800, 800);
+        using Rig rig = Saved([A, B, C], liveA, liveB, unsaved);
+
+        rig.Service().Restore();
+
+        Assert.Equal([A, B], Assert.Single(rig.Desktop.Calls));
+    }
+
+    [Fact]
+    public void CountsComeFromTheDesktopReadBack()
+    {
+        using Rig rig = Saved([A, B, C], A with { X = 1 }, B with { X = 2 });
+
+        Assert.Equal(OperationResult.Restored("2 monitors", 3, 2, 0, 1), rig.Service().Restore());
+    }
+
+    [Fact]
+    public void IconsWindowsMovedMakeTheRestoreAFailureWithItsCounts()
+    {
+        using Rig rig = Saved([A, B, C], A, B, C);
+        rig.Desktop.SnapBy = 1;
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, 3, 0, 3, 0), (result.Kind, result.Total, result.InPlace, result.NotPlaced, result.Missing));
+    }
+
+    [Fact]
+    public void OneInPlaceOneMovedAndOneMissingAreCountedTogether()
+    {
+        using Rig rig = Saved([A, B, C], A with { X = 1 }, B with { X = 2 });
+        rig.Desktop.SnapBy = 3;
+        rig.Desktop.SnapIds = new HashSet<string>([B.Id]);
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, "2 monitors", 3, 1, 1, 1), (result.Kind, result.LayoutName, result.Total, result.InPlace, result.NotPlaced, result.Missing));
+    }
+
+    [Fact]
+    public void AnEmptyLayoutAndAnAllMissingLayoutAreDone()
+    {
+        using (Rig empty = Saved([], A))
+        {
+            Assert.Equal(OperationResult.Restored("2 monitors", 0, 0, 0, 0), empty.Service().Restore());
+        }
+
+        using Rig gone = Saved([A, B]);
+        Assert.Equal(OperationResult.Restored("2 monitors", 2, 0, 0, 2), gone.Service().Restore());
+    }
+
+    [Fact]
+    public void AnUnreadableUndoFileIsReplaced()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        BerthPaths.EnsureFolderFor(rig.Paths.UndoFile);
+        File.WriteAllText(rig.Paths.UndoFile, "{");
+
+        Assert.Equal(OperationKind.Restored, rig.Service().Restore().Kind);
+        Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
+    }
+
+    [Fact]
+    public void AnUndoThatCannotBeWrittenMovesNothing()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
+        OperationResult result;
+        using (new FileStream(rig.Paths.UndoFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = rig.Service().Restore();
+        }
+
+        Assert.Equal((OperationKind.Failed, rig.Paths.UndoFile), (result.Kind, result.Path));
+        Assert.False(string.IsNullOrWhiteSpace(result.Detail));
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+    }
+
+    [Fact]
+    public void ADesktopLostWhilePlacingIsAFailureWithoutCountsThatKeepsTheWayBack()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        rig.Desktop.UnavailableOnSet = true;
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, 0, 0, 0, 0), (result.Kind, result.Total, result.InPlace, result.NotPlaced, result.Missing));
+        Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
+    }
+
+    [Fact]
+    public void ADesktopLostWhileReadingBackIsAFailureWithoutCounts()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        rig.Desktop.BeforeSet = () => rig.Desktop.Unavailable = true;
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, 0), (result.Kind, result.Total));
+        Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
+        Assert.Single(rig.LogLines(), line => line.Contains(" FAIL Restore: Failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnUnexpectedErrorIsAFailureLoggedWithItsDetails()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        int logged = rig.LogLines().Length;
+        rig.Desktop.BeforeSet = () => throw new InvalidOperationException("boom");
+
+        OperationResult result = rig.Service().Restore();
+
+        Assert.Equal((OperationKind.Failed, "boom"), (result.Kind, result.Detail));
+        string[] lines = LinesAfter(rig, logged);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Restore: Failed: boom", lines[0], StringComparison.Ordinal);
+        Assert.Equal("  System.InvalidOperationException: boom", lines[1]);
+        Assert.All(lines.Skip(1), line => Assert.StartsWith("  ", line, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ABusyLockIsRefusedWithItsOriginAndChangesNothing()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig), layout = File.ReadAllBytes(rig.File);
+        int logged = rig.LogLines().Length;
+        using var holder = new MutexHolder(rig.Gate.MutexName);
+
+        OperationResult result = rig.Service().Restore(Auto);
+
+        Assert.Equal(OperationResult.Refused(Refusal.Busy) with { Origin = Auto }, result);
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        Assert.Equal(layout, File.ReadAllBytes(rig.File));
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Restore: Refused, Busy (automatic, display change)"], LinesAfter(rig, logged));
+    }
+
+    [Fact]
+    public void EachRestoreLogsOneEventAndAnAutomaticOneSaysSo()
+    {
+        using Rig rig = Saved([A, B], A with { X = 1 }, B);
+        int logged = rig.LogLines().Length;
+
+        Assert.Equal(Auto, rig.Service().Restore(Auto).Origin);
+        Assert.Null(rig.Service().Restore().Origin);
+        rig.Desktop.SetAutoArrange(true);
+        rig.Service().Restore(Auto);
+        rig.Desktop.SetAutoArrange(false);
+        rig.Desktop.SnapBy = 1;
+        Assert.Equal((OperationKind.Failed, Auto), (rig.Service().Restore(Auto) is var failed ? failed.Kind : default, failed.Origin));
+
+        Assert.Equal(
+            [
+                "2026-11-15T07:14:03Z INFO Restore: Restored \"2 monitors\", 2 of 2 in place, 0 not placed, 0 missing (automatic, display change)",
+                "2026-11-15T07:14:03Z INFO Restore: Restored \"2 monitors\", 2 of 2 in place, 0 not placed, 0 missing",
+                "2026-11-15T07:14:03Z WARN Restore: Refused \"2 monitors\", AutoArrange (automatic, display change)",
+                "2026-11-15T07:14:03Z FAIL Restore: Failed \"2 monitors\", 0 of 2 in place, 2 not placed, 0 missing (automatic, display change)",
+            ],
+            LinesAfter(rig, logged));
+    }
+}

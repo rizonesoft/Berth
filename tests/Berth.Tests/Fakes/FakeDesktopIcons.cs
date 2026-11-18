@@ -22,6 +22,12 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
     /// moves and before an unavailable desktop refuses it, so a test can prove a write was never attempted.</summary>
     public List<IReadOnlyList<IconPosition>> Calls { get; } = [];
 
+    /// <summary>Called at the start of each <see cref="IDesktopIcons.SetPositions"/> call, before anything moves.</summary>
+    public Action? BeforeSet { get; set; }
+
+    /// <summary>When true, <see cref="IDesktopIcons.SetPositions"/> throws as Explorer would while restarting.</summary>
+    public bool UnavailableOnSet { get; set; }
+
     /// <summary>How many times the icons were read.</summary>
     public int Reads { get; private set; }
 
@@ -61,6 +67,11 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         ArgumentNullException.ThrowIfNull(requested);
         Calls.Add([.. requested]);
         ThrowIfUnavailable();
+        BeforeSet?.Invoke();
+        if (UnavailableOnSet)
+        {
+            throw new DesktopUnavailableException("Explorer restarted.");
+        }
         foreach (IconPosition wanted in requested)
         {
             int index = icons.FindIndex(icon => string.Equals(icon.Id, wanted.Id, StringComparison.OrdinalIgnoreCase));

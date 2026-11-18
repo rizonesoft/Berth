@@ -21,7 +21,16 @@ internal sealed class LayoutService(
     /// names it "1 monitor" or "N monitors" (numbered when taken), a later one keeps its name and moves the earlier
     /// icons and time into <c>previous</c>. A given <paramref name="name"/> is validated and stored trimmed.
     /// </summary>
-    public OperationResult Save(string? name = null) => Logged("Save", () => SaveLocked(name));
+    public OperationResult Save(string? name = null) => Logged("Save", () => SaveLocked(name), origin: null);
+
+    /// <summary>
+    /// Puts the current arrangement's saved icons back (SPEC §15 "Restore"): refused, in this order, when the desktop
+    /// cannot be reached, when the arrangement has no layout (or its file cannot be read), or while auto arrange is
+    /// on. Otherwise it writes <c>undo.json</c> with the positions now, moves every saved icon still on the desktop,
+    /// reads the desktop back and counts. <paramref name="origin"/> (an automatic restore's trigger) rides on the
+    /// result and its log line.
+    /// </summary>
+    public OperationResult Restore(string? origin = null) => Logged("Restore", () => RestoreLocked(origin), origin);
 
     /// <summary>Lets a test act between the save's read of the layouts and its write. Production leaves it null.</summary>
     internal Action? BeforeWrite { get; init; }
@@ -115,6 +124,97 @@ internal sealed class LayoutService(
         return OperationResult.Saved(layoutName, icons.Count, replacedEarlierSave: snapshot.Layout is not null);
     }
 
+    private OperationResult RestoreLocked(string? origin)
+    {
+        if (Capture() is not ({ } arrangement, { } icons))
+        {
+            return OperationResult.Refused(Refusal.DesktopUnavailable);
+        }
+
+        string key = ArrangementKey.From(arrangement);
+        Layout? layout;
+        try
+        {
+            layout = store.Find(key);
+        }
+        catch (UnreadableLayoutException unreadable)
+        {
+            return OperationResult.Refused(Refusal.UnreadableLayout, path: unreadable.FileName, detail: unreadable.Reason);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(paths.LayoutsFolder, error.Message);
+        }
+
+        if (layout is null)
+        {
+            return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        try
+        {
+            if (desktop.AutoArrange)
+            {
+                return OperationResult.Refused(Refusal.AutoArrange, layout.Name);
+            }
+        }
+        catch (DesktopUnavailableException)
+        {
+            return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
+        }
+
+        // The way back is on disk before anything moves, so `berth undo` in another process has it.
+        try
+        {
+            BerthPaths.EnsureFolderFor(paths.UndoFile);
+            JsonFile.Write(paths.UndoFile, new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]), BerthJson.Default.UndoSnapshot);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failed(paths.UndoFile, error.Message, layout.Name);
+        }
+
+        var live = new HashSet<string>(icons.Select(i => i.Id), StringComparer.OrdinalIgnoreCase);
+        IconPosition[] wanted = [.. layout.Icons.Where(saved => live.Contains(saved.Id))];
+        IReadOnlyList<IconPosition> after;
+        try
+        {
+            desktop.SetPositions(wanted);
+            after = desktop.ReadIcons();
+        }
+        catch (DesktopUnavailableException)
+        {
+            // Some icons may have moved and none can be counted: the snapshot stays, so undo still works.
+            return OperationResult.Failed(
+                path: null, "The desktop could not be reached while the icons were being placed. Undo puts back what was there.", layout.Name);
+        }
+
+        var now = new Dictionary<string, IconPosition>(StringComparer.OrdinalIgnoreCase);
+        foreach (IconPosition icon in after)
+        {
+            now.TryAdd(icon.Id, icon);
+        }
+
+        int inPlace = 0, notPlaced = 0, missing = 0;
+        foreach (IconPosition saved in layout.Icons)
+        {
+            if (!now.TryGetValue(saved.Id, out IconPosition? read))
+            {
+                missing++;
+            }
+            else if (read.X == saved.X && read.Y == saved.Y)
+            {
+                inPlace++;
+            }
+            else
+            {
+                notPlaced++;
+            }
+        }
+
+        return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin);
+    }
+
     /// <summary>
     /// The monitors and the icons read together: the monitors are read again after the icons, and a capture across a
     /// display change (the icons Explorer moved for another arrangement) is taken again, up to three times. Null
@@ -148,7 +248,7 @@ internal sealed class LayoutService(
     /// nobody expected into a failure that keeps it (SPEC §18 "Something went wrong"), and logs the one result.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Every operation ends in one result and one log event; an unexpected error is that failure (SPEC §18).")]
-    private OperationResult Logged(string operation, Func<OperationResult> work)
+    private OperationResult Logged(string operation, Func<OperationResult> work, string? origin)
     {
         OperationResult result;
         try
@@ -159,6 +259,12 @@ internal sealed class LayoutService(
         catch (Exception error)
         {
             result = OperationResult.Failed(path: null, error.Message, error: error);
+        }
+
+        // An automatic operation's trigger rides on every result, a refusal or failure included.
+        if (origin is not null)
+        {
+            result = result with { Origin = origin };
         }
 
         log.Result(result, Describe(operation, result));
@@ -173,5 +279,8 @@ internal sealed class LayoutService(
         + (result.Refusal == Refusal.None ? string.Empty : $", {result.Refusal}")
         + (result.NameError == NameError.None ? string.Empty : $" ({result.NameError})")
         + (result.Path is null ? string.Empty : $", {result.Path}")
-        + (result.Detail is null ? string.Empty : $": {result.Detail}");
+        + (result.Kind is OperationKind.Restored or OperationKind.Failed && result.Total > 0
+            ? $", {result.InPlace} of {result.Total} in place, {result.NotPlaced} not placed, {result.Missing} missing" : string.Empty)
+        + (result.Detail is null ? string.Empty : $": {result.Detail}")
+        + (result.Origin is null ? string.Empty : $" ({result.Origin})");
 }
