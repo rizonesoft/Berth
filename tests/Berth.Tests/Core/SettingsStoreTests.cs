@@ -178,6 +178,64 @@ public sealed class SettingsStoreTests
         }
     }
     [Fact]
+    public void AnOutsideHandleBlockingTheRollbackStillGivesTheTypedRefusal()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] arrived = "{ damaged by a sync"u8.ToArray();
+            FileStream? outside = null;
+            try
+            {
+                // Another program opens the file without delete sharing between the replace and its check.
+                Assert.Throws<UnreadableSettingsException>(() => store.Save(
+                    Settings.Default,
+                    beforeReplace: null,
+                    afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
+                    afterReplace: () => outside = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.Read)));
+            }
+            finally
+            {
+                outside?.Dispose();
+            }
+
+            // The next read finishes the interrupted save: the arrival is back in place and reported.
+            SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
+            Assert.False(string.IsNullOrWhiteSpace(load.Unreadable));
+            Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+        }
+    }
+
+    [Fact]
+    public void AReadHandleOfBerthsOwnKindNeverBlocksTheRollback()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] arrived = "{ damaged by a sync"u8.ToArray();
+            FileStream? reader = null;
+            try
+            {
+                // A reader opens the file the way Berth's own reader does, and holds it through the rollback.
+                Assert.Throws<UnreadableSettingsException>(() => store.Save(
+                    Settings.Default,
+                    beforeReplace: null,
+                    afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived),
+                    afterReplace: () => reader = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)));
+
+                // The rollback was not blocked: the arrival is back in place at once, with no note left over.
+                Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+            }
+            finally
+            {
+                reader?.Dispose();
+            }
+
+            Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+        }
+    }    [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

@@ -199,7 +199,16 @@ internal static partial class JsonFile
             afterCheck?.Invoke();
             File.Replace(temp, path, kept, ignoreMetadataErrors: false);
             afterReplace?.Invoke();
-            stands = Settle(path, kept, expected, written);
+            try
+            {
+                stands = Settle(path, kept, expected, written);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Another program held the file through the check or the rollback. The note stays, so the next read
+                // finishes this save; the caller is told the file could not be checked, not that a write failed.
+                throw new TargetChangedException(path, error);
+            }
         }
 
         File.Delete(pending);
@@ -334,7 +343,7 @@ internal static partial class JsonFile
 
     private static string HashOf(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
@@ -362,7 +371,7 @@ internal static partial class JsonFile
     /// <summary>Whether <paramref name="path"/> holds exactly <paramref name="bytes"/>, read only when the lengths agree.</summary>
     private static bool HoldsExactly(string path, byte[] bytes)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         if (stream.Length != bytes.Length)
         {
             return false;
@@ -434,7 +443,7 @@ internal static partial class JsonFile
         byte[] bytes;
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             if (stream.Length > MaxBytes)
             {
                 reason = $"The file is {stream.Length} bytes, more than the {MaxBytes} a Berth file can hold.";

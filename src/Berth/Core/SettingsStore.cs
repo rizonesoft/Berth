@@ -54,6 +54,22 @@ internal sealed class SettingsStore(BerthPaths paths)
     /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
     public void Save(Settings value) => Save(value, beforeReplace: null);
 
+    /// <summary>As <see cref="Save(Settings)"/>, with the writer's later seams (<see cref="JsonFile.WriteOver"/>) for a test.</summary>
+    internal void Save(Settings value, Action? beforeReplace, Action? afterCheck, Action? afterReplace)
+    {
+        seams = (afterCheck, afterReplace);
+        try
+        {
+            Save(value, beforeReplace);
+        }
+        finally
+        {
+            seams = (null, null);
+        }
+    }
+
+    private (Action? AfterCheck, Action? AfterReplace) seams;
+
     /// <summary>As <see cref="Save(Settings)"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
     internal void Save(Settings value, Action? beforeReplace)
     {
@@ -75,7 +91,7 @@ internal sealed class SettingsStore(BerthPaths paths)
         {
             try
             {
-                JsonFile.WriteOver(paths.SettingsFile, value, BerthJson.Default.Settings, read!, beforeReplace is null ? null : _ => beforeReplace());
+                JsonFile.WriteOver(paths.SettingsFile, value, BerthJson.Default.Settings, read!, beforeReplace is null ? null : _ => beforeReplace(), seams.AfterCheck, seams.AfterReplace);
             }
             catch (TargetChangedException changed) when (changed.InnerException is IOException or UnauthorizedAccessException)
             {
