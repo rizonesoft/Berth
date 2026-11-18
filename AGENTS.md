@@ -61,6 +61,7 @@ How to work without waiting to be told. When to ask the operator is listed under
 - Ask the operator only for what Safety lists: once, with the options and the one you recommend, and keep working on everything the answer does not change.
 - Fix forward: a risk found later is filed as ordinary work that blocks nothing, and a red check is fixed at its cause, never skipped or bypassed.
 - Build the simplest design that meets the request in full, and add a check, gate or prerequisite only for a failure that has happened or one that would lose data, spend money or expose something.
+- Own the whole result: the repository, its runners, tooling and methods as well as the product. Decide what you can work out instead of asking, heal what breaks at its owning layer as you meet it, and improve a tool or process that slowed the work. Aim to beat the strongest alternative (Microsoft, Apple, Google or Adobe included): the completion review's comparison with it is scope, not decoration. Owner directive, 2026-11-18.
 - An unattended run never asks the operator: it takes the industry-standard option, records the decision and what reversing it would cost in the run file and files an owner item; it halts only through the run's own pause mechanism, and pauses instead of proceeding only for data loss, a credential, shared infrastructure or a calculation that looks wrong.
 
 ## Safety
