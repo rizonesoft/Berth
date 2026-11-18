@@ -51,7 +51,7 @@ depends_on: ["dotnet-foundation"]
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
 | 14 | §14 | Operation lock across processes | §3 | [x] |
-| 15 | §15 | Log file with a size cap | §3 | [ ] |
+| 15 | §15 | Log file with a size cap | §3 | [x] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
@@ -459,9 +459,12 @@ One line per event, capped at 1 MB with one previous file (SPEC §18).
 - [x] Never throw from a log call: a failed write is swallowed after one retry. Done when: a test with the log folder made read-only shows `Info` returning normally. Cheaper substitute: a logging failure that aborts a restore half way. **Corrected 2026-11-18:** D01 T01 §15 plan review: tests hold the log file exclusively: released after the first failed attempt, the event is written once by the retry; never released, the call returns after exactly two attempts.
 - [x] Add `Log.Result(OperationResult? result, string text)` choosing the level from the result kind (`INFO` for done, `WARN` for `Refused`, `FAIL` for `Failed`), for `LayoutService` to call once per operation (§9 to §12; `OperationResult` arrives in §9, so until then the method takes the level as an enum `LogLevel` and §9 adds the overload). Done when: a test logs one line per level and reads the three levels back. **Corrected 2026-11-18:** D01 T01 §15 plan review: this section ships `Write(LogLevel level, string message)` and its test; the `OperationResult` overload and its mapping are §9's item. Cheaper substitute: logging in each caller, so the command line and window disagree.
 - [x] Add `tests/Berth.Tests/Core/LogTests.cs`. Done when: all pass, and the roll test fails when the cap check is removed. Cheaper substitute: asserting the file exists.
-- [ ] Commit: `core: log file with a size cap`
+- [x] Commit: `core: log file with a size cap`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LogTests"` passes, and fails when the size cap check is removed.
+
+> **Verified:** 2026-11-18 | §15 | fa164adbdd61a9b0617bd261ce5d206db329690f
+> **Review:** `docs/reviews/d01-t01-s15.json`
 
 ## 16. One wording for every result
 
