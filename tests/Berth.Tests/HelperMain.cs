@@ -11,8 +11,8 @@ internal static class HelperMain
             return 2;
         }
 
-        // The mutex is created, taken and released on this one thread, as a mutex requires.
-        using var mutex = new Mutex(initiallyOwned: false, args[1]);
+        // The mutex is opened, taken and released on this one thread, as a mutex requires.
+        using Mutex mutex = DesktopTestGate.OpenSharedMutex(args[1]);
         bool held = false;
         Console.WriteLine("ready");
         while (Console.ReadLine() is { } command)
@@ -23,13 +23,10 @@ internal static class HelperMain
                     // A mutex can be taken again by its owner, which one release would not undo: never nest.
                     Console.WriteLine("already held");
                     break;
-                case "try":
-                    held = Take(mutex, TimeSpan.Zero);
-                    Console.WriteLine(held ? "acquired" : "busy");
-                    break;
-                case "wait":
-                    held = Take(mutex, TimeSpan.FromSeconds(15));
-                    Console.WriteLine(held ? "acquired" : "busy");
+                case "try" or "wait":
+                    string reply = Take(mutex, command == "try" ? TimeSpan.Zero : TimeSpan.FromSeconds(15));
+                    held = reply != "busy";
+                    Console.WriteLine(reply);
                     break;
                 case "release":
                     if (held)
@@ -40,8 +37,14 @@ internal static class HelperMain
 
                     Console.WriteLine("released");
                     break;
-                case "data":
-                    Console.WriteLine(Environment.GetEnvironmentVariable("BERTH_DATA") ?? "<unset>");
+                case "env":
+                    string others = string.Join(
+                        ",",
+                        Environment.GetEnvironmentVariables().Keys.Cast<string>()
+                            .Where(k => k.StartsWith("BERTH_", StringComparison.OrdinalIgnoreCase)
+                                && !k.Equals("BERTH_DATA", StringComparison.OrdinalIgnoreCase))
+                            .Order(StringComparer.OrdinalIgnoreCase));
+                    Console.WriteLine($"{Environment.GetEnvironmentVariable("BERTH_DATA") ?? "<unset>"}|{others}");
                     break;
                 case "exit":
                     Console.WriteLine("bye");
@@ -55,15 +58,16 @@ internal static class HelperMain
         return 0;
     }
 
-    private static bool Take(Mutex mutex, TimeSpan wait)
+    /// <summary><c>acquired</c> after an ordinary release, <c>abandoned</c> when the last owner died holding it.</summary>
+    private static string Take(Mutex mutex, TimeSpan wait)
     {
         try
         {
-            return mutex.WaitOne(wait);
+            return mutex.WaitOne(wait) ? "acquired" : "busy";
         }
         catch (AbandonedMutexException)
         {
-            return true;
+            return "abandoned";
         }
     }
 }

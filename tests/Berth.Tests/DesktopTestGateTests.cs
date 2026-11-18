@@ -66,9 +66,54 @@ public sealed class DesktopTestGateTests
             Assert.Equal(name, gate.MutexName);
         }
 
+        // "acquired", not "abandoned": the gate released the mutex itself on dispose.
         using var after = HelperProcess.Start(data.Root, "mutex", name);
         Assert.Equal("acquired", after.Send("try"));
         Assert.Equal("released", after.Send("release"));
+    }
+
+    [Fact]
+    public void HelperTellsAnAbandonedMutexFromAReleasedOne()
+    {
+        string name = UniqueName();
+        using var data = new TestData();
+        using var keepAlive = new Mutex(initiallyOwned: false, name);
+        using var observer = HelperProcess.Start(data.Root, "mutex", name);
+        using (var crashed = HelperProcess.Start(data.Root, "mutex", name))
+        {
+            Assert.Equal("acquired", crashed.Send("try"));
+            crashed.Kill();
+        }
+
+        Assert.Equal("abandoned", observer.Send("try"));
+        Assert.Equal("released", observer.Send("release"));
+    }
+
+    [Fact]
+    public void GateMutexAdmitsEveryAuthenticatedAccount()
+    {
+        string name = UniqueName();
+        using var mutex = DesktopTestGate.OpenSharedMutex(name);
+        var sid = new System.Security.Principal.SecurityIdentifier(
+            System.Security.Principal.WellKnownSidType.AuthenticatedUserSid, null);
+
+        var rules = mutex.GetAccessControl()
+            .GetAccessRules(includeExplicit: true, includeInherited: true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.MutexAccessRule>()
+            .Where(r => r.IdentityReference.Equals(sid) && r.AccessControlType == System.Security.AccessControl.AccessControlType.Allow);
+
+        var rights = System.Security.AccessControl.MutexRights.Synchronize | System.Security.AccessControl.MutexRights.Modify;
+        Assert.Contains(rules, r => (r.MutexRights & rights) == rights);
+    }
+
+    [Fact]
+    public void HelperThatFloodsStandardErrorStillAnswers()
+    {
+        using var data = new TestData();
+        var trace = new Dictionary<string, string> { ["DOTNET_HOST_TRACE"] = "1", ["DOTNET_HOST_TRACE_VERBOSITY"] = "4" };
+        using var helper = HelperProcess.Start(data.Root, trace, "mutex", UniqueName());
+
+        Assert.StartsWith(data.Root + "|", helper.Send("env"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -90,9 +135,15 @@ public sealed class DesktopTestGateTests
     public void HelperGetsItsOwnDataRootAndNoOtherBerthVariable()
     {
         using var data = new TestData();
-        using var helper = HelperProcess.Start(data.Root, "mutex", UniqueName());
+        var inherited = new Dictionary<string, string>
+        {
+            ["BERTH_DATA"] = @"C:\owner-data-must-not-reach-a-helper",
+            ["BERTH_TEST_ICON_PREFIX"] = "sentinel",
+            ["berth_test_hold_ms"] = "1",
+        };
+        using var helper = HelperProcess.Start(data.Root, inherited, "mutex", UniqueName());
 
-        Assert.Equal(data.Root, helper.Send("data"));
+        Assert.Equal(data.Root + "|", helper.Send("env"));
     }
 
     [Fact]

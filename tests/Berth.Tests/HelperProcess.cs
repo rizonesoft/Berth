@@ -12,7 +12,9 @@ internal sealed class HelperProcess : IDisposable
     public const string Switch = "--berth-helper";
 
     private static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(20);
+    private const int ErrorTailLimit = 8192;
     private readonly Process process;
+    private readonly System.Text.StringBuilder errorTail = new();
 
     private HelperProcess(Process process) => this.process = process;
 
@@ -24,7 +26,13 @@ internal sealed class HelperProcess : IDisposable
     /// Starts a helper whose BERTH_DATA is <paramref name="dataRoot"/> and that inherits no other BERTH_ variable,
     /// so a helper can never reach the owner's data (AGENTS.md).
     /// </summary>
-    public static HelperProcess Start(string dataRoot, params string[] args)
+    public static HelperProcess Start(string dataRoot, params string[] args) => Start(dataRoot, inherited: null, args);
+
+    /// <summary>
+    /// As <see cref="Start(string, string[])"/>, with <paramref name="inherited"/> added to the environment the
+    /// child would inherit before the BERTH_ variables are cleared, so a test can prove the clearing.
+    /// </summary>
+    internal static HelperProcess Start(string dataRoot, IReadOnlyDictionary<string, string>? inherited, params string[] args)
     {
         var info = new ProcessStartInfo
         {
@@ -54,6 +62,11 @@ internal sealed class HelperProcess : IDisposable
             info.ArgumentList.Add(arg);
         }
 
+        foreach ((string key, string value) in inherited ?? new Dictionary<string, string>())
+        {
+            info.Environment[key] = value;
+        }
+
         foreach (string name in info.Environment.Keys.Where(k => k.StartsWith("BERTH_", StringComparison.OrdinalIgnoreCase)).ToList())
         {
             info.Environment.Remove(name);
@@ -64,6 +77,7 @@ internal sealed class HelperProcess : IDisposable
         var helper = new HelperProcess(Process.Start(info) ?? throw new InvalidOperationException("The helper did not start."));
         try
         {
+            helper.DrainStandardError();
             string ready = helper.ReadLine();
             if (ready != "ready")
             {
@@ -114,15 +128,49 @@ internal sealed class HelperProcess : IDisposable
         process.Dispose();
     }
 
+    /// <summary>
+    /// Reads standard error from the start, so a chatty child (host tracing, say) never blocks on a full pipe, and
+    /// keeps only its last <see cref="ErrorTailLimit"/> characters for the failure message.
+    /// </summary>
+    private void DrainStandardError()
+    {
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                return;
+            }
+
+            lock (errorTail)
+            {
+                errorTail.AppendLine(e.Data);
+                if (errorTail.Length > ErrorTailLimit)
+                {
+                    errorTail.Remove(0, errorTail.Length - ErrorTailLimit);
+                }
+            }
+        };
+        process.BeginErrorReadLine();
+    }
+
+    private string ErrorTail()
+    {
+        lock (errorTail)
+        {
+            return errorTail.Length == 0 ? "<nothing>" : errorTail.ToString();
+        }
+    }
+
     private string ReadLine()
     {
         Task<string?> line = process.StandardOutput.ReadLineAsync();
         if (!line.Wait(ReplyTimeout))
         {
-            throw new TimeoutException($"Helper {process.Id} sent no reply within {ReplyTimeout.TotalSeconds} seconds.");
+            throw new TimeoutException(
+                $"Helper {process.Id} sent no reply within {ReplyTimeout.TotalSeconds} seconds. Standard error ends: {ErrorTail()}");
         }
 
         return line.Result ?? throw new InvalidOperationException(
-            $"Helper {process.Id} closed its output. Standard error: {process.StandardError.ReadToEnd()}");
+            $"Helper {process.Id} closed its output. Standard error ends: {ErrorTail()}");
     }
 }
