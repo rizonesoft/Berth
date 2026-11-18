@@ -268,7 +268,8 @@ public sealed class SettingsStoreTests
                 Settings.Default, beforeReplace: null, afterCheck: () => throw new InvalidOperationException("crash"), afterReplace: null));
 
             // A sync client reads the file as Berth starts, and lets go well within the wait.
-            var reader = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            // Disposed early by the release below; the using also closes it if the run is cancelled first.
+            using var reader = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             CancellationToken cancel = TestContext.Current.CancellationToken;
             Task release = Task.Run(
                 async () =>
