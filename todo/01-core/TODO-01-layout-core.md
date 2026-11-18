@@ -48,7 +48,7 @@ depends_on: ["dotnet-foundation"]
 | 9 | §9 | Save operation | §5, §8, §14, §15 | [x] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [x] |
 | 11 | §11 | Undo operation | §10 | [x] |
-| 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
+| 12 | §12 | Rename, revert and delete operations | §9 | [x] |
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
 | 14 | §14 | Operation lock across processes | §3 | [x] |
 | 15 | §15 | Log file with a size cap | §3 | [x] |
@@ -400,9 +400,12 @@ The three "More" menu operations of SPEC §10, each written and read back before
 - [x] Add `tests/Berth.Tests/Core/LayoutEditTests.cs` with those cases. Done when: all pass, and the double-revert test fails when revert discards instead of swapping. Cheaper substitute: tests that assert only the returned `Kind`. **Corrected 2026-11-18:** covers all cases above with fresh `LayoutStore` read-back assertions (including reopened first-revert state before the second revert), strict throwing `IDesktopIcons` and `IMonitors` doubles, seeded `undo.json` byte-for-byte survival, multi-layout isolation, `null!` vs invalid non-null key checks, `NoLayout` vs `NoPreviousSave`, read-only file, `BeforeWrite`, `beforeDelete` (`afterCheck` handle-held replacement denial across both store overloads) and `AfterWrite` failure checks, plus the `Revert` discard and no-write mutation checks.
 - [x] Run rename, revert and delete inside `OperationLock.Run`, each returning `Refused` with `Busy` when the lock is not acquired (**Corrected 2026-11-18:** D01 T01 §14 plan review). Done when: tests holding the lock get `Refused` with `Busy` for each, and the desktop and the layout file are unchanged. Cheaper substitute: wrapping only save.
 - [x] Log exactly one event per rename, revert and delete through `Log.Result` (**Corrected 2026-11-18:** D01 T01 §15 plan review). Done when: tests read back exactly one line with its level and message for a done, a refused and a failed result. Cheaper substitute: asserting the returned result only. **Corrected 2026-11-18:** asserts one exact added event line (`INFO` for done including `SavedAt` in `Describe` for `Reverted`, `WARN` for refused, `FAIL` for failed, plus `  ` continuation lines with exception type and stack for `FailureKind.Unexpected`) for `Rename`, `Revert` and `Delete`.
-- [ ] Commit: `core: rename, revert and delete operations`
+- [x] Commit: `core: rename, revert and delete operations`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutEditTests"` passes, and fails when `Revert` discards the current save instead of swapping.
+
+> **Verified:** 2026-11-19 | §12 | afe98bdeefc43511071c67c6d022d2b9fcb8aab6
+> **Review:** `docs/reviews/d01-t01-s12.json`
 
 ## 13. Comparison of a layout with the desktop
 
