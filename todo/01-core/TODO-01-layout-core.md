@@ -562,7 +562,7 @@ Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's bl
 
 1. Make seeing the blocked contender a condition of the test. Done when: the test fails when the contender is never seen blocked before the release.
 
-- [ ] In `tests/Berth.Tests/Core/OperationLockTests.cs`, assert that the contender was seen in `WaitSleepJoin` before `holder.Release()`, separately from its being alive. Done when: the test passes, and fails when `OperationLock.Run` waits 0 ms. Cheaper substitute: asserting only that the thread is alive.
+- [x] In `tests/Berth.Tests/Core/OperationLockTests.cs`, assert that the contender was seen in `WaitSleepJoin` before `holder.Release()`, separately from its being alive. Done when: the test passes, and fails when `OperationLock.Run` waits 0 ms. Cheaper substitute: asserting only that the thread is alive. **Corrected 2026-11-18:** D01 T01 §20 plan review: the observation is a helper, `SeenBlocked(thread, deadline)`, that the waiting test asserts before the release, with its own tests: a thread blocked on an event is seen blocked, and a thread kept alive and busy (never waiting) through the deadline is not, so the assertion is what catches a contender that never waits.
 - [ ] Commit: `test: the waiting-lock test sees the contender blocked`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*OperationLockTests"` passes, and fails when `Run` waits 0 ms.

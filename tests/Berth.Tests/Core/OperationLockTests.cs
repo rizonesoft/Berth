@@ -87,15 +87,9 @@ public sealed class OperationLockTests
         var contender = new Thread(() => result = gate.Run(() => { calls++; return "work"; }, () => { busies++; return "busy"; }));
         contender.Start();
 
-        // Released only once the run is blocked waiting for the mutex (a run that did not wait never blocks); the run
-        // must then take the lock within its 10-second deadline.
-        var seen = Stopwatch.StartNew();
-        while ((contender.ThreadState & System.Threading.ThreadState.WaitSleepJoin) == 0 && contender.IsAlive && seen.Elapsed < TimeSpan.FromSeconds(10))
-        {
-            Thread.Yield();
-        }
-
-        Assert.True(contender.IsAlive, "the run did not wait for the lock");
+        // Released only once the run is seen blocked waiting for the mutex (a run that does not wait is never seen
+        // blocked); the run must then take the lock within its 10-second deadline.
+        Assert.True(SeenBlocked(contender, TimeSpan.FromSeconds(10)), "the run was never seen waiting for the lock");
         holder.Release();
         Task<bool> ended = Task.Run(() => contender.Join(TimeSpan.FromSeconds(10)), cancel);
         Assert.True(await ended);
@@ -193,6 +187,57 @@ public sealed class OperationLockTests
 
         Assert.Equal(TimeSpan.FromSeconds(5), gate.Wait);
         Assert.Matches(@"^Global\\Berth\.Operation\.[0-9a-f]{16}\z", gate.MutexName);
+    }
+
+    [Fact]
+    public void AThreadBlockedOnAnEventIsSeenBlocked()
+    {
+        using var go = new ManualResetEventSlim();
+        var waiter = new Thread(() => go.Wait()) { IsBackground = true };
+        waiter.Start();
+
+        Assert.True(SeenBlocked(waiter, TimeSpan.FromSeconds(10)));
+        go.Set();
+        Assert.True(waiter.Join(TimeSpan.FromSeconds(10)));
+    }
+
+    [Fact]
+    public void AThreadThatStaysBusyIsNotSeenBlocked()
+    {
+        // Alive through the whole deadline and never waiting, as a run that does not wait for the mutex would be
+        // if the scheduler held it back: the observation must say no.
+        using var stop = new CancellationTokenSource();
+        var busy = new Thread(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                Thread.SpinWait(1000);
+            }
+        })
+        { IsBackground = true };
+        busy.Start();
+
+        Assert.False(SeenBlocked(busy, TimeSpan.FromMilliseconds(300)));
+        Assert.True(busy.IsAlive);
+        stop.Cancel();
+        Assert.True(busy.Join(TimeSpan.FromSeconds(10)));
+    }
+
+    /// <summary>Whether <paramref name="thread"/> is seen in a wait (blocked) within <paramref name="deadline"/>.</summary>
+    private static bool SeenBlocked(Thread thread, TimeSpan deadline)
+    {
+        var clock = Stopwatch.StartNew();
+        while (clock.Elapsed < deadline && thread.IsAlive)
+        {
+            if ((thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0)
+            {
+                return true;
+            }
+
+            Thread.Yield();
+        }
+
+        return false;
     }
 
     /// <summary>What another thread finds at once: "free", "abandoned" (its holder closed it still owning it) or
