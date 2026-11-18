@@ -39,7 +39,7 @@ title: "TODO-01 -- .NET foundation"
 | 1 | §1 | Solution, SDK pin and shared build properties | -- | [x] |
 | 2 | §2 | Application project that builds berth.exe | §1 | [x] |
 | 3 | §3 | Test project with a first failing-capable test | §2 | [x] |
-| 4 | §4 | One command that runs every gate | §3 | [ ] |
+| 4 | §4 | One command that runs every gate | §3 | [x] |
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
 | 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [ ] |
@@ -155,9 +155,12 @@ The test project every later section adds to, with one real test so the runner i
 - [x] Add `tests/scripts/test_check_all.py` (Python `unittest`, standard library only) building the shims in a temporary folder: `python`, `node`, `dotnet` and `bosun` as `.cmd` files that append their name and arguments to a log, exit with a code taken from an environment variable keyed by step, and (for `bosun`) run the wrapped command; the script runs under `pwsh -NoProfile -File` with `PATH` set to the shim folder, the folder holding `pwsh`, and the Windows system folders only, and every child is bounded by a timeout with its process tree stopped on expiry. Done when: `python -m unittest discover -s tests/scripts` passes, and fails when `check-all.ps1` stops honouring `-Only`. Cheaper substitute: tests that grep the script's text.
 - [x] Run the real script on the real tree. Done when: `pwsh scripts/check-all.ps1` exits 0; `-Only test` exits 0 on a clean tree; and in a scratch copy of the repository with `AppInfoTests.VersionIsThreeNumbers` asserting `^x$`, both the full script and `-Only test` exit non-zero, the output names `AppInfoTests.VersionIsThreeNumbers` and ends with `FAILED test:`, and the copy is green again once restored. Cheaper substitute: proving failure only through the shims.
 - [x] Update `CONTRIBUTING.md`: under "What do I need?" name the SDK that `global.json` pins without the "once the solution exists" condition and add PowerShell 7 (`pwsh`); under "Which checks must pass?" make the first code block `pwsh scripts/check-all.ps1`, then show `-List` and `-Only build,test`, removing "Once the solution exists". Done when: the two sections read that way. Cheaper substitute: leaving the document describing a state that no longer exists.
-- [ ] Commit: `build: one command that runs every gate`
+- [x] Commit: `build: one command that runs every gate`
 
 **Test checkpoint:** `pwsh scripts/check-all.ps1` exits 0 and `python -m unittest discover -s tests/scripts` passes; in a scratch copy with `AppInfoTests` asserting a wrong pattern, `pwsh scripts/check-all.ps1` exits non-zero, names `AppInfoTests.VersionIsThreeNumbers` and prints `FAILED test:`.
+
+> **Verified:** 2026-11-18 | §4 | c3fd513f98cb07e5135c2dae0e2288c96e718e66
+> **Review:** `docs/reviews/d00-t01-s4.json`
 
 ## 5. Build and test workflow in CI
 

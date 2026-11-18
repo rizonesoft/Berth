@@ -15,7 +15,7 @@ Sections: 7 | Checklist items: 44
 | [x]    | D00 T01 §1 | Solution, SDK pin and shared build properties        | none  | 5     |
 | [x]    | D00 T01 §2 | Application project that builds berth.exe            | none  | 7     |
 | [x]    | D00 T01 §3 | Test project with a first failing-capable test       | none  | 10    |
-| [ ]    | D00 T01 §4 | One command that runs every gate                     | none  | 8     |
+| [x]    | D00 T01 §4 | One command that runs every gate                     | none  | 8     |
 | [ ]    | D00 T01 §5 | Build and test workflow in CI                        | none  | 6     |
 | [ ]    | D00 T01 §6 | Test that keeps Core free of UI and COM types        | none  | 4     |
 | [ ]    | D00 T01 §7 | Review prompts that name the stamp-owned Commit item | none  | 4     |
@@ -149,6 +149,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 3/80 verified sections, 3 ready to run now.
+Progress: 4/80 verified sections, 3 ready to run now.
 
-Checklist: 29/481 items completed (includes Commit items).
+Checklist: 30/481 items completed (includes Commit items).

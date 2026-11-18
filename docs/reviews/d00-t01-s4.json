@@ -1,0 +1,85 @@
+{
+  "ref": "D00 T01 \u00a74",
+  "title": "One command that runs every gate",
+  "implementation_sha": "c3fd513f98cb07e5135c2dae0e2288c96e718e66",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/00-workspace/D00-T01-s4.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "pwsh scripts/check-all.ps1 -> exit 0, 'check-all: 7 step(s) passed'; python -m unittest discover -s tests/scripts -> 11 OK; scratch worktree with AppInfoTests asserting ^x$ -> exit 2, 'failed Berth.Tests.AppInfoTests.VersionIsThreeNumbers', 'FAILED test:'"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s4.md",
+    "verdict": "filed",
+    "candidate": "c3fd513f98cb07e5135c2dae0e2288c96e718e66",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D00 T01 \u00a77"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s4.md",
+    "candidate": "3b4667b9bf2532f0d19383f35388d8de1564320a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "3b4667b9bf2532f0d19383f35388d8de1564320a",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
