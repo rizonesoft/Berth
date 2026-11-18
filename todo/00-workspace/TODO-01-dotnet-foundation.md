@@ -99,6 +99,8 @@ One project, as the foundation plan says, producing `berth.exe` as a console pro
 
 ## 3. Test project with a first failing-capable test
 
+> **Started:** 2026-11-18T00:35:16Z
+
 The test project every later section adds to, with one real test so the runner is proven to fail when it should.
 
 **Phase:** 0
