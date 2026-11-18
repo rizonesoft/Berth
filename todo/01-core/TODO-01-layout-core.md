@@ -45,7 +45,7 @@ depends_on: ["dotnet-foundation"]
 | 6 | §6 | Settings store | §4 | [x] |
 | 7 | §7 | Layout names: defaults and validation | §1, §9, §12 | [ ] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
-| 9 | §9 | Save operation | §5, §8, §14, §15 | [ ] |
+| 9 | §9 | Save operation | §5, §8, §14, §15 | [x] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [ ] |
 | 11 | §11 | Undo operation | §10 | [ ] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
@@ -251,7 +251,7 @@ The default name of a first save and the three naming rules of SPEC §10, in one
 - [x] Add `LayoutNames.Default(int monitorCount, IEnumerable<string> taken)` returning `1 monitor` or `N monitors`, then ` (2)`, ` (3)` and so on until the name is not in `taken` ignoring case (SPEC §15 "Save"). Done when: tests give `1 monitor` for one display and `3 monitors` for three; with `2 MONITORS` and `2 Monitors (3)` taken, exactly `2 monitors (2)`; with `(2)` taken as well, `2 monitors (4)` (**Corrected 2026-11-18:** plan review, so case, skipped suffixes and a stop at `(3)` are caught). Cheaper substitute: a timestamp name, which SPEC does not allow.
 - [x] Add `LayoutNames.Validate(string name, IEnumerable<string> others)` returning `NameError.None`, `Empty`, `TooLong` or `Taken`: the name is trimmed first, 1 to `LayoutRules.MaxNameLength` characters counted as the store counts them (UTF-16 `string.Length`), and unique among `others` (trimmed) ignoring case (SPEC §10). Done when: tests cover a blank name, whitespace alone (`Empty`), 41 characters, 40 characters, a 40-character name surrounded by spaces (`None`), an emoji name at 40 units (`None`) and at 41 (`TooLong`), a case-only clash, and `" Docked "` against `DOCKED` (`Taken`) (**Corrected 2026-11-18:** plan review, so trimming before the checks and the store's own limit are proved). Cheaper substitute: comparing names case-sensitively.
 - [x] Add `LayoutNames.Trimmed(string name)` used by every caller before storing. Done when: a `LayoutNamesTests` case asserts `Trimmed("  Docked ")` is exactly `Docked`, and a test shows `"  Docked "` is stored as `Docked` through `LayoutService.Rename` (asserted in §12) and through `Save` (asserted in §9) (**Corrected 2026-11-18:** plan review). Cheaper substitute: trimming in the dialog only, so `--name` stores spaces.
-> **Deferred:** the stored read-back of a trimmed name through `Save` (first and later save) -> XREF: D01 T01 §9
+> **Resolved:** the stored read-back of a trimmed name through `Save` (first and later save), by `SaveTests.AGivenNameIsStoredTrimmedOnAFirstAndALaterSave` -> XREF: D01 T01 §9
 > **Deferred:** the stored read-back of a trimmed name through `Rename` -> XREF: D01 T01 §12
 - [x] Add `tests/Berth.Tests/Core/LayoutNamesTests.cs`. Done when: all pass, and the clash test fails when comparison becomes case-sensitive. Cheaper substitute: one test of the default name.
 - [ ] Commit: `core: layout names`
@@ -310,9 +310,12 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 - [x] Store a given `name` trimmed through `LayoutNames.Trimmed`, on a first save and on a later save (**Corrected 2026-11-18:** D01 T01 §7 plan review). Done when: tests `Save("  Docked ")` for a new arrangement and read `Docked` back, then `Save("  Office ")` for the same arrangement and read `Office` back (SPEC §13 `save --name`, SPEC §10 naming). Cheaper substitute: asserting the rename path only, which never sees `--name`.
 - [x] Add `tests/Berth.Tests/Core/SaveTests.cs` with those cases. Done when: all pass, and the second-save test fails when `Previous` is not written. Cheaper substitute: asserting on the in-memory result only, never the file.
 - [x] Add `Log.Result(OperationResult result, string text)` choosing the level from the result kind (`INFO` for done, `WARN` for `Refused`, `FAIL` for `Failed`), and log exactly one event per save (**Corrected 2026-11-18:** D01 T01 §15 plan review). Done when: tests call `Save` for a saved, a refused and a failed result and read back exactly one line each with its level and message. Cheaper substitute: logging in each caller, so the command line and window disagree.
-- [ ] Commit: `core: save operation`
+- [x] Commit: `core: save operation`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SaveTests"` passes, and fails when a second save stops filling `Previous`.
+
+> **Verified:** 2026-11-18 | §9 | de71eb4fcdb126584157df1589a035edf0210864
+> **Review:** `docs/reviews/d01-t01-s9.json`
 
 ## 10. Restore operation with its undo snapshot
 
