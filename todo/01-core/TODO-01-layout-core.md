@@ -590,7 +590,7 @@ Filed 2026-11-18 from the D01 T01 §14 completion review (P3, below the pin's bl
 
 > **Started:** 2026-11-18T08:11:39Z
 
-Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocking levels): the Outcome's `reverse=applicable` names no owner, while the rationale gives undo of a restore to §11 and revert and delete of a save to §12. The adjacency format takes one owner per key. **Corrected 2026-11-18:** D01 T01 §22: §12 owns reverting to the previous save and deleting the layout (SPEC §10); a save itself is never deleted.
+Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocking levels): the Outcome's `reverse=applicable` names no owner, while the rationale gives undo of a restore to §11 and revert and delete of a save to §12. The adjacency format takes one owner per key. **Corrected 2026-11-18:** D01 T01 §22: §12 owns reverting to the previous save and deleting the layout (SPEC §10).
 
 **Phase:** 1
 **Needs:** none
