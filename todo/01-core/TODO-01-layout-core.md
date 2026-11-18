@@ -55,7 +55,7 @@ depends_on: ["dotnet-foundation"]
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
-| 19 | §19 | Fake contract tests all go through the seams | §8 | [ ] |
+| 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 
 ## 1. Layout, monitor and icon records
 
@@ -527,9 +527,12 @@ Filed 2026-11-18 from the D01 T01 §8 completion review (P3, below the pin's blo
 
 - [x] Route `SnapByShiftsOnlyTheChosenIcons` through `IDesktopIcons` (`Seam(fake)`) for all three cases, keeping its exact coordinates. Done when: the test passes and every `SetPositions` and `ReadIcons` call in `tests/Berth.Tests/Fakes/FakeDesktopIconsTests.cs` is on an `IDesktopIcons`. Cheaper substitute: narrowing the record's claim instead.
 - [x] Make the contract members of `FakeDesktopIcons` and `FakeMonitors` explicit interface implementations, so a test that calls them on the fake's own type does not compile; setup and inspection members (`Calls`, `Unavailable`, `SnapBy`, `Monitors`) stay on the fake (**Corrected 2026-11-18:** plan review). Done when: the suite builds and passes, and calling `fake.ReadIcons()` or `fake.Read()` in a test is a compile error. Cheaper substitute: a grep that a later edit can slip past.
-- [ ] Commit: `test: fake contract tests go through the seams`
+- [x] Commit: `test: fake contract tests go through the seams`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FakeDesktopIconsTests"` passes.
+
+> **Verified:** 2026-11-18 | §19 | d87058ecaad58505ac1a8442bee52f78c535418e
+> **Review:** `docs/reviews/d01-t01-s19.json`
 
 ## Verification
 

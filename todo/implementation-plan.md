@@ -45,7 +45,7 @@ Sections: 19 | Checklist items: 118
 | [ ]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
 | [ ]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
 | [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
-| [ ]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
+| [x]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
 
 ### Phase 2: Desktop access
 
@@ -152,6 +152,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 15/83 verified sections, 5 ready to run now.
+Progress: 16/83 verified sections, 4 ready to run now.
 
-Checklist: 102/504 items completed (includes Commit items).
+Checklist: 103/504 items completed (includes Commit items).

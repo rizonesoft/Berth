@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a719",
+  "title": "Fake contract tests all go through the seams",
+  "implementation_sha": "d87058ecaad58505ac1a8442bee52f78c535418e",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 2,
+      "report": "docs/reviews/01-core/D01-T01-s19.md",
+      "verdict": "clean"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *FakeDesktopIconsTests -> passed (282 suite total); a direct fake.SetPositions call fails the build (CS1061)"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s19.md",
+    "verdict": "complete",
+    "candidate": "d87058ecaad58505ac1a8442bee52f78c535418e",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 2,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s19.md",
+    "candidate": "e7f68f7557f8fe49cffe93ee27d62bbd4cc212bd",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "e7f68f7557f8fe49cffe93ee27d62bbd4cc212bd",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
