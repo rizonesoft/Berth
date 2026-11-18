@@ -57,7 +57,8 @@ depends_on: ["dotnet-foundation"]
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
-| 21 | §21 | The reverse adjacency names its owner | §9 | [ ] |
+| 21 | §21 | The reverse adjacency names its owner | §9 | [x] |
+| 22 | §22 | Revert and delete are worded as SPEC §10 words them | §21 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -600,9 +601,29 @@ Filed 2026-11-18 from the D01 T01 §9 reconciliation (P3, below the pin's blocki
 1. Name the owner on the formal line. Done when: `python scripts/todo-graph.py query adjacency` shows `reverse` owned by `D01 T01 §12` for this file.
 
 - [x] Set `reverse=applicable @ D01 T01 §12` in `todo/01-core/TODO-01-layout-core.md` (the save's reverse paths, revert and delete) and keep the rationale naming §11 for the undo of a restore. Done when: `validate` passes and `query adjacency` lists the owner. Cheaper substitute: an owner-less `reverse=applicable`, which no tool can follow. **Corrected 2026-11-18:** D01 T01 §21 plan review: the rationale's sentence that `reverse` names no single owner is replaced by one naming §12 as the formal owner (revert and delete of a save) and §11 for the undo of a restore, and the checkpoint reads it back; `**Needs:** none` is right beside the §9 dependency, since Needs name hosts and people, not sections.
-- [ ] Commit: `todo: the reverse adjacency names its owner`
+- [x] Commit: `todo: the reverse adjacency names its owner`
 
 **Test checkpoint:** `python scripts/todo-graph.py query adjacency` shows `reverse` at `D01 T01 §12` for `TODO-01-layout-core.md`, and its Adjacency rationale names §12 as the formal owner and §11 for undo.
+
+> **Verified:** 2026-11-18 | §21 | cfcca44b8a71fdf16ecb4bae6bb1f864c898cae0
+> **Review:** `docs/reviews/d01-t01-s21.json`
+
+## 22. Revert and delete are worded as SPEC §10 words them
+
+Filed 2026-11-18 from the D01 T01 §21 completion review (P3, below the pin's blocking levels): §21's dated note says §12 owns "revert and delete of a save", while `Delete` removes the whole layout and `Revert` returns to its previous save (SPEC §10).
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Sweep `todo/01-core/TODO-01-layout-core.md` for wording that deletes a save or reverts a layout. Done when: every such phrase says "reverting to the previous save" or "deleting the layout".
+
+- [ ] Correct §21's dated note and any other phrase in `todo/01-core/TODO-01-layout-core.md` that speaks of deleting a save, in a dated note where the text is a promise already reviewed. Done when: `rg -n "delete of a save|deleting a save" todo/01-core/TODO-01-layout-core.md` finds nothing outside this section's own description, and `validate` passes. Cheaper substitute: leaving the wrong scope for a later reader.
+- [ ] Commit: `todo: revert and delete are worded as SPEC §10 words them`
+
+**Test checkpoint:** the search finds no stray wording outside this section and `python scripts/todo-graph.py validate` passes.
 
 ## Verification
 

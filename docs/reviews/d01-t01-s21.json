@@ -1,0 +1,85 @@
+{
+  "ref": "D01 T01 \u00a721",
+  "title": "The reverse adjacency names its owner",
+  "implementation_sha": "cfcca44b8a71fdf16ecb4bae6bb1f864c898cae0",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s21.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python scripts/todo-graph.py query adjacency -> reverse applicable @ D01 T01 \u00a712 for TODO-01-layout-core.md; validate -> valid"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s21.md",
+    "verdict": "filed",
+    "candidate": "cfcca44b8a71fdf16ecb4bae6bb1f864c898cae0",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D01 T01 \u00a722"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s21.md",
+    "candidate": "f529f4c0e47e4a8a85c26d383eea82f87e8c8af1",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "f529f4c0e47e4a8a85c26d383eea82f87e8c8af1",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
