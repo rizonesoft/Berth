@@ -86,7 +86,8 @@ internal static partial class JsonFile
             return new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         }
 
-        SecurityIdentifier writer = WindowsIdentity.GetCurrent().User
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        SecurityIdentifier writer = identity.User
             ?? throw new IOException("The writing account has no security identifier.");
         var ownerOnly = new FileSecurity();
         ownerOnly.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);

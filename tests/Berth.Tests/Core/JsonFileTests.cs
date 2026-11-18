@@ -250,6 +250,40 @@ public sealed partial class JsonFileTests
         Assert.DoesNotContain(everyone.Value, Rules(new FileInfo(path).GetAccessControl()), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AnExplicitAllowOverAnInheritedDenyStillSaves()
+    {
+        using var data = new TestData();
+        var everyone = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.WorldSid, null);
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        string guarded = Path.Combine(data.Root, "guarded");
+        Directory.CreateDirectory(guarded);
+        string path = Path.Combine(guarded, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+
+        // The layout allows its writer explicitly...
+        System.Security.AccessControl.FileSecurity target = new FileInfo(path).GetAccessControl();
+        target.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(identity.User!, System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(target);
+
+        // ...while the folder denies Everyone read access to its files, the layout included through inheritance.
+        System.Security.AccessControl.DirectorySecurity folder = new DirectoryInfo(guarded).GetAccessControl();
+        folder.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(everyone, System.Security.AccessControl.FileSystemRights.Read,
+            System.Security.AccessControl.InheritanceFlags.ObjectInherit, System.Security.AccessControl.PropagationFlags.InheritOnly, System.Security.AccessControl.AccessControlType.Deny));
+        new DirectoryInfo(guarded).SetAccessControl(folder);
+        string probe = Path.Combine(guarded, "probe.txt");
+        File.WriteAllText(probe, "x");
+        Assert.ThrowsAny<UnauthorizedAccessException>(() => File.ReadAllText(probe));
+        Assert.Contains(new FileInfo(path).GetAccessControl().GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier)).Cast<System.Security.AccessControl.FileSystemAccessRule>(),
+            r => r.IsInherited && r.AccessControlType == System.Security.AccessControl.AccessControlType.Deny && r.IdentityReference.Equals(everyone));
+
+        JsonFile.Write(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout);
+
+        Assert.True(JsonFile.TryRead(path, BerthJson.Default.Layout, out Layout? read, out string? reason), reason);
+        Assert.Equal("Desk", read!.Name);
+        Assert.Empty(Temporaries(guarded));
+    }
+
     private const int DaclSecurityInformation = 4;
 
     private static string OwnerOnly() =>
