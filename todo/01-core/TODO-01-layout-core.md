@@ -96,17 +96,20 @@ The same monitors in the same places at the same scale must always map to the sa
 **Needs:** none
 **Surface:** no
 
+**Corrected 2026-11-18:** rewritten after the plan review (P1 1, P2 2 and 3, P3 4): exact keys for one and for three monitors against hand-written strings, invariant formatting under two cultures, and the SPEC §14 example made self-consistent. That example's `key` was `3f9a61c2d0b47e15`, which is not the key of its monitor; SPEC §14 now gives `c7f017905ce518e6`, and `D01 T01 §1`'s stamped checklist, which quotes the old value, is superseded on that one literal by this section.
+
 **Build order:**
 
-1. Add `ArrangementKey.From` in `src/Berth/Core/ArrangementKey.cs`. Done when: a known input gives a known 16 character key.
-2. Test order independence and sensitivity. Done when: reordering monitors keeps the key and changing any field changes it.
+1. Add `ArrangementKey.From` in `src/Berth/Core/ArrangementKey.cs`. Done when: known inputs give known 16 character keys.
+2. Test order independence, sensitivity and culture. Done when: reordering monitors keeps the key, changing `X`, `Y`, `Width`, `Height` or `Scale` changes it, changing `Primary` does not, and the culture does not.
 
-- [ ] Add `ArrangementKey.From(IReadOnlyList<MonitorInfo> monitors)` that sorts by `X` then `Y`, writes each as `x,y,width,height,scale`, joins with `;`, hashes the UTF-8 bytes with SHA-256 and returns the first 16 lowercase hexadecimal characters (SPEC §14). Done when: one monitor `0,0,2560,1440,100` gives the value the test computes independently with `SHA256.HashData`. Cheaper substitute: `GetHashCode`, which differs between runs.
-- [ ] Refuse an empty list with `ArgumentException`. Done when: a test asserts the exception. Cheaper substitute: returning the hash of an empty string, which would make "no monitors" a real layout.
-- [ ] Add `tests/Berth.Tests/Core/ArrangementKeyTests.cs` covering: same key for two orders of the same two monitors; a different key when `X`, `Y`, `Width`, `Height` or `Scale` changes by one; `Primary` not affecting the key; 16 characters of `[0-9a-f]`. Done when: all pass, and the order test fails when the sort is removed. Cheaper substitute: one happy-path assertion.
+- [x] Add `ArrangementKey.From(IReadOnlyList<MonitorInfo> monitors)` that sorts by `X` then `Y` (then `Width`, `Height` and `Scale`, so the order is total), writes each as `x,y,width,height,scale` with invariant-culture decimal integers, joins with `;`, hashes the UTF-8 bytes with SHA-256 and returns the first 16 lowercase hexadecimal characters (SPEC §14). Done when: one monitor `0,0,2560,1440,100` gives `c7f017905ce518e6`, and the three monitors `0,0,2560,1440,150`, `0,1440,1920,1080,125` and `-1920,-200,1920,1080,100`, in any order, give the SHA-256 of the hand-written string `-1920,-200,1920,1080,100;0,0,2560,1440,150;0,1440,1920,1080,125`, which is `2681c996402f364e`. Cheaper substitute: `GetHashCode`, which differs between runs; or the current culture, whose negative sign can differ (U+2212 in `sv-SE`) and lose the layout of a monitor to the left.
+- [x] Refuse an empty list with `ArgumentException`. Done when: a test asserts the exception. Cheaper substitute: returning the hash of an empty string, which would make "no monitors" a real layout.
+- [x] Add `tests/Berth.Tests/Core/ArrangementKeyTests.cs` covering: the two exact keys above with the three-monitor input in all six orders; a different key when `X`, `Y`, `Width`, `Height` or `Scale` of one monitor changes by one; the same key when only `Primary` changes; the same three-monitor key with the current culture set to `en-US` and to `sv-SE` on the test's own thread (restored in `finally`); 16 characters of `[0-9a-f]`. Done when: all pass, and the three-monitor test fails when the sort is removed, reversed, or the separator becomes `,`. Cheaper substitute: one happy-path assertion.
+- [x] Assert in `ArrangementKeyTests` that `ArrangementKey.From` of the SPEC §14 example's monitors equals its `key`, and update the SPEC §14 example text in `tests/Berth.Tests/Core/LayoutJsonTests.cs` (and its literal `Key` assertion) to `c7f017905ce518e6`, as the corrected SPEC reads. Done when: both test classes pass on the same example. Cheaper substitute: leaving the two tests to disagree about which file a layout lives in.
 - [ ] Commit: `core: arrangement key`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ArrangementKeyTests"` passes, and fails when the sort in `ArrangementKey.From` is removed.
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ArrangementKeyTests"` passes, and fails when the sort in `ArrangementKey.From` is removed or reversed.
 
 ## 3. Data paths that honour BERTH_DATA
 

@@ -11,7 +11,7 @@ public sealed class LayoutJsonTests
     private const string SpecExample = """
         {
           "schemaVersion": 1,
-          "key": "3f9a61c2d0b47e15",
+          "key": "c7f017905ce518e6",
           "name": "Docked",
           "savedAt": "2026-11-15T07:14:03Z",
           "monitors": [
@@ -57,7 +57,7 @@ public sealed class LayoutJsonTests
         Layout layout = Parse(SpecExample);
 
         Assert.Equal(1, layout.SchemaVersion);
-        Assert.Equal("3f9a61c2d0b47e15", layout.Key);
+        Assert.Equal("c7f017905ce518e6", layout.Key);
         Assert.Equal("Docked", layout.Name);
         Assert.Equal(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), layout.SavedAt);
         Assert.Equal([new MonitorInfo(0, 0, 2560, 1440, 100, true)], layout.Monitors);

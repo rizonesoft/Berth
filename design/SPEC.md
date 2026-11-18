@@ -188,7 +188,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 ```json
 {
   "schemaVersion": 1,
-  "key": "3f9a61c2d0b47e15",
+  "key": "c7f017905ce518e6",
   "name": "Docked",
   "savedAt": "2026-11-15T07:14:03Z",
   "monitors": [
@@ -201,6 +201,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 }
 ```
 
+- Corrected 2026-11-18 (D01 T01 §2): the example's `key` read `3f9a61c2d0b47e15`, which is not the arrangement key of its one monitor; `c7f017905ce518e6` is (the last bullet of this section).
 - `id` is the icon's parsing name and `name` its display name. `previous` is `null` or `{ "savedAt": ..., "icons": [...] }`, the one save this one replaced.
 - `settings.json` under the data root: `{ "schemaVersion": 1, "restoreAutomatically": false, "window": { "x": 100, "y": 100, "width": 980, "height": 640 } }`, where `window` is `null` until the window has been closed once. `window` is in physical pixels of the virtual desktop, like every other position Berth stores.
 - `undo.json` under the local root: the positions read just before the last restore, with the arrangement key and the time. An undo deletes it.
