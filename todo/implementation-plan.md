@@ -8,7 +8,7 @@ Format and rules: `todo/README.md`. Run sections with the `process-plan`, `proce
 
 ### Phase 0: Repository and tooling
 
-Sections: 8 | Checklist items: 48
+Sections: 8 | Checklist items: 50
 
 | Status | Reference  | Deliverable                                              | Needs | Items |
 | ------ | ---------- | -------------------------------------------------------- | ----- | ----- |
@@ -16,7 +16,7 @@ Sections: 8 | Checklist items: 48
 | [x]    | D00 T01 §2 | Application project that builds berth.exe                | none  | 7     |
 | [x]    | D00 T01 §3 | Test project with a first failing-capable test           | none  | 10    |
 | [x]    | D00 T01 §4 | One command that runs every gate                         | none  | 8     |
-| [ ]    | D00 T01 §5 | Build and test workflow in CI                            | none  | 6     |
+| [ ]    | D00 T01 §5 | Build and test workflow in CI                            | none  | 8     |
 | [ ]    | D00 T01 §6 | Test that keeps Core free of UI and COM types            | none  | 4     |
 | [x]    | D00 T01 §7 | Review prompts that name the stamp-owned Commit item     | none  | 4     |
 | [x]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 4     |
@@ -152,4 +152,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 6/81 verified sections, 2 ready to run now.
 
-Checklist: 38/485 items completed (includes Commit items).
+Checklist: 43/487 items completed (includes Commit items).

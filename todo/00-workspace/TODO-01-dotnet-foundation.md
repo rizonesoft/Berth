@@ -173,19 +173,23 @@ The plan workflow already checks the TODO graph. This adds the build and the tes
 **Needs:** none
 **Surface:** no
 
+**Corrected 2026-11-18:** rewritten after the plan review (P1 1 and 2, P2 3 to 7): full history for the stamp checks; local read-backs before the commit and hosted proof after the push, selected by commit SHA; a pinned `actions/setup-dotnet` reading `global.json`; and negative proofs run by `workflow_dispatch` on a throwaway branch that is deleted afterwards.
+
 **Build order:**
 
-1. Add `.github/workflows/build.yml` running `scripts/check-all.ps1` on `windows-latest`. Done when: the workflow run for the commit is green.
-2. Add the badge and Dependabot coverage. Done when: `README.md` shows the Build badge and `.github/dependabot.yml` lists `nuget`.
+1. Add `.github/workflows/build.yml` running `scripts/check-all.ps1` on `windows-latest`, and read it back. Done when: the local read-back passes.
+2. Prove it on GitHub. Done when: the pushed commit's Build and Plan runs succeed, and the two negative runs fail where they should.
 
-- [ ] Create `.github/workflows/build.yml` named `build`, triggered on push to `main`, pull requests and `workflow_dispatch`, with `permissions: contents: read`, a `concurrency` group per ref, on `windows-latest` with a 30 minute timeout: `actions/checkout`, `actions/setup-dotnet` reading `global.json`, `actions/setup-python`, `actions/setup-node`, then `pwsh scripts/check-all.ps1`. Use the same action versions as `.github/workflows/plan.yml`. Done when: `python scripts/ci_status.py --workflow build.yml` reports the latest run on `main` as passed after the push. Cheaper substitute: `continue-on-error: true` on the test step.
-- [ ] If .NET 11 is not installable on the hosted runner, the run must fail loudly, never skip: keep the `setup-dotnet` step strict. Done when: the workflow file holds no `if:` that skips the build and no `continue-on-error`. Cheaper substitute: a conditional that turns the job green when the SDK is missing.
-- [ ] Add the Build badge to `README.md` before the Plan badge, in the same form. Done when: the README's badge row starts with the `build.yml` badge. Cheaper substitute: a static shields.io badge that always says passing.
-- [ ] Add a `nuget` entry to `.github/dependabot.yml` (directory `/`, weekly, label `dependencies`). Done when: the file lists both `github-actions` and `nuget`. Cheaper substitute: none needed.
-- [ ] Create `.conclave/ci.json` with `{"workflows": ["build.yml", "plan.yml"]}`. Done when: `python scripts/ci_status.py` lists exactly those two workflows. Cheaper substitute: leaving the watch list implicit, so a future workflow that is allowed to be red blocks the run.
+- [x] Create `.github/workflows/build.yml` named `build`, triggered on push to `main`, `pull_request` and `workflow_dispatch`, with `permissions: contents: read`, `concurrency` group `build-${{ github.ref }}` (`cancel-in-progress` only for pull requests, as `plan.yml`), one job on `windows-latest` with `timeout-minutes: 30`, and the steps `actions/checkout@v7` with `fetch-depth: 0` (the stamp ancestry checks need history, as in `plan.yml`), `actions/setup-dotnet@v6` with `global-json-file: global.json`, `actions/setup-python@v7` (`3.14`), `actions/setup-node@v7` (`lts/*`) and `pwsh scripts/check-all.ps1`. Done when: a Python read-back of the YAML (by line and key, standard library only) finds every one of those values. Cheaper substitute: `continue-on-error: true` on the test step, or a shallow checkout that fails the stamp checks.
+- [x] Keep the workflow strict. Done when: the read-back finds no `if:` and no `continue-on-error` in the file. Cheaper substitute: a conditional that turns the job green when the SDK is missing.
+- [x] Add the Build badge to `README.md` before the Plan badge, in the same form: image `https://github.com/rizonesoft/Berth/actions/workflows/build.yml/badge.svg?branch=main` linking to `https://github.com/rizonesoft/Berth/actions/workflows/build.yml`. Done when: the badge row's first badge has exactly that image URL and link. Cheaper substitute: a static badge, or one whose link opens Plan.
+- [x] Add a `nuget` entry to `.github/dependabot.yml` with directory `/`, interval `weekly` and label `dependencies`. Done when: a read-back of the `nuget` entry finds all three together and the `github-actions` entry is unchanged. Cheaper substitute: none needed.
+- [x] Create `.conclave/ci.json` with `{"workflows": ["build.yml", "plan.yml"]}`. Done when: the file parses to exactly that list, and `python scripts/ci_status.py` names exactly those two. Cheaper substitute: leaving the watch list implicit, so a future workflow that is allowed to be red blocks the run.
+- [ ] After the push, prove the commit on GitHub. Done when: `gh run list --commit <pushed SHA>` shows a completed `success` run of both `build` and `plan`, and the Build log shows all seven `== <step>:` lines and `check-all: 7 step(s) passed`. Cheaper substitute: `ci_status.py` alone, which can report an earlier green run while the candidate is queued.
+- [ ] Prove the failures on a throwaway branch with `gh workflow run build.yml --ref <branch>`: with `AppInfoTests.VersionIsThreeNumbers` asserting `^x$`, Build fails in the `check-all` step with that test named in its log while `plan` on the same commit passes; with `global.json` naming SDK `99.0.100`, Build fails in the `setup-dotnet` step and `check-all` never starts. Delete the branch afterwards. Done when: both runs' conclusions and failed steps are recorded in the findings file and `git ls-remote --heads origin <branch>` prints nothing. Cheaper substitute: trusting that a red run of any cause proves the gate.
 - [ ] Commit: `ci: build and test workflow`
 
-**Test checkpoint:** `python scripts/ci_status.py --workflow build.yml --workflow plan.yml` exits 0 with both green on `main` after the push, and exits 1 for a commit that breaks a test.
+**Test checkpoint:** before the push, the YAML, badge, Dependabot and `ci.json` read-backs pass; after it, `gh run list --commit <SHA>` shows `build` and `plan` both `success`, and the throwaway-branch runs fail at the named assertion and at `setup-dotnet` respectively.
 
 ## 6. Test that keeps Core free of UI and COM types
 

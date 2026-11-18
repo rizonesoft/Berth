@@ -6,7 +6,7 @@
 
 **Your desktop, where you left it. Berth saves the positions of your Windows desktop icons and puts them back.**
 
-[![Plan](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml/badge.svg?branch=main)](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml)
+[![Build](https://github.com/rizonesoft/Berth/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/rizonesoft/Berth/actions/workflows/build.yml) [![Plan](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml/badge.svg?branch=main)](https://github.com/rizonesoft/Berth/actions/workflows/plan.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-0F6CBD)](LICENSE)
 ![Platform: Windows 11 24H2 or later](https://img.shields.io/badge/platform-Windows%2011%2024H2%2B-1A1A1A)
 ![.NET 11](https://img.shields.io/badge/.NET-11-4CA6F0)

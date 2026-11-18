@@ -1,0 +1,37 @@
+name: build
+
+# The solution builds and every gate passes on Windows: the same scripts/check-all.ps1 a contributor runs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check-all:
+    name: Build and test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Stamp ancestry checks need real history, not a shallow checkout.
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Every gate
+        run: pwsh scripts/check-all.ps1
