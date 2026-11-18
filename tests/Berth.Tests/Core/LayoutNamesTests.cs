@@ -51,6 +51,7 @@ public sealed class LayoutNamesTests
         Assert.Equal(NameError.Taken, LayoutNames.Validate("docked", ["Docked"]));
         Assert.Equal(NameError.Taken, LayoutNames.Validate(" Docked ", ["DOCKED"]));
         Assert.Equal(NameError.None, LayoutNames.Validate(" Docked ", ["Desk"]));
+        Assert.Equal(NameError.Taken, LayoutNames.Validate("Docked", ["  DOCKED "]));
     }
 
     [Fact]
