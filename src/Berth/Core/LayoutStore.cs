@@ -42,7 +42,10 @@ internal sealed class LayoutStore(BerthPaths paths)
     /// <summary>Every layout file in key order. A fresh profile, with no layouts folder yet, has none.</summary>
     /// <exception cref="IOException">The layouts folder exists but cannot be listed.</exception>
     /// <exception cref="UnauthorizedAccessException">The layouts folder may not be listed.</exception>
-    public LayoutSet LoadAll()
+    public LayoutSet LoadAll() => LoadAll(afterList: null);
+
+    /// <summary>As <see cref="LoadAll()"/>; <paramref name="afterList"/> lets a test act between listing and reading.</summary>
+    internal LayoutSet LoadAll(Action? afterList)
     {
         string[] files;
         try
@@ -55,6 +58,7 @@ internal sealed class LayoutStore(BerthPaths paths)
             return new LayoutSet([], []);
         }
 
+        afterList?.Invoke();
         var layouts = new List<Layout>();
         var unreadable = new List<UnreadableFile>();
         foreach (string path in files.Order(StringComparer.OrdinalIgnoreCase))
@@ -69,9 +73,10 @@ internal sealed class LayoutStore(BerthPaths paths)
             {
                 layouts.Add(found.Layout);
             }
-            else if (found.Unreadable is not null)
+            else
             {
-                unreadable.Add(found.Unreadable);
+                // A file listed a moment ago and gone now is still news: the window names it rather than dropping it.
+                unreadable.Add(found.Unreadable ?? new UnreadableFile(Path.GetFileName(path), "It went away while it was being read."));
             }
         }
 
@@ -117,9 +122,18 @@ internal sealed class LayoutStore(BerthPaths paths)
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
-        FileInfo? entry = new DirectoryInfo(Path.GetDirectoryName(path)!).Exists
-            ? new DirectoryInfo(Path.GetDirectoryName(path)!).EnumerateFiles(fileName).FirstOrDefault()
-            : null;
+        FileInfo? entry;
+        try
+        {
+            // Asked of the folder itself: only a folder that is really not there means "no layout". A folder that
+            // cannot be read throws, so no operation mistakes it for a fresh profile and writes past it.
+            entry = new DirectoryInfo(Path.GetDirectoryName(path)!).EnumerateFiles(fileName).FirstOrDefault();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            entry = null;
+        }
+
         if (entry is null)
         {
             return new Lookup(null, null);

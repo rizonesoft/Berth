@@ -390,7 +390,10 @@ public sealed class LayoutStoreTests
         (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
         using (data)
         {
-            store.Save(Layouts.Single());
+            Layout layout = Layouts.Single();
+            store.Save(layout);
+            byte[] before = File.ReadAllBytes(paths.LayoutFile(layout.Key));
+
             // The folder's attributes cannot be read and it cannot be listed, as when a redirected profile share
             // withdraws access: Directory.Exists then says false, and that must not read as a fresh profile.
             var me = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
@@ -410,8 +413,11 @@ public sealed class LayoutStoreTests
             {
                 Assert.False(Directory.Exists(paths.LayoutsFolder));
                 Assert.ThrowsAny<Exception>(() => store.LoadAll());
-                Exception error = Record.Exception(() => store.LoadAll())!;
-                Assert.True(error is UnauthorizedAccessException or IOException, error.GetType().FullName);
+                foreach (Action operation in new Action[] { () => store.LoadAll(), () => store.Find(layout.Key), () => store.Delete(layout.Key), () => store.Save(layout with { Name = "Desk" }) })
+                {
+                    Exception? error = Record.Exception(operation);
+                    Assert.True(error is UnauthorizedAccessException or IOException, error?.GetType().FullName ?? "no exception");
+                }
             }
             finally
             {
@@ -420,6 +426,26 @@ public sealed class LayoutStoreTests
                 folderRules.RemoveAccessRule(denyFolder);
                 folder.SetAccessControl(folderRules);
             }
+
+            Assert.Equal(before, File.ReadAllBytes(paths.LayoutFile(layout.Key)));
+        }
+    }
+
+    [Fact]
+    public void AFileGoneBetweenListingAndReadingIsStillReported()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            store.Save(Layouts.Single());
+            store.Save(Layouts.Double());
+
+            LayoutSet set = store.LoadAll(afterList: () => File.Delete(paths.LayoutFile(Layouts.Single().Key)));
+
+            Assert.Equal([Layouts.Double().Key], set.Layouts.Select(l => l.Key));
+            UnreadableFile gone = Assert.Single(set.Unreadable);
+            Assert.Equal(Layouts.Single().Key + ".json", gone.FileName);
+            Assert.False(string.IsNullOrWhiteSpace(gone.Reason));
         }
     }
 
