@@ -98,10 +98,17 @@ internal sealed class SettingsStore(BerthPaths paths)
                 // It could not be read just before the replace (another program held it): that is the refusal.
                 throw new UnreadableSettingsException(changed.InnerException.Message);
             }
-            catch (TargetChangedException) when (Load().Unreadable is { } arrived)
+            catch (TargetChangedException)
             {
-                // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
-                throw new UnreadableSettingsException(arrived);
+                // Read again only once the writer has let go: an exception filter would run while its lock and its
+                // note are still held, so a readable change would wait and then look unreadable.
+                if (Load().Unreadable is { } arrived)
+                {
+                    // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
+                    throw new UnreadableSettingsException(arrived);
+                }
+
+                throw;
             }
 
             return;
@@ -111,10 +118,17 @@ internal sealed class SettingsStore(BerthPaths paths)
         {
             JsonFile.WriteNew(paths.SettingsFile, value, BerthJson.Default.Settings, beforeReplace is null ? null : _ => beforeReplace());
         }
-        catch (TargetAppearedException) when (Load().Unreadable is { } appeared)
+        catch (TargetAppearedException)
         {
-            // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
-            throw new UnreadableSettingsException(appeared);
+            // Read again only once the writer has let go: an exception filter would run while its lock and its
+            // note are still held, so a readable change would wait and then look unreadable.
+            if (Load().Unreadable is { } appeared)
+            {
+                // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
+                throw new UnreadableSettingsException(appeared);
+            }
+
+            throw;
         }
     }
 

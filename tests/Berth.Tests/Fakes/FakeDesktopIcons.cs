@@ -22,6 +22,9 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
     /// moves and before an unavailable desktop refuses it, so a test can prove a write was never attempted.</summary>
     public List<IReadOnlyList<IconPosition>> Calls { get; } = [];
 
+    /// <summary>How many times the icons were read.</summary>
+    public int Reads { get; private set; }
+
     /// <summary>When true, every member throws <see cref="DesktopUnavailableException"/> and changes nothing.</summary>
     public bool Unavailable { get; set; }
 
@@ -48,6 +51,7 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
 
     IReadOnlyList<IconPosition> IDesktopIcons.ReadIcons()
     {
+        Reads++;
         ThrowIfUnavailable();
         return [.. icons];
     }

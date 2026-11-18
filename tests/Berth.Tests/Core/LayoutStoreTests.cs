@@ -495,6 +495,32 @@ public sealed class LayoutStoreTests
         }
     }
     [Fact]
+    public void AReadableChangeDuringASaveIsAChangeNotAnUnreadableFile()
+    {
+        // The writer's lock is let go before the store looks at what arrived, so a readable change neither waits for
+        // that lock nor is reported as a file that cannot be read.
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+            store.Save(layout);
+            byte[]? edited = null;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            Assert.Throws<TargetChangedException>(() => store.Save(layout with { Name = "Mine" }, beforeReplace: () =>
+            {
+                var other = new LayoutStore(paths);
+                other.Save(layout with { Name = "Theirs" });
+                edited = File.ReadAllBytes(paths.LayoutFile(layout.Key));
+            }));
+
+            Assert.True(clock.ElapsedMilliseconds < JsonFile.LiveSaveWait.TotalMilliseconds, $"{clock.ElapsedMilliseconds} ms");
+            Assert.Equal(edited, File.ReadAllBytes(paths.LayoutFile(layout.Key)));
+            Assert.Equal("Theirs", new LayoutStore(paths).Find(layout.Key)!.Name);
+        }
+    }
+
+    [Fact]
     public void ALayoutMovedAwayDuringASaveIsAWriteFailureAndSurvives()
     {
         (TestData data, BerthPaths paths, LayoutStore store) = Fresh();

@@ -65,6 +65,22 @@ internal sealed class Log
     public void Write(LogLevel level, string message) => Append(level, message, error: null);
 
     /// <summary>
+    /// The one event of an operation: <c>INFO</c> when it was done, <c>WARN</c> when refused, <c>FAIL</c> when it
+    /// failed, with the exception behind an unexpected failure on the lines after it.
+    /// </summary>
+    public void Result(OperationResult result, string text)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        LogLevel level = result.Kind switch
+        {
+            OperationKind.Refused => LogLevel.Warn,
+            OperationKind.Failed => LogLevel.Fail,
+            _ => LogLevel.Info,
+        };
+        Append(level, text, result.Error);
+    }
+
+    /// <summary>
     /// The record as written: the header, with a CR or LF in the message written as <c>\r</c> or <c>\n</c> so one event
     /// is one header line, then any exception's lines, each starting with two spaces; every line ends CRLF.
     /// </summary>

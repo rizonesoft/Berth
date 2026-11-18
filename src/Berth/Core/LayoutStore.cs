@@ -13,8 +13,52 @@ internal sealed record LayoutSet(IReadOnlyList<Layout> Layouts, IReadOnlyList<Un
 /// The layouts folder: one file per monitor arrangement, named by its key (SPEC §14). A file that cannot be read is
 /// reported, kept out of every lookup, and never overwritten or deleted.
 /// </summary>
+/// <summary>
+/// The layout of one arrangement as a save read it (null when there was none), with the bytes it was read from, so
+/// the save can be written over exactly this version (SPEC §14: a file that changed is never written).
+/// </summary>
+internal sealed record LayoutSnapshot(string Key, Layout? Layout, byte[]? Bytes);
+
 internal sealed class LayoutStore(BerthPaths paths)
 {
+    /// <summary>The layout of <paramref name="key"/> as it is now, for <see cref="Save(Layout, LayoutSnapshot)"/>.</summary>
+    /// <exception cref="UnreadableLayoutException">Its file cannot be read, so it must not be replaced.</exception>
+    /// <exception cref="IOException">The layouts folder exists but cannot be read.</exception>
+    /// <exception cref="UnauthorizedAccessException">The layouts folder may not be read.</exception>
+    public LayoutSnapshot Snapshot(string key)
+    {
+        Lookup found = Read(paths.LayoutFile(key), key);
+        return found.Unreadable is { } unreadable
+            ? throw new UnreadableLayoutException(unreadable.FileName, unreadable.Reason)
+            : new LayoutSnapshot(key, found.Layout, found.Bytes);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="layout"/> over exactly the version in <paramref name="expected"/>: a file that changed
+    /// since is kept and the save fails with <see cref="TargetChangedException"/>, and a file that appeared where there
+    /// was none is kept and the save fails with <see cref="TargetAppearedException"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">The layout breaks <see cref="LayoutRules"/>, or is not the snapshot's arrangement.</exception>
+    /// <exception cref="UnreadableLayoutException">The file changed into one that cannot be read, which is kept.</exception>
+    /// <exception cref="TargetChangedException">The file changed since the snapshot; it is kept.</exception>
+    /// <exception cref="TargetAppearedException">A file appeared since the snapshot found none; it is kept.</exception>
+    /// <exception cref="IOException">The folder or the file cannot be written.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
+    public void Save(Layout layout, LayoutSnapshot expected) => Save(layout, expected, beforeReplace: null);
+
+    /// <summary>As <see cref="Save(Layout, LayoutSnapshot)"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
+    internal void Save(Layout layout, LayoutSnapshot expected, Action? beforeReplace)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(expected);
+        if (expected.Key != layout.Key)
+        {
+            throw new ArgumentException($"The snapshot is of {expected.Key}, not of {layout.Key}.", nameof(expected));
+        }
+
+        Write(layout, new Lookup(expected.Layout, null, expected.Bytes), beforeReplace);
+    }
+
     /// <summary>Writes <paramref name="layout"/> to its arrangement's file.</summary>
     /// <exception cref="ArgumentException">The layout breaks <see cref="LayoutRules"/>.</exception>
     /// <exception cref="UnreadableLayoutException">The file it would replace cannot be read, so it is kept.</exception>
@@ -32,13 +76,28 @@ internal sealed class LayoutStore(BerthPaths paths)
             throw new ArgumentException($"This layout must not be saved: {problem}", nameof(layout));
         }
 
-        string path = paths.LayoutFile(layout.Key);
-        Lookup current = Read(path, layout.Key);
+        Lookup current = Read(paths.LayoutFile(layout.Key), layout.Key);
         if (current.Unreadable is { } unreadable)
         {
             throw new UnreadableLayoutException(unreadable.FileName, unreadable.Reason);
         }
 
+        Write(layout, current, beforeReplace);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="layout"/> over <paramref name="current"/>'s version (or as a first save when it holds
+    /// none). A change into an unreadable file is reported as one; any other change escapes as the writer's exception.
+    /// </summary>
+    private void Write(Layout layout, Lookup current, Action? beforeReplace)
+    {
+        string? problem = LayoutRules.Check(layout, layout.Key);
+        if (problem is not null)
+        {
+            throw new ArgumentException($"This layout must not be saved: {problem}", nameof(layout));
+        }
+
+        string path = paths.LayoutFile(layout.Key);
         BerthPaths.EnsureFolderFor(path);
         Action<string>? hook = beforeReplace is null ? null : _ => beforeReplace();
         if (current.Layout is not null)
@@ -52,10 +111,17 @@ internal sealed class LayoutStore(BerthPaths paths)
                 // It could not be read just before the replace (another program held it): that is the refusal.
                 throw new UnreadableLayoutException(Path.GetFileName(path), changed.InnerException.Message);
             }
-            catch (TargetChangedException) when (Read(path, layout.Key).Unreadable is { } arrived)
+            catch (TargetChangedException)
             {
-                // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
-                throw new UnreadableLayoutException(arrived.FileName, arrived.Reason);
+                // Read again only once the writer has let go: an exception filter would run while its lock and its
+                // note are still held, so a readable change would wait and then look unreadable.
+                if (Read(path, layout.Key).Unreadable is { } arrived)
+                {
+                    // The file changed while it was being saved, into one that cannot be read: it was kept; say so.
+                    throw new UnreadableLayoutException(arrived.FileName, arrived.Reason);
+                }
+
+                throw;
             }
 
             return;
@@ -65,10 +131,17 @@ internal sealed class LayoutStore(BerthPaths paths)
         {
             JsonFile.WriteNew(path, layout, BerthJson.Default.Layout, hook);
         }
-        catch (TargetAppearedException) when (Read(path, layout.Key).Unreadable is { } appeared)
+        catch (TargetAppearedException)
         {
-            // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
-            throw new UnreadableLayoutException(appeared.FileName, appeared.Reason);
+            // Read again only once the writer has let go: an exception filter would run while its lock and its
+            // note are still held, so a readable change would wait and then look unreadable.
+            if (Read(path, layout.Key).Unreadable is { } appeared)
+            {
+                // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
+                throw new UnreadableLayoutException(appeared.FileName, appeared.Reason);
+            }
+
+            throw;
         }
     }
 
