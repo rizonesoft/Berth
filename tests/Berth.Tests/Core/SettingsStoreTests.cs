@@ -258,6 +258,35 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public async Task RecoveryWaitsForAProgramReadingTheFileAndFinishesInTheSameLoad()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            Assert.ThrowsAny<InvalidOperationException>(() => store.Save(
+                Settings.Default, beforeReplace: null, afterCheck: () => throw new InvalidOperationException("crash"), afterReplace: null));
+
+            // A sync client reads the file as Berth starts, and lets go well within the wait.
+            var reader = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            CancellationToken cancel = TestContext.Current.CancellationToken;
+            Task release = Task.Run(
+                async () =>
+                {
+                    await Task.Delay(300, cancel);
+                    reader.Dispose();
+                },
+                cancel);
+            SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
+            await release;
+
+            Assert.Equal(new SettingsLoad(Settings.Default, Exists: true, Unreadable: null), load);
+            Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+            Assert.Empty(Leftovers.Of(paths.DataRoot, "settings.json"));
+        }
+    }
+
+    [Fact]
     public void AFileMovedAwayDuringASaveIsAWriteFailureNotAnUnreadableFile()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

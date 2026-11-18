@@ -428,23 +428,32 @@ internal static partial class JsonFile
     {
         // The copy is read once, within the bound, and used only as the bytes whose digest was checked.
         byte[]? written = ReadCopy(newCopy, newDigest);
-        FileStream target;
-        try
+        FileStream? target = null;
+        DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
+        while (target is null)
         {
-            target = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        }
-        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-        {
-            // The file went away after the save ended: create nothing, keep what the save meant to write beside it.
-            Keep(path, newCopy, written);
-            return;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // The file refuses writing now (made read-only, or its rules changed): the save can never finish over it.
-            // Leave it as it is, so it still loads, and keep what the save meant to write beside it.
-            Keep(path, newCopy, written);
-            return;
+            try
+            {
+                target = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+            {
+                // The file went away after the save ended: create nothing, keep what the save meant to write beside it.
+                Keep(path, newCopy, written);
+                return;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The file refuses writing now (made read-only, or its rules changed): the save can never finish over
+                // it. Leave it as it is, so it still loads, and keep what the save meant to write beside it.
+                Keep(path, newCopy, written);
+                return;
+            }
+            catch (IOException) when (DateTime.UtcNow < giveUp)
+            {
+                // Another program (a sync client) has it open for a moment: wait within the budget, as readers do.
+                Thread.Sleep(20);
+            }
         }
 
         using (target)
