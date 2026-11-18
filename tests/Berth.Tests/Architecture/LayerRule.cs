@@ -67,6 +67,7 @@ internal static class LayerRule
     {
         private readonly MetadataReader md = pe.GetMetadataReader();
         private readonly HashSet<string> violations = new(StringComparer.Ordinal);
+        private readonly HashSet<TypeDefinitionHandle> scanned = [];
 
         public IEnumerable<string> Violations => violations;
 
@@ -107,6 +108,11 @@ internal static class LayerRule
 
         private void ScanType(TypeDefinitionHandle handle)
         {
+            if (!scanned.Add(handle))
+            {
+                return;
+            }
+
             TypeDefinition type = md.GetTypeDefinition(handle);
             string owner = FullName(handle);
             if (IsCom(handle))
@@ -423,9 +429,17 @@ internal static class LayerRule
                 {
                     violations.Add($"{member} uses {used.FullName} from {used.Assembly}");
                 }
-                else if (!InPrefix(OuterNamespace(used.Definition)) && !IsCompilerHelper(used.Definition))
+                else if (!InPrefix(OuterNamespace(used.Definition)))
                 {
-                    violations.Add($"{member} uses {used.FullName} from {used.Assembly}");
+                    if (IsCompilerHelper(used.Definition))
+                    {
+                        // A helper the compiler or a generator added for this type is held to the same rule.
+                        ScanType(used.Definition);
+                    }
+                    else
+                    {
+                        violations.Add($"{member} uses {used.FullName} from {used.Assembly}");
+                    }
                 }
             }
         }
@@ -474,9 +488,19 @@ internal static class LayerRule
         /// </summary>
         private bool IsCompilerHelper(TypeDefinitionHandle handle)
         {
-            TypeDefinition type = md.GetTypeDefinition(handle);
+            TypeDefinitionHandle outermost = handle;
+            while (!md.GetTypeDefinition(outermost).GetDeclaringType().IsNil)
+            {
+                outermost = md.GetTypeDefinition(outermost).GetDeclaringType();
+            }
+
+            TypeDefinition type = md.GetTypeDefinition(outermost);
             string ns = md.GetString(type.Namespace);
-            if (ns.Length == 0 && md.GetString(type.Name).StartsWith('<'))
+
+            // C# cannot spell a name starting '<': only the compiler or a source generator makes one
+            // (<PrivateImplementationDetails>, file-local generated helpers such as the regex generator's, and the
+            // types nested in them).
+            if (md.GetString(type.Name).StartsWith('<'))
             {
                 return true;
             }

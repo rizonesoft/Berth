@@ -47,8 +47,7 @@ public sealed class LayoutJsonTests
         }
         """;
 
-    private static Layout Parse(string json) =>
-        JsonSerializer.Deserialize(json, BerthJson.Default.Layout) ?? throw new InvalidOperationException("null layout");
+    private static Layout Parse(string json) => BerthJson.Parse(System.Text.Encoding.UTF8.GetBytes(json), BerthJson.Default.Layout);
 
     private static string Write(Layout layout) => JsonSerializer.Serialize(layout, BerthJson.Default.Layout);
 
@@ -151,6 +150,60 @@ public sealed class LayoutJsonTests
         JsonObject document = JsonNode.Parse(WithPrevious)!.AsObject();
         document.Remove(property);
         Assert.Throws<JsonException>(() => Parse(document.ToJsonString()));
+    }
+
+    [Theory]
+    [InlineData("icons")]
+    [InlineData("monitors")]
+    [InlineData("previous.icons")]
+    public void ANullElementIsAParseFailure(string list)
+    {
+        JsonObject document = JsonNode.Parse(WithPrevious)!.AsObject();
+        JsonArray items = list == "previous.icons" ? document["previous"]!["icons"]!.AsArray() : document[list]!.AsArray();
+        items.Add(null);
+        Assert.Throws<JsonException>(() => Parse(document.ToJsonString()));
+    }
+
+    [Fact]
+    public void ANullDocumentIsAParseFailure()
+    {
+        var error = Assert.Throws<JsonException>(() => Parse("null"));
+        Assert.Equal("The document is null.", error.Message);
+    }
+
+    [Theory]
+    [InlineData("07:14")]
+    [InlineData("2026-11-15")]
+    [InlineData("2026-11-15T07:14:03")]
+    [InlineData("15 November 2026 07:14")]
+    [InlineData("2026-11-15 07:14:03Z")]
+    [InlineData("")]
+    public void ATimeWithoutAFullDateTimeAndOffsetIsAParseFailure(string savedAt)
+    {
+        Assert.Throws<JsonException>(() => Parse(SpecExample.Replace("2026-11-15T07:14:03Z", savedAt, StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    [InlineData("2026-11-15T07:14:03.1234567Z")]
+    [InlineData("2026-11-15T08:14:03+01:00")]
+    public void AFullDateTimeWithAnOffsetParses(string savedAt)
+    {
+        Layout layout = Parse(SpecExample.Replace("2026-11-15T07:14:03Z", savedAt, StringComparison.Ordinal));
+        DateTimeOffset wholeSeconds = layout.SavedAt.AddTicks(-(layout.SavedAt.Ticks % TimeSpan.TicksPerSecond));
+        Assert.Equal(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), wholeSeconds);
+        Assert.Equal(TimeSpan.Zero, layout.SavedAt.Offset);
+    }
+
+    [Theory]
+    [InlineData("icons")]
+    [InlineData("monitors")]
+    [InlineData("previous.icons")]
+    public void LayoutsThatDifferInOneCollectionAreNotEqual(string list)
+    {
+        JsonObject document = JsonNode.Parse(WithPrevious)!.AsObject();
+        JsonArray items = list == "previous.icons" ? document["previous"]!["icons"]!.AsArray() : document[list]!.AsArray();
+        items[0]!["x"] = (int)items[0]!["x"]! + 1;
+        Assert.NotEqual(Parse(WithPrevious), Parse(document.ToJsonString()));
     }
 
     [Fact]

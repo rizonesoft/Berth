@@ -88,6 +88,12 @@ namespace Berth.Tests.LayerFixtures.Core
         internal Berth.Tests.LayerFixtures.Outside.MarkedGenerated? marked;
     }
 
+    internal sealed partial class CleanGenerated
+    {
+        [System.Text.RegularExpressions.GeneratedRegex("^a+$")]
+        internal static partial System.Text.RegularExpressions.Regex Letters();
+    }
+
     internal sealed class Clean
     {
         internal Dictionary<string, int> Counts { get; } = [];

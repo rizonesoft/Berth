@@ -63,6 +63,9 @@ public sealed class LayerRuleTests
         Assert.DoesNotContain(
             LayerRule.Check(TestAssembly, Fixtures),
             line => line.StartsWith(Fixtures + ".CleanGenericAttributeValue", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            LayerRule.Check(TestAssembly, Fixtures),
+            line => line.StartsWith(Fixtures + ".CleanGenerated", StringComparison.Ordinal) || line.Contains("RegexGenerator", StringComparison.Ordinal));
     }
 
     [Fact]
