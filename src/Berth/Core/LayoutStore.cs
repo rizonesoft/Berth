@@ -20,7 +20,10 @@ internal sealed class LayoutStore(BerthPaths paths)
     /// <exception cref="UnreadableLayoutException">The file it would replace cannot be read, so it is kept.</exception>
     /// <exception cref="IOException">The folder or the file cannot be written.</exception>
     /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
-    public void Save(Layout layout)
+    public void Save(Layout layout) => Save(layout, beforeReplace: null);
+
+    /// <summary>As <see cref="Save(Layout)"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
+    internal void Save(Layout layout, Action? beforeReplace)
     {
         ArgumentNullException.ThrowIfNull(layout);
         string? problem = LayoutRules.Check(layout, layout.Key);
@@ -30,13 +33,29 @@ internal sealed class LayoutStore(BerthPaths paths)
         }
 
         string path = paths.LayoutFile(layout.Key);
-        if (Read(path, layout.Key) is { Unreadable: { } unreadable })
+        Lookup current = Read(path, layout.Key);
+        if (current.Unreadable is { } unreadable)
         {
             throw new UnreadableLayoutException(unreadable.FileName, unreadable.Reason);
         }
 
         BerthPaths.EnsureFolderFor(path);
-        JsonFile.Write(path, layout, BerthJson.Default.Layout);
+        Action<string>? hook = beforeReplace is null ? null : _ => beforeReplace();
+        if (current.Layout is not null)
+        {
+            JsonFile.Write(path, layout, BerthJson.Default.Layout, hook);
+            return;
+        }
+
+        try
+        {
+            JsonFile.WriteNew(path, layout, BerthJson.Default.Layout, hook);
+        }
+        catch (TargetAppearedException) when (Read(path, layout.Key).Unreadable is { } appeared)
+        {
+            // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
+            throw new UnreadableLayoutException(appeared.FileName, appeared.Reason);
+        }
     }
 
     /// <summary>Every layout file in key order. A fresh profile, with no layouts folder yet, has none.</summary>

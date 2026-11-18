@@ -121,6 +121,33 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public void ADamagedFileArrivingDuringAFirstSaveIsKept()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Assert.False(store.Load().Exists);
+
+            UnreadableSettingsException error = Assert.Throws<UnreadableSettingsException>(() =>
+                store.Save(Settings.Default with { RestoreAutomatically = true }, beforeReplace: () => Put(paths, "{")));
+
+            Assert.False(string.IsNullOrWhiteSpace(error.Reason));
+            Assert.Equal("{", File.ReadAllText(paths.SettingsFile));
+            Assert.Empty(Directory.GetFiles(paths.DataRoot, "*.tmp-*"));
+        }
+    }
+
+    [Fact]
+    public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Assert.ThrowsAny<IOException>(() => store.Save(Settings.Default, beforeReplace: () => Put(paths, Good)));
+            Assert.Equal(Good, File.ReadAllText(paths.SettingsFile));
+        }
+    }
+    [Fact]
     public void AWriteFailureIsNotWordedAsAnUnreadableFile()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

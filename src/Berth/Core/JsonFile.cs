@@ -31,9 +31,17 @@ internal static partial class JsonFile
     /// <exception cref="UnauthorizedAccessException">The folder or the target may not be written.</exception>
     public static void Write<T>(string path, T value, JsonTypeInfo<T> info) => Write(path, value, info, afterFlush: null);
 
+    /// <summary>
+    /// As <see cref="Write{T}(string, T, JsonTypeInfo{T})"/> for a caller that has just found no file at
+    /// <paramref name="path"/>: the final step never overwrites, so a file that appeared since (a profile sync, another
+    /// program) is kept and the write fails with <see cref="TargetAppearedException"/> for the caller to look at it.
+    /// </summary>
+    public static void WriteNew<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush = null) =>
+        Write(path, value, info, afterFlush, mustBeNew: true);
+
     /// <summary>As <see cref="Write{T}(string, T, JsonTypeInfo{T})"/>; <paramref name="afterFlush"/> lets a test
     /// reach the flushed temporary file before it is read back. Production passes null.</summary>
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush)
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -61,7 +69,15 @@ internal static partial class JsonFile
                 throw new IOException($"The copy of '{path}' read back from disk differs from what was written.");
             }
 
-            Replace(temp, path);
+            if (mustBeNew)
+            {
+                MoveNew(temp, path);
+            }
+            else
+            {
+                Replace(temp, path);
+            }
+
             replaced = true;
         }
         finally
@@ -116,6 +132,18 @@ internal static partial class JsonFile
         {
             // The target went away between the check and the replace: there is nothing to keep, so move.
             File.Move(temp, path, overwrite: false);
+        }
+    }
+
+    private static void MoveNew(string temp, string path)
+    {
+        try
+        {
+            File.Move(temp, path, overwrite: false);
+        }
+        catch (IOException error) when (File.Exists(path))
+        {
+            throw new TargetAppearedException(path, error);
         }
     }
 
@@ -188,5 +216,23 @@ internal static partial class JsonFile
             reason = error.Message;
             return false;
         }
+    }
+}
+
+/// <summary>A file appeared where a caller had just found none; it was left as it is.</summary>
+internal sealed class TargetAppearedException : IOException
+{
+    public TargetAppearedException(string path, Exception innerException)
+        : base($"'{path}' appeared while it was being written for the first time, and was left as it is.", innerException)
+    {
+    }
+
+    public TargetAppearedException()
+    {
+    }
+
+    public TargetAppearedException(string message)
+        : base(message)
+    {
     }
 }

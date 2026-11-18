@@ -31,7 +31,10 @@ internal sealed class SettingsStore(BerthPaths paths)
     /// <exception cref="UnreadableSettingsException">The file on disk cannot be read, so it is kept.</exception>
     /// <exception cref="IOException">The folder or the file cannot be written.</exception>
     /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
-    public void Save(Settings value)
+    public void Save(Settings value) => Save(value, beforeReplace: null);
+
+    /// <summary>As <see cref="Save(Settings)"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
+    internal void Save(Settings value, Action? beforeReplace)
     {
         ArgumentNullException.ThrowIfNull(value);
         string? problem = Problem(value);
@@ -40,13 +43,28 @@ internal sealed class SettingsStore(BerthPaths paths)
             throw new ArgumentException($"These settings must not be saved: {problem}", nameof(value));
         }
 
-        if (Load().Unreadable is { } unreadable)
+        SettingsLoad current = Load();
+        if (current.Unreadable is { } unreadable)
         {
             throw new UnreadableSettingsException(unreadable);
         }
 
         BerthPaths.EnsureFolderFor(paths.SettingsFile);
-        JsonFile.Write(paths.SettingsFile, value, BerthJson.Default.Settings);
+        if (current.Exists)
+        {
+            JsonFile.Write(paths.SettingsFile, value, BerthJson.Default.Settings, beforeReplace is null ? null : _ => beforeReplace());
+            return;
+        }
+
+        try
+        {
+            JsonFile.WriteNew(paths.SettingsFile, value, BerthJson.Default.Settings, beforeReplace is null ? null : _ => beforeReplace());
+        }
+        catch (TargetAppearedException) when (Load().Unreadable is { } appeared)
+        {
+            // A file arrived while this first save was being made, and it cannot be read: keep it and say so.
+            throw new UnreadableSettingsException(appeared);
+        }
     }
 
     private static string? Problem(Settings settings)

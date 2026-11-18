@@ -450,6 +450,22 @@ public sealed class LayoutStoreTests
     }
 
     [Fact]
+    public void ADamagedFileArrivingDuringAFirstSaveIsKept()
+    {
+        (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
+        using (data)
+        {
+            Layout layout = Layouts.Single();
+
+            UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() =>
+                store.Save(layout, beforeReplace: () => Put(paths, layout.Key + ".json", "{")));
+
+            Assert.Equal(layout.Key + ".json", error.FileName);
+            Assert.Equal("{", File.ReadAllText(paths.LayoutFile(layout.Key)));
+            Assert.Empty(Directory.GetFiles(paths.LayoutsFolder, "*.tmp-*"));
+        }
+    }
+    [Fact]
     public void AFirstSaveMakesItsOwnFolder()
     {
         (TestData data, BerthPaths paths, LayoutStore store) = Fresh();
