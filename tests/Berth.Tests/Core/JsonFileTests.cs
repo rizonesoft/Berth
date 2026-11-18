@@ -384,6 +384,86 @@ public sealed partial class JsonFileTests
         Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
     }
     [Fact]
+    public void AReaderCannotTakeTheNoteBeforeTheWriterRemovesIt()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        FileStream? taken = null;
+        try
+        {
+            // Just before the note goes, a reader tries to take it as recovery does (exclusively) and keeps it.
+            JsonFile.WriteOver(
+                paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+                afterFlush: null, afterCheck: null, afterReplace: null,
+                beforeNoteRemoved: () =>
+                {
+                    try
+                    {
+                        taken = new FileStream(paths.SettingsFile + JsonFile.PendingSuffix, FileMode.Open, FileAccess.Read, FileShare.None);
+                    }
+                    catch (IOException)
+                    {
+                        // The writer still holds it: the reader waits, as it should.
+                    }
+                });
+        }
+        finally
+        {
+            taken?.Dispose();
+        }
+
+        Assert.Null(taken);
+        Assert.Equal(new Settings(1, true, null), new SettingsStore(paths).Load().Value);
+        Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+    }
+    [Fact]
+    public void ReadersRacingTheNoteNeverMakeASaveFail()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new SettingsStore(paths);
+        store.Save(new Settings(1, false, null));
+        using var stop = new CancellationTokenSource();
+        Exception? readerError = null;
+        var reader = new Thread(() =>
+        {
+            try
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    JsonFile.Recover(paths.SettingsFile);
+                }
+            }
+            catch (Exception error) when (error is IOException)
+            {
+                // A reader that gives up on a busy note is fine; it must not break the writer.
+            }
+            catch (Exception error)
+            {
+                readerError = error;
+            }
+        });
+        reader.Start();
+        try
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                store.Save(new Settings(1, i % 2 == 0, null));
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            Assert.True(reader.Join(TimeSpan.FromSeconds(20)));
+        }
+
+        Assert.Null(readerError);
+        Assert.Equal(new Settings(1, false, null), new SettingsStore(paths).Load().Value);
+        Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+    }
+    [Fact]
     public void ACrashAfterTheReplaceLeavesTheSaveWhenNothingHadChanged()
     {
         using var data = new TestData();

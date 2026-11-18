@@ -54,10 +54,10 @@ internal static partial class JsonFile
 
     /// <summary>As <see cref="WriteOver"/>; <paramref name="afterCheck"/> and <paramref name="afterReplace"/> let a test
     /// act just after the last check and just after the replace.</summary>
-    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterCheck, Action? afterReplace) =>
-        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace, afterCheck);
+    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved = null) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace, afterCheck, beforeNoteRemoved);
 
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null, Action? afterCheck = null)
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null, Action? afterCheck = null, Action? beforeNoteRemoved = null)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -91,7 +91,7 @@ internal static partial class JsonFile
             }
             else if (expected is not null)
             {
-                ReplaceExpected(temp, path, expected, bytes, afterCheck, afterReplace);
+                ReplaceExpected(temp, path, expected, bytes, afterCheck, afterReplace, beforeNoteRemoved);
             }
             else
             {
@@ -166,7 +166,7 @@ internal static partial class JsonFile
     /// stop another program writing the file meanwhile, but no version is lost: a crash at any point leaves the
     /// displaced one beside the file, where no clean-up deletes it.
     /// </summary>
-    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace)
+    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterCheck, Action? afterReplace, Action? beforeNoteRemoved)
     {
         // A file that changed (or was locked) while the temporary one was written is not replaced at all.
         bool same;
@@ -192,7 +192,9 @@ internal static partial class JsonFile
         // and leaves it alone; one it can open was left by a writer that ended, and only then is it acted on.
         string pending = path + PendingSuffix;
         bool stands;
-        using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        // Delete sharing lets this writer remove its own note while still holding it; a reader asks for exclusive
+        // access, which any open handle denies, so it can never take the note in between.
+        using (var note = new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete))
         {
             note.Write(Encoding.UTF8.GetBytes(Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected))));
             note.Flush(flushToDisk: true);
@@ -209,9 +211,11 @@ internal static partial class JsonFile
                 // finishes this save; the caller is told the file could not be checked, not that a write failed.
                 throw new TargetChangedException(path, error);
             }
+
+            beforeNoteRemoved?.Invoke();
+            File.Delete(pending);
         }
 
-        File.Delete(pending);
         if (!stands)
         {
             throw new TargetChangedException(path);
