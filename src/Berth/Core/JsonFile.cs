@@ -50,7 +50,11 @@ internal static partial class JsonFile
     public static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush = null) =>
         Write(path, value, info, afterFlush, mustBeNew: false, expected);
 
-    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null)
+    /// <summary>As <see cref="WriteOver"/>; <paramref name="afterReplace"/> lets a test act between the replace and its check.</summary>
+    internal static void WriteOver<T>(string path, T value, JsonTypeInfo<T> info, byte[] expected, Action<string>? afterFlush, Action? afterReplace) =>
+        Write(path, value, info, afterFlush, mustBeNew: false, expected, afterReplace);
+
+    internal static void Write<T>(string path, T value, JsonTypeInfo<T> info, Action<string>? afterFlush, bool mustBeNew = false, byte[]? expected = null, Action? afterReplace = null)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(value, info);
         if (bytes.Length > MaxBytes)
@@ -84,7 +88,7 @@ internal static partial class JsonFile
             }
             else if (expected is not null)
             {
-                ReplaceExpected(temp, path, expected);
+                ReplaceExpected(temp, path, expected, bytes, afterReplace);
             }
             else
             {
@@ -148,22 +152,49 @@ internal static partial class JsonFile
         }
     }
 
+    /// <summary>The suffix of a version a save displaced and could not prove it may drop; never cleaned up automatically.</summary>
+    public const string KeptSuffix = ".berth-replaced-";
+
     /// <summary>
-    /// Replaces <paramref name="path"/> keeping what it held as a backup in the same step, then checks the backup is
-    /// what the caller read; when it is not, the backup goes back in place, so a file that arrived meanwhile is kept.
+    /// Replaces <paramref name="path"/>, keeping what it held under a <see cref="KeptSuffix"/> name in the same step.
+    /// That version is deleted only when it is exactly what the caller read; otherwise it goes back in place and the
+    /// write fails, and whatever the rollback displaces is in turn kept unless it is exactly this write. Windows cannot
+    /// stop another program writing the file meanwhile, but no version is lost: a crash at any point leaves the
+    /// displaced one beside the file, where no clean-up deletes it.
     /// </summary>
-    private static void ReplaceExpected(string temp, string path, byte[] expected)
+    private static void ReplaceExpected(string temp, string path, byte[] expected, byte[] written, Action? afterReplace)
     {
-        string backup = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.Replace(temp, path, backup, ignoreMetadataErrors: false);
-        if (File.ReadAllBytes(backup).AsSpan().SequenceEqual(expected))
+        string kept = path + KeptSuffix + Guid.NewGuid().ToString("N");
+        File.Replace(temp, path, kept, ignoreMetadataErrors: false);
+        afterReplace?.Invoke();
+        if (HoldsExactly(kept, expected))
         {
-            File.Delete(backup);
+            File.Delete(kept);
             return;
         }
 
-        File.Replace(backup, path, destinationBackupFileName: null, ignoreMetadataErrors: false);
+        string displaced = path + KeptSuffix + Guid.NewGuid().ToString("N");
+        File.Replace(kept, path, displaced, ignoreMetadataErrors: false);
+        if (HoldsExactly(displaced, written))
+        {
+            File.Delete(displaced);
+        }
+
         throw new TargetChangedException(path);
+    }
+
+    /// <summary>Whether <paramref name="path"/> holds exactly <paramref name="bytes"/>, read only when the lengths agree.</summary>
+    private static bool HoldsExactly(string path, byte[] bytes)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length != bytes.Length)
+        {
+            return false;
+        }
+
+        byte[] actual = new byte[bytes.Length];
+        stream.ReadExactly(actual);
+        return actual.AsSpan().SequenceEqual(bytes);
     }
 
     private static void MoveNew(string temp, string path)

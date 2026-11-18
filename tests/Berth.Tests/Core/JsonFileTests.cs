@@ -127,6 +127,58 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void ASecondArrivalDuringTheRollbackIsKeptBesideTheFile()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+        byte[] first = "first arrival"u8.ToArray();
+        byte[] second = "second arrival"u8.ToArray();
+
+        Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
+            path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: _ => File.WriteAllBytes(path, first),
+            afterReplace: () => File.WriteAllBytes(path, second)));
+
+        // The first arrival is back in place, and the second, which the rollback displaced, is kept beside it.
+        Assert.Equal(first, File.ReadAllBytes(path));
+        string keptFile = Assert.Single(Directory.GetFiles(data.Root, "layout.json" + JsonFile.KeptSuffix + "*"));
+        Assert.Equal(second, File.ReadAllBytes(keptFile));
+        Assert.Empty(Temporaries(data.Root));
+    }
+
+    [Fact]
+    public void AnOversizedArrivalIsKeptAndToldApartByItsLength()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(path);
+
+        Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(
+            path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: _ => { using var big = new FileStream(path, FileMode.Create); big.SetLength(JsonFile.MaxBytes * 4); },
+            afterReplace: null));
+
+        Assert.Equal(JsonFile.MaxBytes * 4, new FileInfo(path).Length);
+        Assert.Empty(Directory.GetFiles(data.Root, "*" + JsonFile.KeptSuffix + "*"));
+    }
+
+    [Fact]
+    public void AKeptVersionIsNeverCleanedUp()
+    {
+        using var data = new TestData();
+        string path = Path.Combine(data.Root, "layout.json");
+        string kept = path + JsonFile.KeptSuffix + Guid.NewGuid().ToString("N");
+        File.WriteAllText(kept, "kept");
+        File.SetLastWriteTimeUtc(kept, DateTime.UtcNow - TimeSpan.FromDays(30));
+
+        JsonFile.Write(path, Sample, BerthJson.Default.Layout);
+
+        Assert.Equal("kept", File.ReadAllText(kept));
+    }
+    [Fact]
     public void WriteOverReplacesAFileThatIsStillWhatWasRead()
     {
         using var data = new TestData();
