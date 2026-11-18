@@ -47,7 +47,7 @@ depends_on: ["dotnet-foundation"]
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [x] |
 | 9 | §9 | Save operation | §5, §8, §14, §15 | [x] |
 | 10 | §10 | Restore operation with its undo snapshot | §9 | [x] |
-| 11 | §11 | Undo operation | §10 | [ ] |
+| 11 | §11 | Undo operation | §10 | [x] |
 | 12 | §12 | Rename, revert and delete operations | §9 | [ ] |
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
 | 14 | §14 | Operation lock across processes | §3 | [x] |
@@ -371,9 +371,12 @@ The two interfaces that separate the rules from Windows, and the fakes every rul
 - [x] Add `tests/Berth.Tests/Core/UndoTests.cs` with those cases. Done when: all pass, and the foreign-key test fails when the key check is removed. Cheaper substitute: testing only restore then undo. **Corrected 2026-11-18:** includes a mixed retry case (1 in place, 1 shifted by 1 px via `SnapIds`, 1 missing, 1 desktop-only, case-varied IDs and colliding display names, asserting exact placement request, 4 counts, `FailureKind.NotPlaced`, preserved snapshot, then retry through a fresh `LayoutService` -> `Undone`, missing count, deleted snapshot, `NothingToUndo`), display-change-during-placement failure, explicit deletion failure (`WriteFailed`, path, detail, preserved bytes), separate placement and read-back Explorer loss (`DesktopUnavailable`, zero counts, preserved bytes), overlapping refusal precedence, and strict-double `CanUndo` over every invalid fixture.
 - [x] Run the undo inside `OperationLock.Run`, returning `Refused` with `Busy` when the lock is not acquired (**Corrected 2026-11-18:** D01 T01 §14 plan review). Done when: a test holding the lock gets `Refused` with `Busy`, and the desktop and `undo.json` are unchanged. Cheaper substitute: wrapping only save.
 - [x] Log exactly one event per undo through `Log.Result` (**Corrected 2026-11-18:** D01 T01 §15 plan review). Done when: tests read back one event header line with its level and message for a done, a refused and a failed result, plus continuation lines starting with two spaces (`SPEC §18`) for an unexpected exception. Cheaper substitute: asserting the returned result only.
-- [ ] Commit: `core: undo operation`
+- [x] Commit: `core: undo operation`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*UndoTests"` passes, and fails when the arrangement key check in `Undo` is removed.
+
+> **Verified:** 2026-11-18 | §11 | 1b7eed1ce0f12c4cb0ee932c1224b2d778439166
+> **Review:** `docs/reviews/d01-t01-s11.json`
 
 ## 12. Rename, revert and delete operations
 
