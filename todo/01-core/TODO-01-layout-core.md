@@ -54,6 +54,7 @@ depends_on: ["dotnet-foundation"]
 | 15 | §15 | Log file with a size cap | §3 | [ ] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
+| 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -431,6 +432,28 @@ The three small formats of SPEC §3 that several surfaces share.
 - [ ] Commit: `core: date, count and monitor size formats`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FormatsTests"` passes, and fails when `Formats.When` compares UTC dates instead of local ones.
+
+## 18. Setting changes applied, read back and logged in one place
+
+Filed 2026-11-18 from the phase 1 gap audit: SPEC §18 says every setting change writes a log line, and both the tray menu (`D04 T01 §8`) and the window (`D05 T01 §11`) change "Restore automatically", so the change, its read-back and its line live in Core once, worded as SPEC §18 now says.
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Add `SettingChanges` in `src/Berth/Core/SettingChanges.cs`. Done when: a change is written, read back and logged.
+2. Add the failure paths. Done when: a failed write leaves the file, returns the SPEC §18 message and logs `FAIL`.
+
+- [ ] Add `SettingChange(bool Applied, bool Value, string? Message)` and `SettingChanges(SettingsStore store, Log log)` with `SetRestoreAutomatically(bool on)`: load the settings, save them with `RestoreAutomatically` set to `on` and every other value kept (`Window` included), load again, and return `Applied` `true` with `Value` `on` only when the read-back holds `on`; then log `INFO Restore automatically turned on.` or `INFO Restore automatically turned off.` (SPEC §18). Done when: a test with a fixed clock reads that line back and finds `Window` unchanged in the file. Cheaper substitute: writing the switch without reading it back, which reports a change that did not land.
+- [ ] Return `Applied` `false`, `Value` the old state and `Message` the SPEC §18 write message (`Berth could not write <path>: <reason>.` through `Messages`) when the save throws `IOException`, `UnauthorizedAccessException` or `InvalidOperationException` (an unreadable `settings.json`, which `SettingsStore.Save` refuses), and log one `FAIL` line with that message. Done when: tests with a read-only settings file and with `{` in `settings.json` get `Applied` `false`, the message, one `FAIL` line, and the file's bytes unchanged. Cheaper substitute: letting the exception reach the tray, which would leave the check flipped.
+- [ ] Add `RecordStartWithWindows(bool on, Exception? failure)`, for the caller that wrote the `Run` value (`D05 T01 §10` owns the registry): with no failure log `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.` and return `Applied` `true`; with one, log `FAIL` with the SPEC §18 message `Berth could not change the Start with Windows setting: <reason>.` and return it with `Applied` `false`. Done when: tests read each line back. Cheaper substitute: logging in the view model, so the tray and window word it differently.
+- [ ] Add `Messages.SettingChanged(string setting, bool on)` for the four SPEC §18 lines, used by `SettingChanges`. Done when: `MessagesTests` compares the four strings exactly. Cheaper substitute: building the sentence in `SettingChanges`, outside the one class that words results.
+- [ ] Add `tests/Berth.Tests/Core/SettingChangesTests.cs` with those cases. Done when: all pass, and the read-back test fails when `SetRestoreAutomatically` skips the second load. Cheaper substitute: asserting on the returned value only.
+- [ ] Commit: `core: setting changes applied, read back and logged`
+
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingChangesTests"` passes, and fails when a failed save is reported as applied.
 
 ## Verification
 

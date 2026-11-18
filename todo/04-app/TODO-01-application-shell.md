@@ -44,7 +44,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [ ] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
-| 8 | §8 | Tray menu | §7, D01 T01 §11 | [ ] |
+| 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [ ] |
 | 9 | §9 | Main window frame with two panes | §5 | [ ] |
 | 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [ ] |
 | 11 | §11 | Off-screen rendering of the window for review | §9 | [ ] |
@@ -228,7 +228,7 @@ The right-click menu of SPEC §12, wired to the same operations as the window.
 - [ ] Build the menu: `Save layout`, `Restore layout`, `Restore automatically`, a separator, `Open Berth` (bold) and `Exit`, in that order. Done when: a test reads the items' text, the separator's position and the bold font of `Open Berth`. Cheaper substitute: a different order from the mockup.
 - [ ] `Save layout` calls `LayoutService.Save()` and `Restore layout` calls `LayoutService.Restore()`, both off the UI thread through `Task.Run` (the shell calls inside them run on `ShellDesktopIcons`'s own STA worker, `D02 T01 §9`), each raising `OperationFinished(OperationResult)` on the UI thread. Done when: tests with `FakeDesktopIcons` click each item and see the fake desktop and the layout file change. Cheaper substitute: running the shell calls on the UI thread, freezing the menu.
 - [ ] Before the menu opens (`Opening`), set `Restore layout` enabled only when the current arrangement has a layout and auto arrange is off, and `Restore automatically` checked from `SettingsStore`. Done when: tests cover no layout (disabled), auto arrange on (disabled), a layout with auto arrange off (enabled), and the check mark for both setting values. Cheaper substitute: computing the state once at startup.
-- [ ] `Restore automatically` toggles the setting through `SettingsStore.Save`, reads it back, and leaves the check as it was with a `FAIL` log line when the write fails. Done when: tests cover a successful toggle and a failing store. Cheaper substitute: a check mark that changes without the file changing.
+- [ ] `Restore automatically` toggles the setting through `SettingChanges.SetRestoreAutomatically` (`D01 T01 §18`, which writes, reads back and logs), and leaves the check as it was when the result is not applied. **Corrected 2026-11-18:** the write, read-back and log line moved to Core so the tray and the window share them. Done when: tests cover a successful toggle and a failing store. Cheaper substitute: a check mark that changes without the file changing.
 - [ ] `Open Berth` raises `OpenRequested`, and `Exit` raises `ExitRequested`, which `TrayApp` answers by disposing the tray icon and calling `Shutdown(0)`. Done when: a test clicks `Exit` and the application's run loop ends with 0. Cheaper substitute: `Environment.Exit`, which skips disposal and leaves a ghost icon.
 - [ ] A refused or failed operation from the menu is logged, and when the window is open it shows there (wired in `D05 T01 §6`); the menu itself shows nothing. Done when: a test with auto arrange forced on between `Opening` and the click gets a `WARN` log line and no exception. Cheaper substitute: a message box from a tray menu.
 - [ ] Add `tests/Berth.Tests/App/TrayMenuTests.cs`. Done when: all pass, and the enabled-state test fails when `Restore layout` is always enabled. Cheaper substitute: none needed.

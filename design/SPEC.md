@@ -255,6 +255,7 @@ Every refusal and failure has one message, used in the status line, on standard 
 | Anything else | "Something went wrong: `<the exception's message>`. The details are in the log." |
 
 - The log is `logs\berth.log` under the local root: one line per event, `2026-11-15T07:14:03Z INFO Saved 42 icons to "Docked".`, with the level INFO, WARN or FAIL. Every save, restore, undo, revert, rename, delete, setting change, automatic restore and failure writes a line. An unexpected error also writes the exception with its stack.
+- A setting change writes `INFO Restore automatically turned on.`, `INFO Restore automatically turned off.`, `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.`, from the window or the tray alike; one that fails writes a `FAIL` line with its message from the table above. Added 2026-11-18 (D01 T01 §18): the bullet above asks for a line per setting change without giving its words.
 - The log is capped at 1 MB: when it passes that, it is renamed `berth.log.1`, replacing the last one, and a new file starts.
 - An unhandled exception in the tray app is logged, shown in a message box that names the log file, and ends the process with code 1.
 
