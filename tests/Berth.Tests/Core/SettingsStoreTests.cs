@@ -252,6 +252,23 @@ public sealed class SettingsStoreTests
         }
     }
     [Fact]
+    public void ASettingsFileInAnotherCaseLoadsSavesAndReloads()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Directory.CreateDirectory(paths.DataRoot);
+            string upper = Path.Combine(paths.DataRoot, "SETTINGS.JSON");
+            File.WriteAllText(upper, Good);
+
+            Assert.Equal(new Settings(1, true, new WindowPlacement(100, 100, 980, 640)), store.Load().Value);
+            store.Save(new Settings(1, false, null));
+
+            Assert.Equal(new SettingsLoad(new Settings(1, false, null), Exists: true, Unreadable: null), new SettingsStore(BerthPaths.ForRoot(data.Root)).Load());
+            Assert.Equal(["SETTINGS.JSON"], Directory.GetFiles(paths.DataRoot).Select(Path.GetFileName));
+        }
+    }
+    [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

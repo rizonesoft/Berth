@@ -639,9 +639,11 @@ public sealed partial class JsonFileTests
 
         Assert.Throws<UnreadableLayoutException>(() => new LayoutStore(paths).Find(layout.Key));
 
+        // The link is refused before anything is recovered through it: the moved file is untouched, and the
+        // interrupted save is still held (its note and its verified copy), not lost.
         Assert.Equal(read, File.ReadAllBytes(moved));
-        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
-        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
+        Assert.True(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json.tmp-*"));
     }
 
     [Fact]
@@ -662,10 +664,11 @@ public sealed partial class JsonFileTests
 
         UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() => new LayoutStore(paths).Find(layout.Key));
 
+        // Refused by its real name before anything is recovered into it: untouched, and the save still held.
         Assert.Equal(layout.Key + ".JSON", error.FileName);
         Assert.Equal(read, File.ReadAllBytes(renamed));
-        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
-        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, "*" + JsonFile.KeptSuffix + "*"));
+        Assert.True(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json.tmp-*"));
     }
     [Fact]
     public void ASaveNeverWritesThroughALinkAtTheFilesName()

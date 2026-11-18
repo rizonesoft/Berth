@@ -174,9 +174,22 @@ internal sealed class LayoutStore(BerthPaths paths)
     private static Lookup Read(string path, string fileKey)
     {
         string fileName = Path.GetFileName(path);
+        FileInfo? entry = Entry(path);
+
+        // The exact-name and no-link rules come first: a file Berth would refuse is never recovered, read or written.
+        if (entry is not null && entry.Name != fileKey + ".json")
+        {
+            return new Lookup(null, new UnreadableFile(entry.Name, $"Its name is not the layout file name {fileKey}.json."));
+        }
+
+        if (entry is not null && (entry.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return new Lookup(null, new UnreadableFile(entry.Name, "It is a link, which Berth never writes."));
+        }
+
         try
         {
-            // An interrupted save is finished first, even when its file has been moved away since.
+            // An interrupted save is finished next, even when its file has been moved away since.
             JsonFile.Recover(path);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -184,34 +197,10 @@ internal sealed class LayoutStore(BerthPaths paths)
             return new Lookup(null, new UnreadableFile(fileName, $"An earlier save could not be finished: {error.Message}"));
         }
 
-
-        FileInfo? entry;
-        try
-        {
-            // Asked of the folder itself: only a folder that is really not there means "no layout". A folder that
-            // cannot be read throws, so no operation mistakes it for a fresh profile and writes past it.
-            entry = new DirectoryInfo(Path.GetDirectoryName(path)!).EnumerateFiles(fileName).FirstOrDefault();
-        }
-        catch (DirectoryNotFoundException)
-        {
-            entry = null;
-        }
-
         if (entry is null)
         {
             return new Lookup(null, null);
         }
-
-        if (entry.Name != fileKey + ".json")
-        {
-            return new Lookup(null, new UnreadableFile(entry.Name, $"Its name is not the layout file name {fileKey}.json."));
-        }
-
-        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-        {
-            return new Lookup(null, new UnreadableFile(entry.Name, "It is a link, which Berth never writes."));
-        }
-
         bool readable;
         Layout? layout;
         string? reason;
@@ -232,6 +221,23 @@ internal sealed class LayoutStore(BerthPaths paths)
 
         string? problem = LayoutRules.Check(layout!, fileKey);
         return problem is null ? new Lookup(layout, null, bytes) : new Lookup(null, new UnreadableFile(fileName, problem));
+    }
+
+    /// <summary>The entry at <paramref name="path"/> as the folder lists it (its real name), or null.</summary>
+    /// <exception cref="IOException">The folder exists but cannot be read.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder may not be read.</exception>
+    private static FileInfo? Entry(string path)
+    {
+        try
+        {
+            // Asked of the folder itself: only a folder that is really not there means "no layout". A folder that
+            // cannot be read throws, so no operation mistakes it for a fresh profile and writes past it.
+            return new DirectoryInfo(Path.GetDirectoryName(path)!).EnumerateFiles(Path.GetFileName(path)).FirstOrDefault();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 
     private sealed record Lookup(Layout? Layout, UnreadableFile? Unreadable, byte[]? Bytes = null);
