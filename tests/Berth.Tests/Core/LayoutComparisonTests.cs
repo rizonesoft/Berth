@@ -132,7 +132,8 @@ public sealed class LayoutComparisonTests
         ComparedIcon[] icons = [.. LayoutComparison.Neutral(layout).Icons];
 
         Assert.Equal((2, true), (icons.Single(i => i.Saved.Name == "far.txt").MonitorNumber, icons.Single(i => i.Saved.Name == "far.txt").OffScreen));
-        Assert.True(icons.Single(i => i.Saved.Name == "off.txt").OffScreen);
+        ComparedIcon off = icons.Single(i => i.Saved.Name == "off.txt");
+        Assert.Equal((2, true), (off.MonitorNumber, off.OffScreen));
     }
 
     [Fact]
