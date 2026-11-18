@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a74",
+  "title": "Atomic JSON file with read-back",
+  "implementation_sha": "cc6ff6cfd7a72629a0575b9ce16a5dd3c9b9c817",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s4.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *JsonFileTests -> passed (158 suite total); direct write to the target -> ACorruptedReadBackIsRefusedAndTheOldFileStays fails; read-back skipped -> same test fails"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s4.md",
+    "verdict": "reconciled",
+    "candidate": "cc6ff6cfd7a72629a0575b9ce16a5dd3c9b9c817",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s4.md",
+    "candidate": "22c94de3b1a6ef957717909c788a3c1f25f83a95",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "22c94de3b1a6ef957717909c788a3c1f25f83a95",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 7,
+  "pass_cap": 33
+}
