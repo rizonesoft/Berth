@@ -645,6 +645,29 @@ public sealed partial class JsonFileTests
     }
 
     [Fact]
+    public void RecoveryNeverWritesToAFileRenamedToAnotherCase()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        Layout layout = Layouts.Single();
+        new LayoutStore(paths).Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+
+        string renamed = Path.Combine(paths.LayoutsFolder, layout.Key + ".JSON");
+        File.Move(path, renamed);
+
+        UnreadableLayoutException error = Assert.Throws<UnreadableLayoutException>(() => new LayoutStore(paths).Find(layout.Key));
+
+        Assert.Equal(layout.Key + ".JSON", error.FileName);
+        Assert.Equal(read, File.ReadAllBytes(renamed));
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, "*" + JsonFile.KeptSuffix + "*"));
+    }
+    [Fact]
     public void ASaveNeverWritesThroughALinkAtTheFilesName()
     {
         using var data = new TestData();

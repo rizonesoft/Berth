@@ -531,8 +531,11 @@ internal static partial class JsonFile
             throw new IOException($"The folder of '{path}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
         }
 
-        string expected = Path.Combine(FinalPath(folder), Path.GetFileName(full));
-        return string.Equals(FinalPath(opened.SafeFileHandle), expected, StringComparison.OrdinalIgnoreCase);
+        // The folder compared as Windows compares names; the file's own name exactly as Berth writes it, so a
+        // file renamed to another case (layout.JSON) is not taken for Berth's file.
+        string final = FinalPath(opened.SafeFileHandle);
+        return string.Equals(Path.GetDirectoryName(final), FinalPath(folder), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Path.GetFileName(final), Path.GetFileName(full), StringComparison.Ordinal);
     }
 
     private static string FinalPath(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
