@@ -5,9 +5,14 @@ internal static class HelperMain
 {
     public static int Run(string[] args)
     {
+        if (args.Length == 3 && args[0] == "log")
+        {
+            return RunLog(cap: long.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture), tag: args[2]);
+        }
+
         if (args.Length != 2 || args[0] != "mutex")
         {
-            Console.Error.WriteLine("usage: --berth-helper mutex <name>");
+            Console.Error.WriteLine("usage: --berth-helper mutex <name> | log <cap> <tag>");
             return 2;
         }
 
@@ -52,6 +57,41 @@ internal static class HelperMain
                 default:
                     Console.WriteLine("unknown " + command);
                     break;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// A second writer of the log under BERTH_DATA (as the test's <c>BerthPaths.ForRoot</c> lays it out): on
+    /// <c>write &lt;n&gt;</c> it logs <c>&lt;tag&gt; &lt;i&gt;</c> for i from 1 to n and replies <c>done</c>.
+    /// </summary>
+    private static int RunLog(long cap, string tag)
+    {
+        string root = Environment.GetEnvironmentVariable("BERTH_DATA") ?? throw new InvalidOperationException("BERTH_DATA is not set.");
+        var log = new Berth.Core.Log(Berth.Core.BerthPaths.ForRoot(root), TimeProvider.System, cap, afterFailedAttempt: null);
+        Console.WriteLine("ready");
+        while (Console.ReadLine() is { } command)
+        {
+            if (command.StartsWith("write ", StringComparison.Ordinal))
+            {
+                int count = int.Parse(command[6..], System.Globalization.CultureInfo.InvariantCulture);
+                for (int i = 1; i <= count; i++)
+                {
+                    log.Info($"{tag} {i}");
+                }
+
+                Console.WriteLine("done");
+            }
+            else if (command == "exit")
+            {
+                Console.WriteLine("bye");
+                return 0;
+            }
+            else
+            {
+                Console.WriteLine("unknown " + command);
             }
         }
 

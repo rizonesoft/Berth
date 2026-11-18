@@ -23,7 +23,7 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 20 | Checklist items: 123
+Sections: 20 | Checklist items: 127
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
@@ -37,10 +37,10 @@ Sections: 20 | Checklist items: 123
 | [x]    | D01 T01 §13 | Comparison of a layout with the desktop                    | none  | 7     |
 | [x]    | D01 T01 §14 | Operation lock across processes                            | none  | 5     |
 | [ ]    | D01 T01 §15 | Log file with a size cap                                   | none  | 6     |
-| [ ]    | D01 T01 §9  | Save operation                                             | none  | 9     |
-| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 9     |
-| [ ]    | D01 T01 §11 | Undo operation                                             | none  | 7     |
-| [ ]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 7     |
+| [ ]    | D01 T01 §9  | Save operation                                             | none  | 10    |
+| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 10    |
+| [ ]    | D01 T01 §11 | Undo operation                                             | none  | 8     |
+| [ ]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 8     |
 | [ ]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
 | [ ]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
 | [ ]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
@@ -155,4 +155,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 19/84 verified sections, 2 ready to run now.
 
-Checklist: 117/509 items completed (includes Commit items).
+Checklist: 122/513 items completed (includes Commit items).

@@ -38,13 +38,21 @@ internal sealed class OperationLock
     /// </summary>
     /// <exception cref="IOException">The data root cannot be created or opened.</exception>
     /// <exception cref="UnauthorizedAccessException">The data root may not be created.</exception>
-    internal static string NameFor(string dataRoot)
+    internal static string NameFor(string dataRoot) => @"Global\Berth.Operation." + FolderHash(dataRoot);
+
+    /// <summary>
+    /// The first 16 lowercase hex of SHA-256 of the UTF-8 of the path Windows resolves <paramref name="folder"/> to,
+    /// without trailing separators, lowercased; the folder is created first. One value for every spelling of one
+    /// folder, so the named objects of Berth's processes meet.
+    /// </summary>
+    /// <exception cref="IOException">The folder cannot be created or opened.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder may not be created.</exception>
+    internal static string FolderHash(string folder)
     {
-        ArgumentException.ThrowIfNullOrEmpty(dataRoot);
-        Directory.CreateDirectory(dataRoot);
-        string root = JsonFile.FinalFolderPath(dataRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
-        string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..16];
-        return @"Global\Berth.Operation." + hash;
+        ArgumentException.ThrowIfNullOrEmpty(folder);
+        Directory.CreateDirectory(folder);
+        string final = JsonFile.FinalFolderPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(final)))[..16];
     }
 
     /// <summary>
