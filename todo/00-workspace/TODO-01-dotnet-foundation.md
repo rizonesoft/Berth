@@ -42,7 +42,7 @@ title: "TODO-01 -- .NET foundation"
 | 4 | §4 | One command that runs every gate | §3 | [x] |
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
 | 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
-| 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [ ] |
+| 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [x] |
 | 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [ ] |
 
 ## 1. Solution, SDK pin and shared build properties
@@ -225,9 +225,12 @@ Filed 2026-11-18 from the D00 T01 §4 reconciliation (P3): reviewers keep asking
 - [x] Append to the `- TODO section` line under "Candidate" in `docs/completion-review-prompt.md`, `docs/reconciliation-review-prompt.md`, `docs/review-round-prompt.md` and `docs/plan-review-prompt.md` the sentence: "Its `- [ ] Commit:` item and its Implementation Order row stay open until `stamp` ticks them after the last review, so an open `Commit:` item is not a gap." Done when: `Select-String -SimpleMatch` finds the sentence once in each template, on that line, below the `---` separator. Cheaper substitute: telling each reviewer in the per-section purpose text, which the next section forgets.
 - [x] Leave the four files' `sha256` entries in `.conclave/kits.json` as installed. Done when: `git diff` shows no change to `.conclave/kits.json`. Cheaper substitute: rewriting the hashes to the edited bytes, which makes a local edit look like the installed baseline and lets a kit update overwrite it unseen.
 - [x] Add `tests/scripts/test_review_prompts.py`, which runs `scripts/review-prompt.py` for each kind with `--ref "D00 T01 §1"` (and the arguments each kind requires) into a temporary folder, asserts the sentence appears exactly once in each generated prompt, and runs `--kind round` without `--ref` and asserts it is absent. Done when: it passes; and in a scratch copy where the sentence is moved above the completion template's `---` separator, the completion assertion fails. Cheaper substitute: reading the template files, which passes while reviewers never see the sentence.
-- [ ] Commit: `review: prompts name the stamp-owned Commit item`
+- [x] Commit: `review: prompts name the stamp-owned Commit item`
 
 **Test checkpoint:** `python -m unittest discover -s tests/scripts -p test_review_prompts.py` passes, and fails in a scratch copy whose completion template holds the sentence above its `---` separator.
+
+> **Verified:** 2026-11-18 | §7 | aaf3ec4cf3c5788b4cd3b92e8dceb96cc8f8d315
+> **Review:** `docs/reviews/d00-t01-s7.json`
 
 ## 8. Script test scratch folder that falls back to R:\scratch
 

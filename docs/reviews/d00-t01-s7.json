@@ -1,0 +1,85 @@
+{
+  "ref": "D00 T01 \u00a77",
+  "title": "Review prompts that name the stamp-owned Commit item",
+  "implementation_sha": "aaf3ec4cf3c5788b4cd3b92e8dceb96cc8f8d315",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/00-workspace/D00-T01-s7.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python -m unittest discover -s tests/scripts -p test_review_prompts.py -> 5 OK; scratch worktree with the sentence above the completion separator -> FAILED test_completion_prompt"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s7.md",
+    "verdict": "filed",
+    "candidate": "aaf3ec4cf3c5788b4cd3b92e8dceb96cc8f8d315",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D00 T01 \u00a78"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s7.md",
+    "candidate": "8fa147156ef138c0d3f788b1fac9d48303789f79",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "8fa147156ef138c0d3f788b1fac9d48303789f79",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
