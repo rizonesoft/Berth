@@ -36,7 +36,7 @@ title: "TODO-01 -- .NET foundation"
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Solution, SDK pin and shared build properties | -- | [ ] |
+| 1 | §1 | Solution, SDK pin and shared build properties | -- | [x] |
 | 2 | §2 | Application project that builds berth.exe | §1 | [ ] |
 | 3 | §3 | Test project with a first failing-capable test | §2 | [ ] |
 | 4 | §4 | One command that runs every gate | §3 | [ ] |
@@ -62,9 +62,12 @@ Every project shares one SDK pin, one set of compiler settings and one place for
 - [x] Create `Directory.Build.props` setting `LangVersion` `latest`, `Nullable` `enable`, `ImplicitUsings` `enable`, `TreatWarningsAsErrors` `true`, `AnalysisLevel` `latest-recommended`, `Deterministic` `true`, `InvariantGlobalization` `false` and `Version` `0.1.0`. Done when: `dotnet msbuild -getProperty:TreatWarningsAsErrors` on a project under `src/` prints `true` (checked in §2). Cheaper substitute: setting these in one project file, so the test project drifts.
 - [x] Create `Directory.Packages.props` with `ManagePackageVersionsCentrally` `true` and no package yet. Done when: reading the file back as XML shows `ManagePackageVersionsCentrally` `true` and no `PackageVersion` item (the effective value on a real project is checked in §3). **Corrected 2026-11-18:** "the build reads it" passed with an empty `<Project />` (plan review P1 3). Cheaper substitute: versions written into each project file.
 - [x] Create an empty solution with `dotnet new sln --format slnx --name Berth`. Done when: `Berth.slnx` exists in the repository root and `dotnet build Berth.slnx` exits 0. Cheaper substitute: a `.sln` file, which the sibling projects no longer use.
-- [ ] Commit: `build: solution, SDK pin and shared build properties`
+- [x] Commit: `build: solution, SDK pin and shared build properties`
 
 **Test checkpoint:** `dotnet build Berth.slnx` exits 0 and the four `global.json` fields and the two props files read back as specified; in a scratch copy of the repository whose `global.json` names SDK `99.0.100`, `dotnet build Berth.slnx` exits non-zero with a message naming `99.0.100`. **Corrected 2026-11-18:** the negative check now runs on a scratch copy and must name the missing SDK (plan review P1 1).
+
+> **Verified:** 2026-11-18 | §1 | 237a42ea538c8c91df3fda915ff5250f3a2a9efa
+> **Review:** `docs/reviews/d00-t01-s1.json`
 
 ## 2. Application project that builds berth.exe
 

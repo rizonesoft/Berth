@@ -1,0 +1,83 @@
+{
+  "ref": "D00 T01 \u00a71",
+  "title": "Solution, SDK pin and shared build properties",
+  "implementation_sha": "237a42ea538c8c91df3fda915ff5250f3a2a9efa",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/00-workspace/D00-T01-s1.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet build Berth.slnx -> exit 0; global.json reads back 11.0.100 latestFeature False Microsoft.Testing.Platform; scratch copy pinned to 99.0.100 -> non-zero, 'Requested SDK version: 99.0.100'"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s1.md",
+    "verdict": "complete",
+    "candidate": "237a42ea538c8c91df3fda915ff5250f3a2a9efa",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s1.md",
+    "candidate": "e327e40e155421e5977bb21ff68d80fccb69cf31",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "e327e40e155421e5977bb21ff68d80fccb69cf31",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
