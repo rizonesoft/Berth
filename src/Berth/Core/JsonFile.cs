@@ -224,8 +224,9 @@ internal static partial class JsonFile
 
             using (target)
             {
-                if (!HoldsExactly(target, expected))
+                if (!IsTheFileItself(target, path) || !HoldsExactly(target, expected))
                 {
+                    // Changed, or reached through a link: neither is written.
                     File.Delete(pending);
                     throw new TargetChangedException(path);
                 }
@@ -437,6 +438,13 @@ internal static partial class JsonFile
 
         using (target)
         {
+            if (!IsTheFileItself(target, path))
+            {
+                // A link now stands where the file was: write nothing through it, keep the intended save beside it.
+                Keep(path, newCopy, written);
+                return;
+            }
+
             byte[]? now = target.Length <= MaxBytes ? new byte[target.Length] : null;
             if (now is not null)
             {
@@ -503,6 +511,43 @@ internal static partial class JsonFile
             File.Delete(file);
         }
     }
+    /// <summary>
+    /// Whether <paramref name="opened"/> is the file named <paramref name="path"/> in its own folder, not something a
+    /// link (on the file or on the way to it) led to: the handle's final path must be the folder's final path and the
+    /// file's name. Comparing with the folder's own final path keeps a substituted drive letter from counting as a link.
+    /// </summary>
+    internal static bool IsTheFileItself(FileStream opened, string path)
+    {
+        string full = Path.GetFullPath(path);
+        if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+        {
+            return false;
+        }
+
+        using Microsoft.Win32.SafeHandles.SafeFileHandle folder = NativeMethods.CreateFile(
+            Path.GetDirectoryName(full)!, NativeMethods.FileReadAttributes, NativeMethods.ShareAll, IntPtr.Zero, NativeMethods.OpenExisting, NativeMethods.BackupSemantics, IntPtr.Zero);
+        if (folder.IsInvalid)
+        {
+            throw new IOException($"The folder of '{path}' could not be opened.", System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
+        }
+
+        string expected = Path.Combine(FinalPath(folder), Path.GetFileName(full));
+        return string.Equals(FinalPath(opened.SafeFileHandle), expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FinalPath(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
+    {
+        char[] buffer = new char[1024];
+        uint length = NativeMethods.GetFinalPathNameByHandle(handle, ref buffer[0], (uint)buffer.Length, 0);
+        if (length == 0 || length >= buffer.Length)
+        {
+            throw new IOException("The file system could not say where a file is.");
+        }
+
+        string final = new(buffer, 0, (int)length);
+        return final.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + final[8..] : final.StartsWith(@"\\?\", StringComparison.Ordinal) ? final[4..] : final;
+    }
+
     private static string HashOf(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
@@ -664,4 +709,20 @@ internal sealed class TargetChangedException : IOException
         : base($"'{path}' could not be checked just before it was replaced, so it was left as it is.", innerException)
     {
     }
+}
+
+/// <summary>The one call the file writer makes that .NET does not wrap.</summary>
+internal static partial class NativeMethods
+{
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    internal static partial uint GetFinalPathNameByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, ref char path, uint size, uint flags);
+
+    internal const uint FileReadAttributes = 0x80;
+    internal const uint ShareAll = 0x7;
+    internal const uint OpenExisting = 3;
+    internal const uint BackupSemantics = 0x02000000;
+
+    /// <summary>CreateFileW, for a folder handle (BACKUP_SEMANTICS), which .NET does not open.</summary>
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    internal static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
 }

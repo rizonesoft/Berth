@@ -619,6 +619,47 @@ public sealed partial class JsonFileTests
         Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
     }
     [Fact]
+    public void RecoveryNeverWritesThroughALinkAtTheFilesName()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        Layout layout = Layouts.Single();
+        store.Save(layout);
+        string path = paths.LayoutFile(layout.Key);
+        byte[] read = File.ReadAllBytes(path);
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            path, layout with { Name = "Desk" }, BerthJson.Default.Layout, read,
+            afterFlush: null, afterCheck: () => throw new SimulatedCrash(), afterReplace: null));
+
+        // The layout is moved away and a link to it is left at its name; the moved file still has the old contents.
+        string moved = Path.Combine(data.Root, "moved.json");
+        File.Move(path, moved);
+        File.CreateSymbolicLink(path, moved);
+
+        Assert.Throws<UnreadableLayoutException>(() => new LayoutStore(paths).Find(layout.Key));
+
+        Assert.Equal(read, File.ReadAllBytes(moved));
+        Assert.False(File.Exists(path + JsonFile.PendingSuffix));
+        Assert.Single(Directory.GetFiles(paths.LayoutsFolder, layout.Key + ".json" + JsonFile.KeptSuffix + "*"));
+    }
+
+    [Fact]
+    public void ASaveNeverWritesThroughALinkAtTheFilesName()
+    {
+        using var data = new TestData();
+        string real = Path.Combine(data.Root, "real.json");
+        JsonFile.Write(real, Sample, BerthJson.Default.Layout);
+        byte[] read = File.ReadAllBytes(real);
+        string path = Path.Combine(data.Root, "layout.json");
+        File.CreateSymbolicLink(path, real);
+
+        Assert.Throws<TargetChangedException>(() => JsonFile.WriteOver(path, Sample with { Name = "Desk" }, BerthJson.Default.Layout, read));
+
+        Assert.Equal(read, File.ReadAllBytes(real));
+        Assert.Empty(Leftovers.Of(data.Root, "layout.json"));
+    }
+    [Fact]
     public void TheLayoutStoreFinishesAnInterruptedSaveToo()
     {
         using var data = new TestData();

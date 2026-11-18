@@ -10,6 +10,8 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>..\..\assets\icon\berth.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- LibraryImport generates its marshalling as unsafe code (the file writer's GetFinalPathNameByHandle, and the shell interop of D02). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- WFO0003 asks Windows Forms apps to set DPI through Application.SetHighDpiMode. Berth is a WPF process:
          WPF takes per-monitor v2 awareness from the manifest, and Windows Forms only hosts the NotifyIcon and
          never runs Application.Run, so the manifest is the layer that owns DPI awareness here. -->
