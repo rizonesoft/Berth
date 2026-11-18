@@ -58,6 +58,8 @@ depends_on: ["dotnet-foundation"]
 
 ## 1. Layout, monitor and icon records
 
+> **Started:** 2026-11-18T02:16:14Z
+
 The data shapes of SPEC §14, as immutable records with their JSON names, so every later section reads and writes the same thing.
 
 **Phase:** 1
