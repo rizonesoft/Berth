@@ -132,7 +132,9 @@ public sealed class LayoutJsonTests
     [InlineData("monitors", "scale")]
     [InlineData("monitors", "primary")]
     [InlineData("previous.icons", "id")]
+    [InlineData("previous.icons", "name")]
     [InlineData("previous.icons", "x")]
+    [InlineData("previous.icons", "y")]
     public void AMissingOrNullValueIsAParseFailure(string list, string property)
     {
         Assert.Throws<JsonException>(() => Parse(Without(list, property, remove: true)));
@@ -178,6 +180,9 @@ public sealed class LayoutJsonTests
     [InlineData("15 November 2026 07:14")]
     [InlineData("2026-11-15 07:14:03Z")]
     [InlineData("")]
+    [InlineData("2026-11-15T07:14:03Z\\n")]
+    [InlineData("2026-11-15T07:14:03Z ")]
+    [InlineData(" 2026-11-15T07:14:03Z")]
     public void ATimeWithoutAFullDateTimeAndOffsetIsAParseFailure(string savedAt)
     {
         Assert.Throws<JsonException>(() => Parse(SpecExample.Replace("2026-11-15T07:14:03Z", savedAt, StringComparison.Ordinal)));
