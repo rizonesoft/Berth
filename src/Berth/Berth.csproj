@@ -16,4 +16,8 @@
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Berth.Tests" />
+  </ItemGroup>
+
 </Project>
