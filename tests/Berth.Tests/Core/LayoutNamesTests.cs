@@ -17,6 +17,7 @@ public sealed class LayoutNamesTests
     public void ATakenDefaultNameGetsTheFirstFreeNumberIgnoringCase()
     {
         Assert.Equal("2 monitors (2)", LayoutNames.Default(2, ["2 MONITORS", "2 Monitors (3)"]));
+        Assert.Equal("2 monitors (3)", LayoutNames.Default(2, ["2 monitors", "2 monitors (2)"]));
         Assert.Equal("2 monitors (4)", LayoutNames.Default(2, ["2 MONITORS", "2 monitors (2)", "2 Monitors (3)"]));
     }
 
