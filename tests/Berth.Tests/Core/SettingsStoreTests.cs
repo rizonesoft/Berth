@@ -236,6 +236,57 @@ public sealed class SettingsStoreTests
             Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
         }
     }    [Fact]
+    public void AnExclusiveLockTakenAfterTheLastCheckIsTheTypedRefusal()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] before = File.ReadAllBytes(paths.SettingsFile);
+            FileStream? held = null;
+            try
+            {
+                Assert.Throws<UnreadableSettingsException>(() => store.Save(
+                    Settings.Default, beforeReplace: null,
+                    afterCheck: () => held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None),
+                    afterReplace: null));
+            }
+            finally
+            {
+                held?.Dispose();
+            }
+
+            Assert.Equal(before, File.ReadAllBytes(paths.SettingsFile));
+            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+        }
+    }
+
+    [Fact]
+    public void AReadableFileThatRefusesTheReplaceIsAWriteFailure()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            try
+            {
+                Exception error = Assert.ThrowsAny<Exception>(() => store.Save(
+                    Settings.Default, beforeReplace: null,
+                    afterCheck: () => File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly),
+                    afterReplace: null));
+                Assert.True(error is IOException or UnauthorizedAccessException, error.GetType().FullName);
+                Assert.False(error is TargetChangedException);
+            }
+            finally
+            {
+                File.SetAttributes(paths.SettingsFile, FileAttributes.Normal);
+            }
+
+            Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
+            Assert.Equal(new Settings(1, true, new WindowPlacement(100, 100, 980, 640)), store.Load().Value);
+        }
+    }
+    [Fact]
     public void AReadableFileArrivingDuringAFirstSaveIsKeptToo()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

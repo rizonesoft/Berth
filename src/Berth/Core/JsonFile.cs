@@ -199,7 +199,23 @@ internal static partial class JsonFile
             note.Write(Encoding.UTF8.GetBytes(Path.GetFileName(kept) + "\n" + Convert.ToHexString(SHA256.HashData(expected))));
             note.Flush(flushToDisk: true);
             afterCheck?.Invoke();
-            File.Replace(temp, path, kept, ignoreMetadataErrors: false);
+            try
+            {
+                File.Replace(temp, path, kept, ignoreMetadataErrors: false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                // Nothing was replaced. A file another program now holds so that it cannot even be read is a file
+                // that changed; one that can still be read refused the write, and keeps its own error.
+                File.Delete(pending);
+                if (!CanRead(path))
+                {
+                    throw new TargetChangedException(path, error);
+                }
+
+                throw;
+            }
+
             afterReplace?.Invoke();
             try
             {
@@ -254,6 +270,19 @@ internal static partial class JsonFile
     }
 
     private const int SettleAttempts = 5;
+
+    private static bool CanRead(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private static bool HoldsExactlyOrMissing(string path, byte[] bytes)
     {
