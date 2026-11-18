@@ -22,11 +22,20 @@ namespace Berth.Core.Model;
 internal sealed partial class BerthJson : JsonSerializerContext
 {
     /// <summary>
-    /// The one way Berth reads its JSON: a document that is not valid, breaks the shape, holds a null element or is
+    /// The one way Berth reads its JSON: a document that is not valid UTF-8 or JSON, breaks the shape, holds a null element or is
     /// just <c>null</c> throws <see cref="JsonException"/>, so every caller sees one kind of failure.
     /// </summary>
-    public static T Parse<T>(ReadOnlySpan<byte> utf8, JsonTypeInfo<T> info) where T : class =>
-        JsonSerializer.Deserialize(utf8, info) ?? throw new JsonException("The document is null.");
+    public static T Parse<T>(ReadOnlySpan<byte> utf8, JsonTypeInfo<T> info) where T : class
+    {
+        // The reader skips values it does not map without decoding them, so the whole document is checked first:
+        // a damaged byte anywhere means a damaged file, which must never pass for a readable one.
+        if (!System.Text.Unicode.Utf8.IsValid(utf8))
+        {
+            throw new JsonException("The document is not valid UTF-8.");
+        }
+
+        return JsonSerializer.Deserialize(utf8, info) ?? throw new JsonException("The document is null.");
+    }
 }
 
 /// <summary>Refuses a null element in any immutable array of the model, which nullable annotations do not cover.</summary>

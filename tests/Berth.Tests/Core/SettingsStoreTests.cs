@@ -75,11 +75,30 @@ public sealed class SettingsStoreTests
 
             UnreadableSettingsException error = Assert.Throws<UnreadableSettingsException>(() => store.Save(Settings.Default with { RestoreAutomatically = true }));
             Assert.Equal("settings.json", UnreadableSettingsException.FileName);
-            Assert.False(string.IsNullOrWhiteSpace(error.Reason));
+            Assert.Equal(load.Unreadable, error.Reason);
             Assert.Equal(before, File.ReadAllBytes(paths.SettingsFile));
         }
     }
 
+    [Fact]
+    public void ADamagedByteInAValueBerthDoesNotReadStillMakesTheFileUnreadable()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("""{"schemaVersion":1,"restoreAutomatically":true,"window":null,"extra":"X"}""");
+            bytes[Array.LastIndexOf(bytes, (byte)'X')] = 0xFF;
+            Directory.CreateDirectory(paths.DataRoot);
+            File.WriteAllBytes(paths.SettingsFile, bytes);
+
+            SettingsLoad load = store.Load();
+            Assert.True(load.Exists);
+            Assert.Equal(Settings.Default, load.Value);
+            Assert.Contains("UTF-8", load.Unreadable, StringComparison.Ordinal);
+            Assert.Throws<UnreadableSettingsException>(() => store.Save(Settings.Default));
+            Assert.Equal(bytes, File.ReadAllBytes(paths.SettingsFile));
+        }
+    }
     [Fact]
     public void ALockedFileExistsAndIsNeverReplaced()
     {

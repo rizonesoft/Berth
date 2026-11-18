@@ -167,6 +167,14 @@ public sealed class LayoutJsonTests
     }
 
     [Fact]
+    public void ADamagedByteAnywhereIsAParseFailure()
+    {
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(SpecExample.Replace("\"previous\": null", "\"previous\": null, \"note\": \"X\"", StringComparison.Ordinal));
+        bytes[Array.LastIndexOf(bytes, (byte)'X')] = 0xFF;
+        var error = Assert.Throws<JsonException>(() => BerthJson.Parse(bytes, BerthJson.Default.Layout));
+        Assert.Contains("UTF-8", error.Message, StringComparison.Ordinal);
+    }
+    [Fact]
     public void ANullDocumentIsAParseFailure()
     {
         var error = Assert.Throws<JsonException>(() => Parse("null"));
