@@ -23,7 +23,7 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 19 | Checklist items: 118
+Sections: 19 | Checklist items: 121
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
@@ -39,9 +39,9 @@ Sections: 19 | Checklist items: 118
 | [ ]    | D01 T01 §14 | Operation lock across processes                            | none  | 5     |
 | [ ]    | D01 T01 §15 | Log file with a size cap                                   | none  | 6     |
 | [ ]    | D01 T01 §9  | Save operation                                             | none  | 9     |
-| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 8     |
-| [ ]    | D01 T01 §11 | Undo operation                                             | none  | 6     |
-| [ ]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 6     |
+| [ ]    | D01 T01 §10 | Restore operation with its undo snapshot                   | none  | 9     |
+| [ ]    | D01 T01 §11 | Undo operation                                             | none  | 7     |
+| [ ]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 7     |
 | [ ]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
 | [ ]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
 | [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
@@ -154,4 +154,4 @@ Sections: 3 | Checklist items: 13
 
 Progress: 17/83 verified sections, 4 ready to run now.
 
-Checklist: 110/504 items completed (includes Commit items).
+Checklist: 114/507 items completed (includes Commit items).
