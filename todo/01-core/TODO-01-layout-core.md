@@ -40,7 +40,7 @@ depends_on: ["dotnet-foundation"]
 | 1 | §1 | Layout, monitor and icon records | D00 T01 §3 | [x] |
 | 2 | §2 | Arrangement key | §1 | [x] |
 | 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [x] |
-| 4 | §4 | Atomic JSON file with read-back | §3 | [ ] |
+| 4 | §4 | Atomic JSON file with read-back | §1, §3 | [ ] |
 | 5 | §5 | Layout store | §1, §2, §4 | [ ] |
 | 6 | §6 | Settings store | §4 | [ ] |
 | 7 | §7 | Layout names: defaults and validation | §1 | [ ] |
@@ -147,24 +147,26 @@ One place decides where Berth's files live, and tests redirect it (SPEC §14, fi
 
 > **Started:** 2026-11-18T03:00:11Z
 
-Every write Berth makes goes through one routine: temporary file, flush, replace, read back, compare (SPEC §14 "Every write").
+Every JSON file Berth writes goes through one routine, in the SPEC §14 "Every write" order: write a temporary file in the same folder, flush it, read it back and compare, and only then replace the target. **Corrected 2026-11-18:** said "replace, read back, compare" and "every write"; the log of §15 appends to a text file and is not one of these (plan review P3 5).
 
 **Phase:** 1
 **Needs:** none
 **Surface:** no
 
+**Corrected 2026-11-18:** checklist rewritten after the plan review (P1 1 and 2, P2 3 and 4, P3 6): the verification seam corrupts the flushed temporary file so production's own read-back must catch it; reading tells a missing file from a locked or forbidden one; a replace that fails after verification exercises the cleanup; and reading goes through `BerthJson.Parse`, so `TryRead` takes `where T : class` and `§1` joins the dependencies.
+
 **Build order:**
 
 1. Add `JsonFile` in `src/Berth/Core/JsonFile.cs`. Done when: a write is readable and equal.
-2. Prove a failed write leaves the old file. Done when: the fault-injection test passes.
+2. Prove every failure leaves the old file. Done when: the corruption, replace-failure and serialisation-failure tests pass.
 
-- [ ] Add `JsonFile.Write<T>(string path, T value, JsonTypeInfo<T> info)`: serialise to `<path>.tmp-<guid>` in the same folder, `Flush(true)`, read the temporary file back and compare its bytes with what was serialised (throw `IOException` naming the path when they differ), and only then `File.Move(temp, path, overwrite: true)` (SPEC §14 "Every write": verify, then replace, so a failure at any point leaves the old file). Done when: a test writes a value, reads the file and finds equal content, and no `.tmp-` file remains; and a test that injects a verification failure through an internal seam finds the earlier target byte for byte unchanged. Cheaper substitute: replacing first and verifying after, which cannot give the old file back.
-- [ ] Delete the temporary file in a `finally` when the write did not complete. Done when: a test that makes serialisation throw finds no `.tmp-` file and the earlier target unchanged. Cheaper substitute: leaving temporary files behind for the next run to trip on.
-- [ ] Add `JsonFile.TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason)`, parsing through `BerthJson.Parse` (**Corrected 2026-11-18:** `D01 T01 §1` made it the one read entry point, which also refuses a `null` document and null array elements): `false` with `reason` `missing` when the file is absent, and `false` with the parser's message for invalid JSON; it never deletes or rewrites the file (SPEC §14 "never overwritten or deleted"). Done when: tests cover a good file, a missing file and a file holding `{`, and the bad file's bytes are unchanged afterwards. Cheaper substitute: catching the exception and returning a default value, which hides a corrupt layout.
-- [ ] Add `tests/Berth.Tests/Core/JsonFileTests.cs` with those cases plus: writing over an existing file replaces it; a write into a folder that does not exist throws and creates nothing. Done when: all pass, and the leftover-temp test fails when the `finally` is removed. Cheaper substitute: testing only the happy path.
+- [x] Add `JsonFile.Write<T>(string path, T value, JsonTypeInfo<T> info)`: serialise to bytes, write them to `<path>.tmp-<guid>` in the same folder, `Flush(true)`, close, read the temporary file back from disk and compare it byte for byte with what was serialised (throwing `IOException` naming `path` when it differs), and only then `File.Move(temp, path, overwrite: true)` (SPEC §14 "Every write"). An internal seam `JsonFile.AfterFlush` (`Action<string>?`, null in production) runs on the flushed temporary file before the read-back. Done when: a test writes a value, reads the file and finds equal content and no `.tmp-` file; and a test whose seam flips one byte of the temporary file gets `IOException` naming the target, finds the earlier target byte for byte unchanged and no `.tmp-` file. Cheaper substitute: replacing first and verifying after, which cannot give the old file back, or a seam that throws instead of corrupting, which passes when the read-back is skipped.
+- [x] Delete the temporary file in a `finally` when the write did not complete. Done when: a test that holds the existing target open with `FileShare.Read` (no delete sharing), so the final move fails after verification, gets the system's `IOException`, finds the target's bytes unchanged and no `.tmp-` file; and a test whose value cannot be serialised finds no `.tmp-` file. Cheaper substitute: leaving temporary files behind for the next run to trip on.
+- [x] Add `JsonFile.TryRead<T>(string path, JsonTypeInfo<T> info, out T? value, out string? reason) where T : class`, opening the file directly and parsing through `BerthJson.Parse` (`D01 T01 §1`, which refuses a `null` document and null elements): `false` with `reason` `missing` when the file or its folder does not exist; `false` with the system's message for a sharing violation or denied access, never `missing`; `false` with the parser's message for invalid JSON; it never deletes or rewrites the file (SPEC §14 "never overwritten or deleted"). Done when: tests cover a good file, a missing file, a missing folder (a fresh data root), a file held with `FileShare.None`, a file holding `{`, a file holding `null`, and a layout holding a null icon, each asserting the returned `value` and `reason`, and the bad files' bytes are unchanged afterwards. Cheaper substitute: catching the exception and returning a default value, which hides a corrupt layout, or reporting a locked file as missing, which a save would then overwrite.
+- [x] Add `tests/Berth.Tests/Core/JsonFileTests.cs` with those cases plus: writing over an existing file replaces it; a write into a folder that does not exist throws and creates nothing. Done when: all pass, and the replace-failure test fails when the `finally` is removed and the corruption test fails when the read-back is skipped. Cheaper substitute: testing only the happy path.
 - [ ] Commit: `core: atomic JSON file with read-back`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*JsonFileTests"` passes, and fails when `JsonFile.Write` writes directly to the target path.
+**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*JsonFileTests"` passes, and fails when `JsonFile.Write` writes directly to the target path or skips the read-back.
 
 ## 5. Layout store
 
