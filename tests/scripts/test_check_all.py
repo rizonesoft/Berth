@@ -48,7 +48,7 @@ SHIM = textwrap.dedent(
     import json, os, shutil, subprocess, sys
     name, args = sys.argv[1], sys.argv[2:]
     with open(os.environ["CHECK_SHIM_LOG"], "a", encoding="utf-8") as log:
-        log.write(json.dumps([name] + args) + "\\n")
+        log.write(json.dumps({"cwd": os.getcwd(), "call": [name] + args}) + "\\n")
     if name == "bosun":
         assert args[:2] == ["run", "--"], args
         wrapped = shutil.which(args[2])
@@ -69,8 +69,10 @@ class CheckAllTests(unittest.TestCase):
         if _PWSH is None:
             self.fail("pwsh (PowerShell 7) is not on PATH; check-all.ps1 needs it")
         self.pwsh: str = _PWSH
-        self.folder = Path(tempfile.mkdtemp(prefix="berth-check-all-"))
+        self.folder = Path(tempfile.mkdtemp(prefix="berth-check-all-José-"))
         self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        self.script = SCRIPT
+        self.checkout = ROOT
         self.shims = self.folder / "shims"
         self.shims.mkdir()
         self.log = self.folder / "calls.log"
@@ -79,15 +81,20 @@ class CheckAllTests(unittest.TestCase):
             self.add_shim(name)
 
     def add_shim(self, name: str) -> None:
+        # The interpreter and shim paths come from the environment, so the batch file stays ASCII whatever the
+        # account's temporary folder is called.
         (self.shims / f"{name}.cmd").write_text(
-            f'@"{sys.executable}" "{self.folder / "shim.py"}" {name} %*\r\n@exit /b %ERRORLEVEL%\r\n',
+            f'@"%CHECK_SHIM_PYTHON%" "%CHECK_SHIM_SCRIPT%" {name} %*\r\n@exit /b %ERRORLEVEL%\r\n',
             encoding="ascii",
         )
 
     def remove_shim(self, name: str) -> None:
         (self.shims / f"{name}.cmd").unlink()
 
-    def run_script(self, *args: str, fail: dict[str, int] | None = None) -> subprocess.CompletedProcess[str]:
+    def run_script(
+        self, *args: str, fail: dict[str, int] | None = None, command: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        """Runs the script with `-File`, or `command` with `-Command` when a test needs a caller's session."""
         system = Path(os.environ.get("SystemRoot", r"C:\Windows"))
         env = {
             key: value
@@ -98,8 +105,13 @@ class CheckAllTests(unittest.TestCase):
         env["PATHEXT"] = ".COM;.EXE;.BAT;.CMD"
         env["CHECK_SHIM_LOG"] = str(self.log)
         env["CHECK_SHIM_FAIL"] = json.dumps(fail or {})
+        env["CHECK_SHIM_PYTHON"] = sys.executable
+        env["CHECK_SHIM_SCRIPT"] = str(self.folder / "shim.py")
+        launch = (
+            ["-Command", command] if command is not None else ["-File", str(self.script), *args]
+        )
         process = subprocess.Popen(
-            [self.pwsh, "-NoProfile", "-NonInteractive", "-File", str(SCRIPT), *args],
+            [self.pwsh, "-NoProfile", "-NonInteractive", *launch],
             cwd=self.folder,
             env=env,
             stdout=subprocess.PIPE,
@@ -109,22 +121,30 @@ class CheckAllTests(unittest.TestCase):
         )
         try:
             out, err = process.communicate(timeout=TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            # Stop the whole tree, never only the direct child (AGENTS.md).
-            subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                capture_output=True,
-                creationflags=CREATE_NO_WINDOW,
-                check=False,
-            )
-            process.communicate()
-            raise
+        finally:
+            # On a timeout, Ctrl+C or any other exit, stop the whole tree, never only the direct child (AGENTS.md),
+            # before the temporary shim folder is removed.
+            if process.poll() is None:
+                subprocess.run(
+                    ["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                    capture_output=True,
+                    creationflags=CREATE_NO_WINDOW,
+                    check=False,
+                )
+                process.communicate()
         return subprocess.CompletedProcess(process.args, process.returncode, out, err)
 
-    def calls(self) -> list[list[str]]:
+    def entries(self) -> list[dict[str, object]]:
         if not self.log.exists():
             return []
         return [json.loads(line) for line in self.log.read_text(encoding="utf-8").splitlines()]
+
+    def calls(self) -> list[list[str]]:
+        """Every call the shims saw, each checked to have run in the checkout the script belongs to."""
+        entries = self.entries()
+        for entry in entries:
+            self.assertEqual(Path(str(entry["cwd"])).resolve(), self.checkout.resolve(), entry)
+        return [list(entry["call"]) for entry in entries]  # type: ignore[call-overload]
 
     def test_full_run_starts_the_seven_commands_in_order(self) -> None:
         result = self.run_script()
@@ -191,6 +211,29 @@ class CheckAllTests(unittest.TestCase):
             ],
         )
         self.assertIn("== build: bosun run -- dotnet build Berth.slnx -c Release", result.stdout)
+
+    def test_runs_in_its_own_checkout_even_when_the_path_looks_like_a_wildcard(self) -> None:
+        # Berth[1] next to a decoy Berth1: a wildcard Set-Location would enter the decoy.
+        self.checkout = self.folder / "Berth[1]"
+        (self.checkout / "scripts").mkdir(parents=True)
+        (self.folder / "Berth1" / "scripts").mkdir(parents=True)
+        shutil.copy2(SCRIPT, self.checkout / "scripts" / "check-all.ps1")
+        self.script = self.checkout / "scripts" / "check-all.ps1"
+        result = self.run_script("-Only", "plan-validate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.calls(), [EXPECTED_CALLS[0]])
+
+    def test_a_callers_native_error_preference_does_not_hide_the_failure(self) -> None:
+        command = (
+            "$PSNativeCommandUseErrorActionPreference = $true; $ErrorActionPreference = 'Stop'; "
+            f"& '{SCRIPT}' -Only agent-tiers; exit $LASTEXITCODE"
+        )
+        result = self.run_script(command=command, fail={"verify-agent-tiers": 7})
+        self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines()[-1],
+            "FAILED agent-tiers: node scripts/verify-agent-tiers.mjs (exit 7)",
+        )
 
     def test_heavy_steps_run_directly_without_bosun(self) -> None:
         result = self.run_script("-Only", "build,test")

@@ -33,6 +33,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# The gate reads each program's exit code itself, so a caller's preference must not turn a non-zero exit into a
+# terminating error before the FAILED line is printed.
+$PSNativeCommandUseErrorActionPreference = $false
 
 $steps = @(
     @{ Name = 'plan-validate'; Program = 'python'; Arguments = @('scripts/todo-graph.py', 'validate') }
@@ -63,7 +66,7 @@ if ($PSBoundParameters.ContainsKey('Only')) {
 }
 
 $root = Split-Path -Parent $PSScriptRoot
-Set-Location $root
+Set-Location -LiteralPath $root
 $bosun = Get-Command bosun -CommandType Application -ErrorAction Ignore | Select-Object -First 1
 $built = $false
 
