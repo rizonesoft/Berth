@@ -231,6 +231,33 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
+    public void AnInterruptedSaveOverAFileMadeReadOnlyLeavesItLoadable()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            Put(paths, Good);
+            byte[] good = File.ReadAllBytes(paths.SettingsFile);
+            Assert.ThrowsAny<InvalidOperationException>(() => store.Save(
+                Settings.Default, beforeReplace: null, afterCheck: () => throw new InvalidOperationException("crash"), afterReplace: null));
+            File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly);
+            try
+            {
+                SettingsLoad load = new SettingsStore(BerthPaths.ForRoot(data.Root)).Load();
+
+                Assert.Equal(new SettingsLoad(new Settings(1, true, new WindowPlacement(100, 100, 980, 640)), Exists: true, Unreadable: null), load);
+                Assert.Equal(good, File.ReadAllBytes(paths.SettingsFile));
+                Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+                Assert.Single(Directory.GetFiles(paths.DataRoot, "settings.json" + JsonFile.KeptSuffix + "*"));
+            }
+            finally
+            {
+                File.SetAttributes(paths.SettingsFile, FileAttributes.Normal);
+            }
+        }
+    }
+
+    [Fact]
     public void AFileMovedAwayDuringASaveIsAWriteFailureNotAnUnreadableFile()
     {
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();

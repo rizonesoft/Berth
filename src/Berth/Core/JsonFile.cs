@@ -439,6 +439,13 @@ internal static partial class JsonFile
             Keep(path, newCopy, written);
             return;
         }
+        catch (UnauthorizedAccessException)
+        {
+            // The file refuses writing now (made read-only, or its rules changed): the save can never finish over it.
+            // Leave it as it is, so it still loads, and keep what the save meant to write beside it.
+            Keep(path, newCopy, written);
+            return;
+        }
 
         using (target)
         {
