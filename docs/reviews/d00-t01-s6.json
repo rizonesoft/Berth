@@ -1,0 +1,83 @@
+{
+  "ref": "D00 T01 \u00a76",
+  "title": "Test that keeps Core free of UI and COM types",
+  "implementation_sha": "36ade927caca00ac76b3114908397eb3ba0492bd",
+  "date": "2026-11-18",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/00-workspace/D00-T01-s6.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *LayerRuleTests -> passed (53 suite total, Debug and Release); every fixture reported with its exact message; Berth.Core.Bad with a Window property in src/Berth/Core -> CoreUsesOnlyCoreAndTheBaseRuntime fails naming Berth.Core.Bad.W and PresentationFramework"
+  ],
+  "completion": {
+    "report": "docs/reviews/00-workspace/D00-T01-s6.md",
+    "verdict": "reconciled",
+    "candidate": "36ade927caca00ac76b3114908397eb3ba0492bd",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/00-workspace/D00-T01-s6.md",
+    "candidate": "41383936d5812d03d65ddea08a7887c40cf1e679",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "41383936d5812d03d65ddea08a7887c40cf1e679",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 6,
+  "pass_cap": 33
+}

@@ -17,7 +17,7 @@ Sections: 8 | Checklist items: 53
 | [x]    | D00 T01 §3 | Test project with a first failing-capable test           | none  | 10    |
 | [x]    | D00 T01 §4 | One command that runs every gate                         | none  | 8     |
 | [x]    | D00 T01 §5 | Build and test workflow in CI                            | none  | 8     |
-| [ ]    | D00 T01 §6 | Test that keeps Core free of UI and COM types            | none  | 7     |
+| [x]    | D00 T01 §6 | Test that keeps Core free of UI and COM types            | none  | 7     |
 | [x]    | D00 T01 §7 | Review prompts that name the stamp-owned Commit item     | none  | 4     |
 | [x]    | D00 T01 §8 | Script test scratch folder that falls back to R:\scratch | none  | 4     |
 
@@ -150,6 +150,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 7/81 verified sections, 1 ready to run now.
+Progress: 8/81 verified sections, 2 ready to run now.
 
-Checklist: 52/490 items completed (includes Commit items).
+Checklist: 53/490 items completed (includes Commit items).

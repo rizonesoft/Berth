@@ -2,7 +2,7 @@
 schema_version: 1
 id: dotnet-foundation
 domain: 00-workspace
-status: active
+status: done
 title: "TODO-01 -- .NET foundation"
 ---
 
@@ -41,7 +41,7 @@ title: "TODO-01 -- .NET foundation"
 | 3 | §3 | Test project with a first failing-capable test | §2 | [x] |
 | 4 | §4 | One command that runs every gate | §3 | [x] |
 | 5 | §5 | Build and test workflow in CI | §4 | [x] |
-| 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [ ] |
+| 6 | §6 | Test that keeps Core free of UI and COM types | §3 | [x] |
 | 7 | §7 | Review prompts that name the stamp-owned Commit item | -- | [x] |
 | 8 | §8 | Script test scratch folder that falls back to R:\scratch | §7 | [x] |
 
@@ -217,9 +217,12 @@ The foundation plan's one architectural rule, enforced by a test instead of by c
 - [x] Add `LayerRuleTests.CoreUsesOnlyCoreAndTheBaseRuntime`, running `LayerRule.Check` on the built `berth.dll` with prefix `Berth.Core` and asserting no violation, the message listing every one found. Done when: it passes with `AppInfo` as the only Core type. Cheaper substitute: a code-review convention with no test.
 - [x] Add `LayerRule.CoreTypes(assemblyPath, prefix)` and `LayerRuleTests.CoreHasTypes`, asserting through `LayerRule.RequireAny` that the selection is not empty; `RequireAny` throws `no type in <prefix>` for an empty selection, and a test feeds it the prefix `Berth.Nothing` and expects that exact failure. Done when: both pass. Cheaper substitute: a rule test that passes vacuously on an empty set.
 - [x] Add `LayerRuleTests.CoreSourcesDeclareTheCoreNamespace`, reading every `.cs` file under `src/Berth/Core/` and asserting each declares exactly one namespace, file-scoped, that is `Berth.Core` or a `Berth.Core.` sub-namespace (C# puts every type of such a file inside it). Done when: it passes, and the check refuses, fed as text, `namespace Berth.Elsewhere;`, a block `namespace Berth.Core { }` followed by a type, two namespaces, and none. **Corrected 2026-11-18:** "file-scoped or block" let a type after a block namespace escape both checks (round 1 P1 4). Cheaper substitute: trusting folder placement, so a misnamed namespace escapes the scan.
-- [ ] Commit: `test: keep Core free of UI and COM types`
+- [x] Commit: `test: keep Core free of UI and COM types`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayerRuleTests"` passes, with every fixture reported by its exact message and `berth.dll`'s Core reported clean.
+
+> **Verified:** 2026-11-18 | §6 | 36ade927caca00ac76b3114908397eb3ba0492bd
+> **Review:** `docs/reviews/d00-t01-s6.json`
 
 ## 7. Review prompts that name the stamp-owned Commit item
 
