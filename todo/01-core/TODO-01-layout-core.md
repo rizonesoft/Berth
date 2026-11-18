@@ -42,7 +42,7 @@ depends_on: ["dotnet-foundation"]
 | 3 | §3 | Data paths that honour BERTH_DATA | D00 T01 §3 | [x] |
 | 4 | §4 | Atomic JSON file with read-back | §1, §3 | [x] |
 | 5 | §5 | Layout store | §1, §2, §4 | [x] |
-| 6 | §6 | Settings store | §4 | [ ] |
+| 6 | §6 | Settings store | §4 | [x] |
 | 7 | §7 | Layout names: defaults and validation | §1 | [ ] |
 | 8 | §8 | Desktop and monitor seams with fakes | §1 | [ ] |
 | 9 | §9 | Save operation | §5, §7, §8, §14, §15 | [ ] |
@@ -223,9 +223,12 @@ Loads every layout, saves one, deletes one, and reports files it cannot read wit
 - [x] Add `SettingsStore(BerthPaths paths)` with `Load()` returning `SettingsLoad(Settings Value, bool Exists, string? Unreadable)` read through `JsonFile.TryRead` (bounded, I/O errors reported): a missing file or folder gives defaults, `Exists` `false` and no reason; a file that is there but cannot be read (invalid JSON, `schemaVersion` not 1, a missing or wrongly typed `restoreAutomatically` or `window`, a placement missing a value or with a width or height not positive, a sharing violation) gives defaults, `Exists` `true` and the reason, and is left untouched; a good file gives its values, `Exists` `true` and no reason. Done when: tests assert all three values for missing, good, `{`, `schemaVersion` 2, no `restoreAutomatically`, `"restoreAutomatically": "yes"`, a `window` without `x`, a zero width, and a file held with `FileShare.None`, and each bad file's bytes are unchanged. Cheaper substitute: `Exists` `false` for a corrupt file, which would open the first-run window and try to save defaults over it.
 - [x] Add `SettingsStore.Save(Settings value)`: refuse with `UnreadableSettingsException` (carrying `settings.json` and the reason, distinct from a write failure) when the file on disk is there but unreadable; otherwise call `BerthPaths.EnsureFolderFor(paths.SettingsFile)` and write through `JsonFile.Write` (**Corrected 2026-11-18:** the writer creates its folder, `D01 T01 §3`). Done when: a save over each bad fixture above throws that exception and leaves the bytes unchanged, and a write failure (a read-only `settings.json`) throws the system's exception instead. Cheaper substitute: a save that silently replaces a file the user may want to repair, or one exception for both cases, which would word an unreadable file as a write failure.
 - [x] Add `tests/Berth.Tests/Core/SettingsStoreTests.cs` with those cases plus persistence on a fresh temporary root: save `RestoreAutomatically` `true` with `Window` `-1600, 120, 1100, 700`, compare `settings.json` structurally with the SPEC §14 JSON written in the test, load it through a new `SettingsStore` and assert every value; then save `false` and `null` over it and load again. Done when: all pass, and the missing-file test fails when `Exists` is always `true` (`D04 T01 §1` relies on it for the first run). Cheaper substitute: testing through the window, or a round trip through one instance.
-- [ ] Commit: `core: settings store`
+- [x] Commit: `core: settings store`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingsStoreTests"` passes, and fails when `Load` reports `Exists` `true` for a missing file or `false` for a corrupt one.
+
+> **Verified:** 2026-11-18 | §6 | c18ef06e65e166b6046ee3cfe5aeec966fdea0e0
+> **Review:** `docs/reviews/d01-t01-s6.json`
 
 ## 7. Layout names: defaults and validation
 

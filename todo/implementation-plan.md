@@ -32,7 +32,7 @@ Sections: 18 | Checklist items: 114
 | [x]    | D01 T01 §3  | Data paths that honour BERTH_DATA                          | none  | 6     |
 | [x]    | D01 T01 §4  | Atomic JSON file with read-back                            | none  | 5     |
 | [x]    | D01 T01 §5  | Layout store                                               | none  | 8     |
-| [ ]    | D01 T01 §6  | Settings store                                             | none  | 5     |
+| [x]    | D01 T01 §6  | Settings store                                             | none  | 5     |
 | [ ]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
 | [ ]    | D01 T01 §8  | Desktop and monitor seams with fakes                       | none  | 7     |
 | [ ]    | D01 T01 §13 | Comparison of a layout with the desktop                    | none  | 7     |
@@ -151,6 +151,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 13/82 verified sections, 5 ready to run now.
+Progress: 14/82 verified sections, 4 ready to run now.
 
-Checklist: 88/500 items completed (includes Commit items).
+Checklist: 89/500 items completed (includes Commit items).
