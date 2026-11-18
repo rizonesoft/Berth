@@ -204,6 +204,8 @@ Loads every layout, saves one, deletes one, and reports files it cannot read wit
 
 ## 6. Settings store
 
+> **Started:** 2026-11-18T03:55:09Z
+
 `settings.json` holds the automatic restore switch and the window placement (SPEC §14).
 
 **Phase:** 1
