@@ -464,6 +464,57 @@ public sealed partial class JsonFileTests
         Assert.Empty(Directory.GetFiles(paths.DataRoot, "settings.json.berth-*"));
     }
     [Fact]
+    public void TwoRecoveriesOfOneAbandonedNoteTakeTurns()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        new SettingsStore(paths).Save(new Settings(1, false, null));
+        byte[] read = File.ReadAllBytes(paths.SettingsFile);
+        byte[] arrived = "{ damaged by a sync"u8.ToArray();
+        Assert.Throws<SimulatedCrash>(() => JsonFile.WriteOver(
+            paths.SettingsFile, new Settings(1, true, null), BerthJson.Default.Settings, read,
+            afterFlush: null, afterCheck: () => File.WriteAllBytes(paths.SettingsFile, arrived), afterReplace: () => throw new SimulatedCrash()));
+
+        bool secondWaited = false;
+        bool newSaveRefused = false;
+        Exception? secondError = null;
+        Thread? second = null;
+        JsonFile.Recover(paths.SettingsFile, afterNoteRead: () =>
+        {
+            // While the first recovery holds the note, a second one (the tray beside a command) must wait...
+            second = new Thread(() =>
+            {
+                try
+                {
+                    JsonFile.Recover(paths.SettingsFile);
+                }
+                catch (Exception error)
+                {
+                    secondError = error;
+                }
+            });
+            second.Start();
+            secondWaited = !second.Join(TimeSpan.FromMilliseconds(300));
+
+            // ...and no new save can start its own note.
+            try
+            {
+                using var _ = new FileStream(paths.SettingsFile + JsonFile.PendingSuffix, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete);
+            }
+            catch (IOException)
+            {
+                newSaveRefused = true;
+            }
+        });
+
+        Assert.True(secondWaited);
+        Assert.True(newSaveRefused);
+        Assert.Equal(arrived, File.ReadAllBytes(paths.SettingsFile));
+        Assert.False(File.Exists(paths.SettingsFile + JsonFile.PendingSuffix));
+        Assert.True(second!.Join(TimeSpan.FromSeconds(20)));
+        Assert.Null(secondError);
+    }
+    [Fact]
     public void ACrashAfterTheReplaceLeavesTheSaveWhenNothingHadChanged()
     {
         using var data = new TestData();

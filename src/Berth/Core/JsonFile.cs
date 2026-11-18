@@ -283,7 +283,10 @@ internal static partial class JsonFile
     /// </summary>
     /// <exception cref="IOException">The interrupted save cannot be finished now, or another Berth is still saving.</exception>
     /// <exception cref="UnauthorizedAccessException">The interrupted save may not be finished.</exception>
-    public static void Recover(string path)
+    public static void Recover(string path) => Recover(path, afterNoteRead: null);
+
+    /// <summary>As <see cref="Recover(string)"/>; <paramref name="afterNoteRead"/> lets a test act while recovery holds the note.</summary>
+    internal static void Recover(string path, Action? afterNoteRead)
     {
         string pending = path + PendingSuffix;
         if (!File.Exists(pending))
@@ -291,31 +294,25 @@ internal static partial class JsonFile
             return;
         }
 
-        string[] note = [];
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
-        while (true)
+        FileStream? held = null;
+        while (held is null)
         {
             try
             {
-                using var stream = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.None);
-                if (stream.Length <= MaxNoteBytes)
-                {
-                    byte[] bytes = new byte[stream.Length];
-                    stream.ReadExactly(bytes);
-                    note = Encoding.UTF8.GetString(bytes).Split('\n');
-                }
-
-                break;
+                // Taken exclusively (only deletion shared, so this reader can remove it while holding it) and kept
+                // until the note is gone: no second reader can act on it, and no new save can start its own meanwhile.
+                held = new FileStream(pending, FileMode.Open, FileAccess.Read, FileShare.Delete);
             }
             catch (FileNotFoundException)
             {
-                // The save that held it finished meanwhile.
+                // The save or recovery that held it finished meanwhile.
                 return;
             }
             catch (IOException) when (DateTime.UtcNow < giveUp)
             {
-                // A save is under way and holds its note: wait for it to settle, so the file it is replacing is
-                // never read half way (its proposed version may still be taken back).
+                // A save or another recovery holds it: wait for it to settle, so the file it is replacing is never
+                // read half way (its proposed version may still be taken back).
                 Thread.Sleep(20);
             }
             catch (IOException error)
@@ -324,27 +321,39 @@ internal static partial class JsonFile
             }
         }
 
-        // Only a note this writer makes is acted on: a sibling kept name it generates and a SHA-256 digest. Anything
-        // else is discarded without touching another file.
-        string target = Path.GetFileName(path);
-        string? keptName = note.Length == 2 && KeptName().IsMatch(note[0]) && note[0].StartsWith(target + KeptSuffix, StringComparison.Ordinal)
-            && note[0].Length == target.Length + KeptSuffix.Length + 32 && Digest().IsMatch(note[1])
-            ? note[0]
-            : null;
-        string kept = keptName is null ? string.Empty : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, keptName);
-        if (keptName is not null && File.Exists(kept) && !HashOf(kept).Equals(note[1], StringComparison.OrdinalIgnoreCase))
+        using (held)
         {
-            // The displaced version is not what the save had read: put it back, keep the unverified save beside it.
-            File.Replace(kept, path, path + KeptSuffix + Guid.NewGuid().ToString("N"), ignoreMetadataErrors: false);
-        }
-        else if (keptName is not null && File.Exists(kept))
-        {
-            File.Delete(kept);
-        }
+            string[] note = [];
+            if (held.Length <= MaxNoteBytes)
+            {
+                byte[] bytes = new byte[held.Length];
+                held.ReadExactly(bytes);
+                note = Encoding.UTF8.GetString(bytes).Split('\n');
+            }
 
-        File.Delete(pending);
+            afterNoteRead?.Invoke();
+
+            // Only a note this writer makes is acted on: a sibling kept name it generates and a SHA-256 digest.
+            // Anything else is discarded without touching another file.
+            string target = Path.GetFileName(path);
+            string? keptName = note.Length == 2 && KeptName().IsMatch(note[0]) && note[0].StartsWith(target + KeptSuffix, StringComparison.Ordinal)
+                && note[0].Length == target.Length + KeptSuffix.Length + 32 && Digest().IsMatch(note[1])
+                ? note[0]
+                : null;
+            string kept = keptName is null ? string.Empty : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, keptName);
+            if (keptName is not null && File.Exists(kept) && !HashOf(kept).Equals(note[1], StringComparison.OrdinalIgnoreCase))
+            {
+                // The displaced version is not what the save had read: put it back, keep the unverified save beside it.
+                File.Replace(kept, path, path + KeptSuffix + Guid.NewGuid().ToString("N"), ignoreMetadataErrors: false);
+            }
+            else if (keptName is not null && File.Exists(kept))
+            {
+                File.Delete(kept);
+            }
+
+            File.Delete(pending);
+        }
     }
-
     private static string HashOf(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
