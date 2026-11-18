@@ -26,7 +26,7 @@ title: "TODO-01 -- .NET foundation"
 ## Outcome
 
 - `dotnet build Berth.slnx` and `dotnet test --solution Berth.slnx` succeed with warnings as errors.
-- `pwsh scripts/check-all.ps1` runs every gate and stops at the first failure, and CI runs the same script on every push.
+- `pwsh scripts/check-all.ps1` runs every gate and stops at the first failure, and CI runs the same script on every push to `main`, every pull request and on demand. **Corrected 2026-11-18:** said "every push"; §5 builds pushes to `main` and pull requests, the usual shape that runs a branch once through its pull request instead of twice (D00 T01 §5 round 1).
 
 **Adjacency:** all=not-applicable (build tooling only: no records, settings or user-facing surface)
 

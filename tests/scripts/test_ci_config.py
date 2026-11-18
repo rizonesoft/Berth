@@ -18,15 +18,36 @@ def lines(path: Path) -> list[str]:
 
 
 def entries(path: Path) -> list[dict[str, str]]:
-    """The `updates` entries of dependabot.yml as flat key-value maps (`labels` joined by commas)."""
+    """The `updates` entries of dependabot.yml as flat key-value maps. A list item counts only under the key that
+    opened the list, so `- dependencies` under `assignees:` is an assignee, never a label."""
     found: list[dict[str, str]] = []
+    open_list = ""
     for line in lines(path):
         stripped = line.strip()
         if stripped.startswith("- package-ecosystem:"):
             found.append({"package-ecosystem": stripped.split(":", 1)[1].strip()})
+            open_list = ""
+        elif found and stripped.endswith(":"):
+            open_list = stripped[:-1]
         elif found and stripped.startswith("- ") and ":" not in stripped:
-            found[-1]["labels"] = ",".join(filter(None, [found[-1].get("labels", ""), stripped[2:].strip()]))
-        elif found and ":" in stripped and not stripped.endswith(":"):
+            items = found[-1].get(open_list, "")
+            found[-1][open_list] = ",".join(filter(None, [items, stripped[2:].strip()]))
+        elif found and ":" in stripped:
+            key, value = (part.strip() for part in stripped.split(":", 1))
+            found[-1][key] = value
+            open_list = ""
+    return found
+
+
+def steps(text: str) -> list[dict[str, str]]:
+    """The workflow's steps in order: each step's `uses` or `run` and the `with:` inputs nested under it."""
+    found: list[dict[str, str]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- uses:") or stripped.startswith("- name:"):
+            key, value = (part.strip() for part in stripped[2:].split(":", 1))
+            found.append({key: value})
+        elif found and ":" in stripped and not stripped.endswith(":") and not stripped.startswith("#"):
             key, value = (part.strip() for part in stripped.split(":", 1))
             found[-1][key] = value
     return found
@@ -62,22 +83,18 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assert_line("    timeout-minutes: 30")
         self.assertEqual(sum(1 for line in self.lines if line.strip().startswith("runs-on:")), 1)
 
-    def test_steps_in_order(self) -> None:
-        steps = [line.strip() for line in self.lines if line.strip().startswith(("- uses:", "run:"))]
+    def test_steps_in_order_each_with_its_own_inputs(self) -> None:
+        job = self.text[self.text.index("    steps:") :]
         self.assertEqual(
-            steps,
+            steps(job),
             [
-                "- uses: actions/checkout@v7",
-                "- uses: actions/setup-dotnet@v6",
-                "- uses: actions/setup-python@v7",
-                "- uses: actions/setup-node@v7",
-                "run: pwsh scripts/check-all.ps1",
+                {"uses": "actions/checkout@v7", "fetch-depth": "0"},
+                {"uses": "actions/setup-dotnet@v6", "global-json-file": "global.json"},
+                {"uses": "actions/setup-python@v7", "python-version": "'3.14'"},
+                {"uses": "actions/setup-node@v7", "node-version": "lts/*"},
+                {"name": "Every gate", "run": "pwsh scripts/check-all.ps1"},
             ],
         )
-        self.assert_line("          fetch-depth: 0")
-        self.assert_line("          global-json-file: global.json")
-        self.assert_line("          python-version: '3.14'")
-        self.assert_line("          node-version: lts/*")
 
     def test_nothing_can_turn_a_failure_green(self) -> None:
         self.assertIsNone(re.search(r"^\s*(-\s*)?if:", self.text, re.MULTILINE))
