@@ -13,7 +13,7 @@ Sections: 6 | Checklist items: 37
 | Status | Reference  | Deliverable                                    | Needs | Items |
 | ------ | ---------- | ---------------------------------------------- | ----- | ----- |
 | [x]    | D00 T01 §1 | Solution, SDK pin and shared build properties  | none  | 5     |
-| [ ]    | D00 T01 §2 | Application project that builds berth.exe      | none  | 7     |
+| [x]    | D00 T01 §2 | Application project that builds berth.exe      | none  | 7     |
 | [ ]    | D00 T01 §3 | Test project with a first failing-capable test | none  | 9     |
 | [ ]    | D00 T01 §4 | One command that runs every gate               | none  | 6     |
 | [ ]    | D00 T01 §5 | Build and test workflow in CI                  | none  | 6     |
@@ -148,6 +148,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 1/79 verified sections, 1 ready to run now.
+Progress: 2/79 verified sections, 1 ready to run now.
 
-Checklist: 11/474 items completed (includes Commit items).
+Checklist: 12/474 items completed (includes Commit items).

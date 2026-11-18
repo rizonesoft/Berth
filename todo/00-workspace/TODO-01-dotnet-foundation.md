@@ -37,7 +37,7 @@ title: "TODO-01 -- .NET foundation"
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Solution, SDK pin and shared build properties | -- | [x] |
-| 2 | §2 | Application project that builds berth.exe | §1 | [ ] |
+| 2 | §2 | Application project that builds berth.exe | §1 | [x] |
 | 3 | §3 | Test project with a first failing-capable test | §2 | [ ] |
 | 4 | §4 | One command that runs every gate | §3 | [ ] |
 | 5 | §5 | Build and test workflow in CI | §4 | [ ] |
@@ -90,9 +90,12 @@ One project, as the foundation plan says, producing `berth.exe` as a console pro
 - [x] Add the project to the solution with `dotnet sln Berth.slnx add src/Berth`. Done when: `dotnet build Berth.slnx` builds the project. Cheaper substitute: building the project file directly and leaving the solution empty.
 - [x] Read the effective build properties of `src/Berth/Berth.csproj` with `dotnet msbuild src/Berth -getProperty:LangVersion -getProperty:Nullable -getProperty:ImplicitUsings -getProperty:TreatWarningsAsErrors -getProperty:AnalysisLevel -getProperty:Deterministic -getProperty:InvariantGlobalization -getProperty:Version`, and confirm none of the eight is set in the project file itself. Done when: the JSON output shows `latest`, `enable`, `enable`, `true`, `latest-recommended`, `true`, `false`, `0.1.0` and no `PropertyGroup` element in `src/Berth/Berth.csproj`, read as XML, has a child named after any of the eight (a text search would trip on the XML declaration's `version`; round 1 P3 of §1). **Corrected 2026-11-18:** added after plan review P1 2 of §1, since `TreatWarningsAsErrors` alone passed with the other seven missing. Cheaper substitute: setting the properties in the project file, so the test project drifts.
 - [x] Add the folders `Core`, `Desktop`, `Cli`, `App`, `Window` and `Theme` under `src/Berth/` each with a `.gitkeep`. Done when: `git ls-files src/Berth` lists the six `.gitkeep` files. Cheaper substitute: leaving folder creation to whichever section comes first, so names drift from the foundation plan.
-- [ ] Commit: `build: application project that builds berth.exe`
+- [x] Commit: `build: application project that builds berth.exe`
 
 **Test checkpoint:** a clean `dotnet build Berth.slnx` exits 0 and the built `berth.exe --version` prints exactly `Berth 0.1.0` with empty standard error; in a scratch copy of the repository with `Version` `0.2.0` in `Directory.Build.props`, the rebuilt `berth.exe --version` prints exactly `Berth 0.2.0` and exits 0. **Corrected 2026-11-18:** the edit now happens in a scratch copy and the output must be exact (plan review P2 5).
+
+> **Verified:** 2026-11-18 | §2 | 0b9b45f8ec352e87fc5bb1e2483ea5e4e2b809dc
+> **Review:** `docs/reviews/d00-t01-s2.json`
 
 ## 3. Test project with a first failing-capable test
 
