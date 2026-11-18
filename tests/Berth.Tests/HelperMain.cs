@@ -19,6 +19,10 @@ internal static class HelperMain
         {
             switch (command)
             {
+                case "try" or "wait" when held:
+                    // A mutex can be taken again by its owner, which one release would not undo: never nest.
+                    Console.WriteLine("already held");
+                    break;
                 case "try":
                     held = Take(mutex, TimeSpan.Zero);
                     Console.WriteLine(held ? "acquired" : "busy");
@@ -35,6 +39,9 @@ internal static class HelperMain
                     }
 
                     Console.WriteLine("released");
+                    break;
+                case "data":
+                    Console.WriteLine(Environment.GetEnvironmentVariable("BERTH_DATA") ?? "<unset>");
                     break;
                 case "exit":
                     Console.WriteLine("bye");

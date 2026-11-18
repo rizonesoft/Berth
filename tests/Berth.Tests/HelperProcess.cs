@@ -20,10 +20,13 @@ internal sealed class HelperProcess : IDisposable
 
     public bool HasExited => process.HasExited;
 
-    public static HelperProcess Start(params string[] args)
+    /// <summary>
+    /// Starts a helper whose BERTH_DATA is <paramref name="dataRoot"/> and that inherits no other BERTH_ variable,
+    /// so a helper can never reach the owner's data (AGENTS.md).
+    /// </summary>
+    public static HelperProcess Start(string dataRoot, params string[] args)
     {
-        string exe = Environment.ProcessPath ?? throw new InvalidOperationException("The test process has no path.");
-        var info = new ProcessStartInfo(exe)
+        var info = new ProcessStartInfo
         {
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -31,23 +34,50 @@ internal sealed class HelperProcess : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+
+        // Run the test assembly's own apphost. Under `dotnet Berth.Tests.dll` the process path is dotnet.exe,
+        // which needs the assembly path before the helper's arguments.
+        string apphost = Path.Combine(AppContext.BaseDirectory, "Berth.Tests.exe");
+        if (File.Exists(apphost))
+        {
+            info.FileName = apphost;
+        }
+        else
+        {
+            info.FileName = Environment.ProcessPath ?? throw new InvalidOperationException("The test process has no path.");
+            info.ArgumentList.Add(typeof(HelperProcess).Assembly.Location);
+        }
+
         info.ArgumentList.Add(Switch);
         foreach (string arg in args)
         {
             info.ArgumentList.Add(arg);
         }
 
-        var helper = new HelperProcess(Process.Start(info) ?? throw new InvalidOperationException("The helper did not start."));
-        string ready = helper.ReadLine();
-        if (ready != "ready")
+        foreach (string name in info.Environment.Keys.Where(k => k.StartsWith("BERTH_", StringComparison.OrdinalIgnoreCase)).ToList())
         {
-            helper.Dispose();
-            throw new InvalidOperationException($"The helper said '{ready}' instead of 'ready'.");
+            info.Environment.Remove(name);
         }
 
-        return helper;
-    }
+        info.Environment["BERTH_DATA"] = dataRoot;
 
+        var helper = new HelperProcess(Process.Start(info) ?? throw new InvalidOperationException("The helper did not start."));
+        try
+        {
+            string ready = helper.ReadLine();
+            if (ready != "ready")
+            {
+                throw new InvalidOperationException($"The helper said '{ready}' instead of 'ready'.");
+            }
+
+            return helper;
+        }
+        catch
+        {
+            helper.Dispose();
+            throw;
+        }
+    }
     /// <summary>Sends one command and returns the helper's one-line reply.</summary>
     public string Send(string command)
     {

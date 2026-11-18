@@ -10,7 +10,8 @@ public sealed class DesktopTestGateTests
     public void HeldGateBlocksAnotherProcessUntilDisposed()
     {
         string name = UniqueName();
-        using var helper = HelperProcess.Start("mutex", name);
+        using var data = new TestData();
+        using var helper = HelperProcess.Start(data.Root, "mutex", name);
         var gate = new DesktopTestGate(name, TimeSpan.FromSeconds(5));
         try
         {
@@ -29,7 +30,8 @@ public sealed class DesktopTestGateTests
     public void GateThatCannotTakeTheMutexInTimeThrowsAndGuardsNothing()
     {
         string name = UniqueName();
-        using var helper = HelperProcess.Start("mutex", name);
+        using var data = new TestData();
+        using var helper = HelperProcess.Start(data.Root, "mutex", name);
         Assert.Equal("acquired", helper.Send("try"));
         bool bodyRan = false;
 
@@ -48,7 +50,12 @@ public sealed class DesktopTestGateTests
     public void MutexAbandonedByAKilledHolderIsTakenAndReleased()
     {
         string name = UniqueName();
-        using (var crashed = HelperProcess.Start("mutex", name))
+        using var data = new TestData();
+
+        // Windows destroys a named mutex when its last handle closes, so this handle keeps the mutex alive across
+        // the kill: without it the gate would open a fresh mutex and never see the abandonment.
+        using var keepAlive = new Mutex(initiallyOwned: false, name);
+        using (var crashed = HelperProcess.Start(data.Root, "mutex", name))
         {
             Assert.Equal("acquired", crashed.Send("try"));
             crashed.Kill();
@@ -59,9 +66,33 @@ public sealed class DesktopTestGateTests
             Assert.Equal(name, gate.MutexName);
         }
 
-        using var after = HelperProcess.Start("mutex", name);
+        using var after = HelperProcess.Start(data.Root, "mutex", name);
         Assert.Equal("acquired", after.Send("try"));
         Assert.Equal("released", after.Send("release"));
+    }
+
+    [Fact]
+    public void HelperNeverTakesItsMutexTwice()
+    {
+        string name = UniqueName();
+        using var data = new TestData();
+        using var first = HelperProcess.Start(data.Root, "mutex", name);
+        using var second = HelperProcess.Start(data.Root, "mutex", name);
+
+        Assert.Equal("acquired", first.Send("try"));
+        Assert.Equal("already held", first.Send("try"));
+        Assert.Equal("released", first.Send("release"));
+        Assert.Equal("acquired", second.Send("try"));
+        Assert.Equal("released", second.Send("release"));
+    }
+
+    [Fact]
+    public void HelperGetsItsOwnDataRootAndNoOtherBerthVariable()
+    {
+        using var data = new TestData();
+        using var helper = HelperProcess.Start(data.Root, "mutex", UniqueName());
+
+        Assert.Equal(data.Root, helper.Send("data"));
     }
 
     [Fact]
@@ -81,7 +112,8 @@ public sealed class DesktopCollectionMemberTests(DesktopTestGate gate)
     public void CollectionFixtureHoldsTheMachineWideMutexDuringATest()
     {
         Assert.Equal(DesktopTestGate.DefaultMutexName, gate.MutexName);
-        using var helper = HelperProcess.Start("mutex", DesktopTestGate.DefaultMutexName);
+        using var data = new TestData();
+        using var helper = HelperProcess.Start(data.Root, "mutex", DesktopTestGate.DefaultMutexName);
         Assert.Equal("busy", helper.Send("try"));
     }
 }
