@@ -1,6 +1,7 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using Berth.Core;
 using Berth.Core.Model;
 
@@ -175,15 +176,54 @@ public sealed class SettingChangesTests
 
             SettingChange result = changes.SetRestoreAutomatically(false);
 
+            string expectedMessage = Messages.WriteFailed(
+                paths.SettingsFile,
+                new TargetChangedException(paths.SettingsFile).Message);
             Assert.Equal(3, attempts);
-            Assert.False(result.Applied);
-            Assert.True(result.Value);
-            Assert.NotNull(result.Message);
-            Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
+            Assert.Equal(new SettingChange(Applied: false, Value: true, Message: expectedMessage), result);
             Assert.Equal(
                 new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: new WindowPlacement(103, 20, 800, 600)),
                 new SettingsStore(paths).Load().Value);
-            Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
+        }
+    }
+
+    [Fact]
+    public void ExhaustedConcurrentFirstSaveAppearancesPreserveLastAppearedFileAndLogFail()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store, Log log, _) = Fresh();
+        using (data)
+        {
+            int attempts = 0;
+            var appearedWindow = new WindowPlacement(150, 200, 960, 680);
+            var changes = new SettingChanges(store, log)
+            {
+                BeforeSave = _ =>
+                {
+                    if (File.Exists(paths.SettingsFile))
+                    {
+                        File.Delete(paths.SettingsFile);
+                    }
+                },
+                BeforeReplace = attempt =>
+                {
+                    attempts = attempt;
+                    new SettingsStore(paths).Save(
+                        new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: false, Window: appearedWindow));
+                },
+            };
+
+            SettingChange result = changes.SetRestoreAutomatically(true);
+
+            string expectedMessage = Messages.WriteFailed(
+                paths.SettingsFile,
+                new TargetAppearedException(paths.SettingsFile, new IOException()).Message);
+            Assert.Equal(3, attempts);
+            Assert.Equal(new SettingChange(Applied: false, Value: false, Message: expectedMessage), result);
+            Assert.Equal(
+                new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: false, Window: appearedWindow),
+                new SettingsStore(paths).Load().Value);
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
         }
     }
 
@@ -201,23 +241,24 @@ public sealed class SettingChangesTests
 
             File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly);
             SettingChange result;
+            UnauthorizedAccessException osError;
             try
             {
                 result = changes.SetRestoreAutomatically(requestedValue);
+                osError = Assert.Throws<UnauthorizedAccessException>(() =>
+                {
+                    using var _ = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                });
             }
             finally
             {
                 File.SetAttributes(paths.SettingsFile, FileAttributes.Normal);
             }
 
-            Assert.False(result.Applied);
-            Assert.Equal(initialValue, result.Value);
-            Assert.NotNull(result.Message);
-            Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
-            Assert.EndsWith(".", result.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("..", result.Message, StringComparison.Ordinal);
+            string expectedMessage = Messages.WriteFailed(paths.SettingsFile, osError.Message);
+            Assert.Equal(new SettingChange(Applied: false, Value: initialValue, Message: expectedMessage), result);
             Assert.Equal(beforeBytes, File.ReadAllBytes(paths.SettingsFile));
-            Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
         }
     }
 
@@ -351,9 +392,14 @@ public sealed class SettingChangesTests
             };
 
             SettingChange result;
+            UnauthorizedAccessException osError;
             try
             {
                 result = changes.SetRestoreAutomatically(true);
+                osError = Assert.Throws<UnauthorizedAccessException>(() =>
+                {
+                    using var _ = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                });
             }
             finally
             {
@@ -363,14 +409,12 @@ public sealed class SettingChangesTests
                 }
             }
 
-            Assert.False(result.Applied);
-            Assert.True(result.Value);
-            Assert.NotNull(result.Message);
-            Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
+            string expectedMessage = Messages.WriteFailed(paths.SettingsFile, osError.Message);
+            Assert.Equal(new SettingChange(Applied: false, Value: true, Message: expectedMessage), result);
             Assert.Equal(
                 new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: placement),
                 new SettingsStore(paths).Load().Value);
-            Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
         }
     }
 
@@ -433,12 +477,18 @@ public sealed class SettingChangesTests
             rules.AddAccessRule(denyCreate);
             folder.SetAccessControl(rules);
 
+            string probePath = Path.Combine(paths.DataRoot, "probe.tmp");
             SettingChange result;
+            UnauthorizedAccessException osError;
             try
             {
                 result = callerCurrent is { } current
                     ? changes.SetRestoreAutomatically(requestedValue, current)
                     : changes.SetRestoreAutomatically(requestedValue);
+                osError = Assert.Throws<UnauthorizedAccessException>(() =>
+                {
+                    using var _ = new FileStream(probePath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                });
             }
             finally
             {
@@ -446,12 +496,14 @@ public sealed class SettingChangesTests
                 folder.SetAccessControl(rules);
             }
 
-            Assert.False(result.Applied);
-            Assert.Equal(expectedRollback, result.Value);
             Assert.NotNull(result.Message);
-            Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
+            Match tempMatch = Regex.Match(result.Message, @"settings\.json\.tmp-[0-9a-f]{32}");
+            Assert.True(tempMatch.Success, result.Message);
+            string expectedReason = osError.Message.Replace(probePath, Path.Combine(paths.DataRoot, tempMatch.Value), StringComparison.Ordinal);
+            string expectedMessage = Messages.WriteFailed(paths.SettingsFile, expectedReason);
+            Assert.Equal(new SettingChange(Applied: false, Value: expectedRollback, Message: expectedMessage), result);
             Assert.False(File.Exists(paths.SettingsFile));
-            Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
         }
     }
 
