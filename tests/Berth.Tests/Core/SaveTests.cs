@@ -110,6 +110,17 @@ public sealed class SaveTests
     }
 
     [Fact]
+    public void ASingleIconSaveLogsSingularIconCount()
+    {
+        using var rig = new Rig(Icon("a.txt", 10, 20));
+
+        OperationResult result = rig.Service().Save();
+
+        Assert.Equal(OperationResult.Saved("2 monitors", 1, replacedEarlierSave: false), result);
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Save: Saved \"2 monitors\", 1 icon"], rig.LogLines());
+    }
+
+    [Fact]
     public void ALaterSaveKeepsTheNameAndMovesTheEarlierSaveIntoPrevious()
     {
         using var rig = new Rig(Three);
