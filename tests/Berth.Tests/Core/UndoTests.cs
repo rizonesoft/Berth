@@ -53,6 +53,57 @@ public sealed class UndoTests
     }
 
     [Fact]
+    public void EndToEndSaveMoveRestoreAndUndoWritesSpec14LayoutAndLogsEachOperationOnce()
+    {
+        IconPosition savedA = A, savedB = B;
+        IconPosition movedA = A with { X = 111, Y = 222 }, movedB = B with { X = 333, Y = 444 };
+        using var rig = new Rig(savedA, savedB);
+
+        OperationResult saved = rig.Service().Save();
+        Assert.Equal(OperationResult.Saved("2 monitors", 2, replacedEarlierSave: false), saved);
+
+        using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(rig.File)))
+        {
+            System.Text.Json.JsonElement root = doc.RootElement;
+            Assert.Equal(
+                ["schemaVersion", "key", "name", "savedAt", "monitors", "icons", "previous"],
+                root.EnumerateObject().Select(p => p.Name).ToArray());
+            Assert.Equal(Layout.CurrentSchemaVersion, root.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(rig.Key, root.GetProperty("key").GetString());
+            Assert.Equal("2 monitors", root.GetProperty("name").GetString());
+            Assert.Equal("2026-11-15T07:14:03Z", root.GetProperty("savedAt").GetString());
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("previous").ValueKind);
+            Assert.Equal(2, root.GetProperty("monitors").GetArrayLength());
+            Assert.Equal(
+                ["x", "y", "width", "height", "scale", "primary"],
+                root.GetProperty("monitors")[0].EnumerateObject().Select(p => p.Name).ToArray());
+            Assert.Equal(2, root.GetProperty("icons").GetArrayLength());
+            Assert.Equal(
+                ["id", "name", "x", "y"],
+                root.GetProperty("icons")[0].EnumerateObject().Select(p => p.Name).ToArray());
+        }
+
+        ((IDesktopIcons)rig.Desktop).SetPositions([movedA, movedB]);
+        Assert.Equal([movedA, movedB], ((IDesktopIcons)rig.Desktop).ReadIcons());
+
+        OperationResult restored = rig.Service().Restore();
+        Assert.Equal(OperationResult.Restored("2 monitors", 2, 2, 0, 0), restored);
+        Assert.Equal([savedA, savedB], ((IDesktopIcons)rig.Desktop).ReadIcons());
+
+        OperationResult undone = rig.Service().Undo();
+        Assert.Equal(OperationResult.Undone(2, 2, 0, 0), undone);
+        Assert.Equal([movedA, movedB], ((IDesktopIcons)rig.Desktop).ReadIcons());
+        Assert.False(File.Exists(rig.Paths.UndoFile));
+        Assert.Equal(
+            [
+                "2026-11-15T07:14:03Z INFO Saved 2 icons to \"2 monitors\".",
+                "2026-11-15T07:14:03Z INFO Restored 2 icons from \"2 monitors\".",
+                "2026-11-15T07:14:03Z INFO Put 2 icons back.",
+            ],
+            rig.LogLines());
+    }
+
+    [Fact]
     public void AMixedRetryCasePreservesTheSnapshotAndFinishesOnAFreshService()
     {
         IconPosition liveA = new(@"c:\DESK\A.TXT", "b.txt", 600, 600);

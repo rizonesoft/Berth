@@ -246,24 +246,45 @@ internal static partial class JsonFile
     /// Creates the redo note, waiting out a brief delete-pending state if an earlier writer or recovery just called
     /// <see cref="File.Delete(string)"/> before closing its handle.
     /// </summary>
-    private static FileStream CreatePendingNote(string pending)
+    private static FileStream CreatePendingNote(string pending) => CreatePendingNote(pending, afterCreateDenied: null);
+
+    internal static FileStream CreatePendingNote(string pending, Action<int>? afterCreateDenied)
     {
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
-        bool retried = false;
+        int failures = 0;
+        bool retriedAfterGone = false;
         while (true)
         {
             try
             {
                 return new FileStream(pending, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Delete);
             }
-            catch (UnauthorizedAccessException) when (!Directory.Exists(pending) && (!retried || (File.Exists(pending) && DateTime.UtcNow < giveUp)))
+            catch (UnauthorizedAccessException) when (!Directory.Exists(pending))
             {
-                if (retried)
+                failures++;
+                afterCreateDenied?.Invoke(failures);
+                if (File.Exists(pending))
                 {
+                    if (DateTime.UtcNow >= giveUp)
+                    {
+                        throw;
+                    }
+
+                    retriedAfterGone = false;
                     Thread.Sleep(20);
                 }
+                else
+                {
+                    if (retriedAfterGone)
+                    {
+                        throw;
+                    }
 
-                retried = true;
+                    // Either the first attempt raced with the last delete-pending handle closing, or an earlier loop
+                    // saw the file present and it vanished right between CreateNew throwing and File.Exists: retry
+                    // CreateNew once now that the path is gone, without sleeping on a folder that denies creation.
+                    retriedAfterGone = true;
+                }
             }
         }
     }

@@ -352,6 +352,62 @@ public sealed partial class JsonFileTests
         Assert.Equal(new Settings(1, true, null), store.Load().Value);
     }
 
+    [Fact]
+    public void CreatePendingNoteRetriesWhenDeletePendingHandleClosesBetweenCreateNewAndExistenceCheck()
+    {
+        using var data = new TestData();
+        var paths = BerthPaths.ForRoot(data.Root);
+        Directory.CreateDirectory(paths.DataRoot);
+        string pending = paths.SettingsFile + JsonFile.PendingSuffix;
+        using Microsoft.Win32.SafeHandles.SafeFileHandle closing = OpenDeletePending(pending);
+
+        using FileStream note = JsonFile.CreatePendingNote(
+            pending,
+            afterCreateDenied: attempt =>
+            {
+                if (attempt == 2)
+                {
+                    closing.Dispose();
+                }
+            });
+        note.WriteByte((byte)'x');
+
+        Assert.True(File.Exists(pending));
+    }
+
+    [Fact]
+    public void CreatePendingNoteDoesNotSleepOnFolderThatDeniesCreation()
+    {
+        using var data = new TestData();
+        string deniedDir = Path.Combine(data.Root, "denied-create");
+        Directory.CreateDirectory(deniedDir);
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var rule = new System.Security.AccessControl.FileSystemAccessRule(
+            identity.User!,
+            System.Security.AccessControl.FileSystemRights.CreateFiles,
+            System.Security.AccessControl.AccessControlType.Deny);
+        System.Security.AccessControl.DirectorySecurity original = new DirectoryInfo(deniedDir).GetAccessControl();
+        original.AddAccessRule(rule);
+        new DirectoryInfo(deniedDir).SetAccessControl(original);
+        try
+        {
+            int attempts = 0;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<UnauthorizedAccessException>(() =>
+                JsonFile.CreatePendingNote(Path.Combine(deniedDir, "x.berth-pending"), afterCreateDenied: _ => attempts++));
+            sw.Stop();
+
+            Assert.Equal(2, attempts);
+            Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(500), $"CreatePendingNote took {sw.Elapsed}");
+        }
+        finally
+        {
+            System.Security.AccessControl.DirectorySecurity restore = new DirectoryInfo(deniedDir).GetAccessControl();
+            restore.RemoveAccessRule(rule);
+            new DirectoryInfo(deniedDir).SetAccessControl(restore);
+        }
+    }
+
     private static Microsoft.Win32.SafeHandles.SafeFileHandle OpenDeletePending(string path)
     {
         const uint DeleteAndReadWrite = 0xC0010000u;
