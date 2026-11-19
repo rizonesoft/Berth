@@ -53,7 +53,7 @@ depends_on: ["dotnet-foundation"]
 | 14 | §14 | Operation lock across processes | §3 | [x] |
 | 15 | §15 | Log file with a size cap | §3 | [x] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
-| 17 | §17 | Date, count and monitor size formats | §13 | [ ] |
+| 17 | §17 | Date, count and monitor size formats | §13 | [x] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
@@ -535,9 +535,12 @@ The three small formats of SPEC §3 that several surfaces share.
 - [x] Add `Formats.MonitorCount(int n)` (`1 monitor`, `2 monitors`) and `Formats.IconCount(int n)` (`1 icon`, `42 icons`). Done when: tests cover 1 and 2. Cheaper substitute: `monitor(s)`. **Corrected 2026-11-18:** `MonitorCount` calls `ArgumentOutOfRangeException.ThrowIfLessThan(n, 1)` (`"1 monitor"`, else invariant `"{n} monitors"`) and `IconCount` calls `ArgumentOutOfRangeException.ThrowIfNegative(n)` (`"1 icon"` for `1`, else invariant `"{n} icons"` including `"0 icons"` for an empty desktop and `"1000 icons"` without group separators); tests cover `MonitorCount` (`1`, `2`, `3`, `1000`, `0`, `-1`) and `IconCount` (`0`, `1`, `2`, `42`, `1000`, `-1`) including under a custom `CurrentCulture` with group separators.
 - [x] Add `Formats.ListDate(DateTimeOffset value, TimeZoneInfo zone)` returning `2026-11-15 09:14` for `berth list` (SPEC §13). Done when: a test compares the exact string. Cheaper substitute: the round-trip format with seconds and offset. **Corrected 2026-11-18:** `ArgumentNullException.ThrowIfNull(zone)`; converts `value` via `TimeZoneInfo.ConvertTime(value, zone)` and formats `"yyyy-MM-dd HH:mm"` in `CultureInfo.InvariantCulture` (truncating seconds without rounding and omitting offset); tests cover the SPEC §13/§14 pair (`2026-11-15T07:14:03Z` in `+02:00` -> `"2026-11-15 09:14"`), a non-UTC midnight/year rollover with `:59` seconds (`2025-12-31T23:30:59Z` in `+02:00` -> `"2026-01-01 01:30"`), non-UTC input offsets, null `zone`, and hostile `CurrentCulture`.
 - [x] Add `tests/Berth.Tests/Core/FormatsTests.cs`. Done when: all pass, and the yesterday test fails when the comparison uses UTC dates. Cheaper substitute: tests that run only in the build machine's time zone. **Corrected 2026-11-18:** also verified against `LayerRuleTests` and observed failing on both the UTC-date mutant in `Formats.When` and the unsorted-input mutant in `Formats.MonitorSizes`.
-- [ ] Commit: `core: date, count and monitor size formats`
+- [x] Commit: `core: date, count and monitor size formats`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*FormatsTests"` passes, and fails when `Formats.When` compares UTC dates instead of local ones.
+
+> **Verified:** 2026-11-19 | §17 | f2b9112cea44d6c31912541de1f91ad36aa3dc0a
+> **Review:** `docs/reviews/d01-t01-s17.json`
 
 ## 18. Setting changes applied, read back and logged in one place
 

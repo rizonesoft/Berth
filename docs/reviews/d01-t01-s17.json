@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a717",
+  "title": "Date, count and monitor size formats",
+  "implementation_sha": "f2b9112cea44d6c31912541de1f91ad36aa3dc0a",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 2,
+      "report": "docs/reviews/01-core/D01-T01-s17.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx --filter-class *FormatsTests -> total: 8, failed: 0, succeeded: 8, skipped: 0; UTC-date When mutant -> fails WhenUsesLocalDatesAcrossMidnightInNonUtcZones; unsorted MonitorSizes mutant -> fails MonitorSizesOrdersAndJoinsWithMultiplicationSign"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s17.md",
+    "verdict": "complete",
+    "candidate": "f2b9112cea44d6c31912541de1f91ad36aa3dc0a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 2,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s17.md",
+    "candidate": "93090a3606cccec6ec18d7e31ba7f6a413443d1d",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "93090a3606cccec6ec18d7e31ba7f6a413443d1d",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
