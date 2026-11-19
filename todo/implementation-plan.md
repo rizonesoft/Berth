@@ -49,7 +49,7 @@ Sections: 23 | Checklist items: 133
 | [x]    | D01 T01 §20 | The waiting-lock test must see the contender blocked       | none  | 2     |
 | [x]    | D01 T01 §21 | The reverse adjacency names its owner                      | none  | 2     |
 | [x]    | D01 T01 §22 | Revert and delete are worded as SPEC §10 words them        | none  | 2     |
-| [ ]    | D01 T01 §23 | Phase 1 record credits §16 changes to their pass           | none  | 2     |
+| [x]    | D01 T01 §23 | Phase 1 record credits §16 changes to their pass           | none  | 2     |
 
 ### Phase 2: Desktop access
 
@@ -156,6 +156,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 30/87 verified sections, 1 ready to run now.
+Progress: 31/87 verified sections, 3 ready to run now.
 
-Checklist: 185/519 items completed (includes Commit items).
+Checklist: 186/519 items completed (includes Commit items).

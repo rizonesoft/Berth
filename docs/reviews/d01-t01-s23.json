@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a723",
+  "title": "Phase 1 record credits \u00a716 changes to their pass",
+  "implementation_sha": "8ab75061a2477a0686bdd6f1221f97e1d2343dfc",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/01-core/D01-T01-s23.md",
+      "verdict": "clean"
+    }
+  ],
+  "checks": [
+    "pwsh scripts/check-all.ps1 -> 7/7 steps passed (503/503 Release tests, validate, plan --check); Python read-back verified line 38 == b8f72d1 and line 39 credits 91f9fd5 and 0597876"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s23.md",
+    "verdict": "complete",
+    "candidate": "8ab75061a2477a0686bdd6f1221f97e1d2343dfc",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s23.md",
+    "candidate": "ebe9a239fd81415ad05e722448c9fd8047668bd9",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "ebe9a239fd81415ad05e722448c9fd8047668bd9",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

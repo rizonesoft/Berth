@@ -2,7 +2,7 @@
 schema_version: 1
 id: layout-core
 domain: 01-core
-status: active
+status: done
 title: "TODO-01 -- Layout core"
 depends_on: ["dotnet-foundation"]
 ---
@@ -59,7 +59,7 @@ depends_on: ["dotnet-foundation"]
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
 | 21 | §21 | The reverse adjacency names its owner | §9 | [x] |
 | 22 | §22 | Revert and delete are worded as SPEC §10 words them | §21 | [x] |
-| 23 | §23 | Phase 1 record credits §16 changes to their pass | §16 | [ ] |
+| 23 | §23 | Phase 1 record credits §16 changes to their pass | §16 | [x] |
 
 ## 1. Layout, monitor and icon records
 
@@ -679,9 +679,12 @@ Filed 2026-11-19 from the D01 T01 §16 completion review (P3, below the pin's bl
 1. Correct the `D01 T01 §16` pre-build Decision entry in `docs/phase-runs/2026-11-18-phase-1.md` so each change is credited to the pass and commit where it landed. Done when: the pre-build Decision entry matches `b8f72d1` clause (4) (CR/LF collapsing across layout names, paths, and origins, window-only edit `INFO` log sentences, and reason punctuation normalization, with none of `\uXXXX` escaping, combined whitespace/period trimming, or `U+2028`/`U+2029` separator handling), and the `D01 T01 §16` section summary credits control escaping and combined whitespace/period trimming to `91f9fd5` (after round 1) and `U+2028`/`U+2029` separator normalization to `0597876` (after round 2), verified against `docs/reviews/01-core/D01-T01-s16.md`.
 
 - [x] Rewrite the `Decision 2026-11-19 (§16 ...)` line in `docs/phase-runs/2026-11-18-phase-1.md` so clause (4) and the reversal-cost test-class list match `git show b8f72d1:docs/phase-runs/2026-11-18-phase-1.md` exactly (internal `\r`/`\n` collapsing across layout names, paths, and origins, window-only edit `INFO` log sentences, and reason punctuation normalization), and verify the `D01 T01 §16` summary line credits `\uXXXX` control escaping and combined whitespace/period trimming to `91f9fd5` (after round 1) and `U+2028`/`U+2029` separator normalization to `0597876` (after round 2), matching `docs/reviews/01-core/D01-T01-s16.md`. **Corrected 2026-11-19:** matched clause (4) verbatim to `b8f72d1` and required all three later changes (`\uXXXX` control escaping, combined whitespace/period trimming, and `U+2028`/`U+2029` separator normalization) to be absent from the pre-build attribution while credited to `91f9fd5` and `0597876` (`plan review P2`). Done when: reading back `docs/phase-runs/2026-11-18-phase-1.md` shows the pre-build `Decision` line matching `b8f72d1` (free of `\uXXXX`, combined whitespace/period trimming, and `U+2028`/`U+2029`), control escaping and combined trimming credited to `91f9fd5` after round 1 and separator normalization credited to `0597876` after round 2, and `python scripts/todo-graph.py validate` passes. Cheaper substitute: deleting the decision note instead of correcting its chronology.
-- [ ] Commit: `docs: credit §16 changes to their review passes in phase 1 record`
+- [x] Commit: `docs: credit §16 changes to their review passes in phase 1 record`
 
 **Test checkpoint:** `python scripts/todo-graph.py validate` and `python scripts/todo-graph.py plan --check` pass, and reading `docs/phase-runs/2026-11-18-phase-1.md` confirms the pre-build `Decision` entry matches `b8f72d1` clause (4) (free of `\uXXXX`, combined whitespace/period trimming, and `U+2028`/`U+2029`) while `91f9fd5` carries control escaping and combined trimming after round 1 and `0597876` carries `U+2028`/`U+2029` separator normalization after round 2.
+
+> **Verified:** 2026-11-19 | §23 | 8ab75061a2477a0686bdd6f1221f97e1d2343dfc
+> **Review:** `docs/reviews/d01-t01-s23.json`
 
 ## Verification
 
