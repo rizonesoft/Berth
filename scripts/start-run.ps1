@@ -3,12 +3,12 @@
 # crashes or the machine restarts: nothing here, or anywhere in the repository, starts or resumes it on its own.
 #
 #   pwsh scripts/start-run.ps1                    start the run in Claude Code (the latest Opus)
-#   pwsh scripts/start-run.ps1 -Runner agy        start it in Antigravity on Orchestrator (Carbon)
+#   pwsh scripts/start-run.ps1 -Runner agy        start it in Antigravity on Gemini 4 Neon (medium effort)
 #   pwsh scripts/start-run.ps1 -InstallShortcut   put "Berth Claude campaign" and "Berth Carbon campaign" on the desktop,
 #                                                 each running the line above for its runner
 #   pwsh scripts/start-run.ps1 -DryRun            print what would run or be written, and change nothing
 #   pwsh scripts/start-run.ps1 -Model sonnet      start on another model
-#   pwsh scripts/start-run.ps1 -Effort high       start the Claude runner at another effort (default medium)
+#   pwsh scripts/start-run.ps1 -Effort high       start the runner at another effort (default medium)
 #   pwsh scripts/start-run.ps1 -TakeOver          take over a held run guard without being asked
 #
 # Each shortcut's icon is Berth's icon (assets/icon/berth.ico) with its runner's badge in the corner, rendered on this
@@ -56,7 +56,7 @@ if ($env:CONCLAVE_AUTOMATION -and -not $InstallShortcut) {
 }
 $repo = Split-Path $PSScriptRoot
 $tokenName = 'CLAUDE_CODE_OAUTH_TOKEN'
-if (-not $Model) { $Model = if ($Runner -eq 'agy') { 'gemini-pro-orchestrator' } else { 'opus' } }
+if (-not $Model) { $Model = if ($Runner -eq 'agy') { 'gemini-4-neon-medium' } else { 'opus' } }
 if (-not $GuardFile) { $GuardFile = Join-Path $repo 'build\claude-campaign-guard.json' }
 
 # Each runner's shortcut: its name is also the window title, so the operator can tell the campaigns apart.
@@ -64,7 +64,7 @@ $shortcuts = @(
   @{ Runner = 'claude'; Name = 'Berth Claude campaign'; Icon = 'berth-campaign-claude.ico'
      Description = 'Start the Berth campaign in Claude Code (the latest Opus)' },
   @{ Runner = 'agy'; Name = 'Berth Carbon campaign'; Icon = 'berth-campaign-carbon.ico'
-     Description = 'Start the Berth campaign in Google Antigravity on Orchestrator (Carbon)' }
+     Description = 'Start the Berth campaign in Google Antigravity on Gemini 4 Neon (medium effort)' }
 )
 $title = ($shortcuts | Where-Object { $_.Runner -eq $Runner }).Name
 
@@ -127,7 +127,8 @@ if ($Runner -eq 'agy') {
   # Antigravity takes its flags as --name=value; --prompt-interactive runs the goal and keeps the session open. It
   # chooses its own conversation id, which the run guard records.
   $agent = 'agy'
-  $arguments = @("--model=$Model", '--dangerously-skip-permissions', "--prompt-interactive=$Goal")
+  $agyEffort = if ($Model -match '^(gemini-pro-orchestrator|Orchestrator\b)') { @() } else { @("--effort=$Effort") }
+  $arguments = @("--model=$Model") + $agyEffort + @('--dangerously-skip-permissions', "--prompt-interactive=$Goal")
 } else {
   $agent = 'claude'
   $session = [guid]::NewGuid().ToString()
