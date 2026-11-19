@@ -189,7 +189,7 @@ public sealed class UnitStaWorkerTests
         using var thirdEnqueued = new ManualResetEventSlim(false);
         var worker = new StaWorker(
             disposeTimeout: TimeSpan.FromMilliseconds(150),
-            onItemEnqueued: () =>
+            onOperationCreated: _ =>
             {
                 int count = Interlocked.Increment(ref enqueuedCount);
                 if (count == 3)
@@ -271,7 +271,7 @@ public sealed class UnitStaWorkerTests
         using var secondEnqueued = new ManualResetEventSlim(false);
         var worker = new StaWorker(
             disposeTimeout: TimeSpan.FromSeconds(2),
-            onItemEnqueued: () =>
+            onOperationCreated: _ =>
             {
                 if (Interlocked.Increment(ref enqueuedCount) == 3)
                 {
@@ -305,6 +305,50 @@ public sealed class UnitStaWorkerTests
         Assert.Equal(22, await secondTask);
         Assert.True(workerThread.Join(TimeSpan.FromSeconds(2)), "Worker thread did not exit after self-disposal.");
         Assert.False(workerThread.IsAlive);
+    }
+
+    [Fact]
+    public async Task RunThrowsPromptlyWhenQueuedDispatcherOperationIsAborted()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        int createdCount = 0;
+        using var worker = new StaWorker(
+            disposeTimeout: TimeSpan.FromSeconds(2),
+            onOperationCreated: op =>
+            {
+                if (Interlocked.Increment(ref createdCount) == 2)
+                {
+                    _ = op.Abort();
+                }
+            });
+
+        using var firstEntered = new ManualResetEventSlim(false);
+        using var releaseFirst = new ManualResetEventSlim(false);
+        int abortedBodyExecutions = 0;
+
+        Task<int> firstTask = Task.Run(() => worker.Run(() =>
+        {
+            firstEntered.Set();
+            Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(5), ct), "Timed out waiting to release first callback.");
+            return 7;
+        }), ct);
+        Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(5), ct), "First callback did not start.");
+
+        Task<int> abortedTask = Task.Run(() => worker.Run(() =>
+        {
+            Interlocked.Increment(ref abortedBodyExecutions);
+            return 99;
+        }), ct);
+
+        Task completed = await Task.WhenAny(abortedTask, Task.Delay(TimeSpan.FromSeconds(2), ct));
+        Assert.Same(abortedTask, completed);
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => abortedTask);
+        Assert.Contains("Aborted", error.Message, StringComparison.Ordinal);
+        Assert.Equal(0, abortedBodyExecutions);
+
+        releaseFirst.Set();
+        Assert.Equal(7, await firstTask);
     }
 
     [Fact]

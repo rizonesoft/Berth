@@ -14,18 +14,18 @@ internal sealed class StaWorker : IDisposable
 
     private readonly object _gate = new();
     private readonly TimeSpan _disposeTimeout;
-    private readonly Action? _onItemEnqueued;
+    private readonly Action<DispatcherOperation>? _onOperationCreated;
     private readonly Thread _thread;
     private readonly Dispatcher _dispatcher;
     private readonly int _workerThreadId;
     private bool _disposed;
 
     public StaWorker()
-        : this(DefaultDisposeTimeout, onItemEnqueued: null)
+        : this(DefaultDisposeTimeout, onOperationCreated: null)
     {
     }
 
-    internal StaWorker(TimeSpan disposeTimeout, Action? onItemEnqueued = null)
+    internal StaWorker(TimeSpan disposeTimeout, Action<DispatcherOperation>? onOperationCreated = null)
     {
         if (disposeTimeout < TimeSpan.Zero && disposeTimeout != Timeout.InfiniteTimeSpan)
         {
@@ -36,7 +36,7 @@ internal sealed class StaWorker : IDisposable
         }
 
         _disposeTimeout = disposeTimeout;
-        _onItemEnqueued = onItemEnqueued;
+        _onOperationCreated = onOperationCreated;
 
         using var ready = new ManualResetEventSlim(false);
         Dispatcher? startedDispatcher = null;
@@ -104,7 +104,7 @@ internal sealed class StaWorker : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             operation = _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(item.Execute));
-            _onItemEnqueued?.Invoke();
+            _onOperationCreated?.Invoke(operation);
         }
 
         DispatcherOperationStatus status = operation.Wait();
