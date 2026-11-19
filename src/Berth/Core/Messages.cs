@@ -188,14 +188,19 @@ internal static class Messages
     /// <summary>The SPEC §18 sentence for an unreadable or held layout file, reduced to its file name.</summary>
     public static string UnreadableLayout(string fileName)
     {
-        string normalized = RequireSingleLineToken(fileName, nameof(fileName));
-        string name = Path.GetFileName(normalized);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException("Value must not be null or blank.", nameof(fileName));
+        }
+
+        // Extract the file name before escaping controls so a backslash in `\uXXXX` is never treated as a separator.
+        string name = Path.GetFileName(CollapseLineBreaks(fileName));
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new ArgumentException("An unreadable layout message must include a file name.", nameof(fileName));
         }
 
-        return $"The layout file {name} could not be read. It was left untouched.";
+        return $"The layout file {EscapeControls(name)} could not be read. It was left untouched.";
     }
 
     /// <summary>The SPEC §18 sentence when writing <paramref name="path"/> fails.</summary>
@@ -404,7 +409,7 @@ internal static class Messages
     private static void ValidatePlacementCounts(OperationResult r)
     {
         if (r.Total < 0 || r.InPlace < 0 || r.NotPlaced < 0 || r.Missing < 0
-            || r.InPlace + r.NotPlaced + r.Missing != r.Total)
+            || (long)r.InPlace + r.NotPlaced + r.Missing != r.Total)
         {
             throw new ArgumentException(
                 $"Invalid placement counts ({r.InPlace} in place, {r.NotPlaced} not placed, {r.Missing} missing of {r.Total}).",
@@ -427,14 +432,61 @@ internal static class Messages
             throw new ArgumentException("Value must not be null or blank.", paramName);
         }
 
-        return CollapseLineBreaks(value);
+        return EscapeControls(CollapseLineBreaks(value));
     }
 
     private static string CleanSentence(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        string cleaned = CollapseLineBreaks(text).Trim().TrimEnd('.').TrimEnd();
-        return cleaned.Length == 0 ? "unknown error" : cleaned;
+        string collapsed = CollapseLineBreaks(text);
+        int start = 0;
+        while (start < collapsed.Length && char.IsWhiteSpace(collapsed[start]))
+        {
+            start++;
+        }
+
+        int end = collapsed.Length;
+        while (end > start && (char.IsWhiteSpace(collapsed[end - 1]) || collapsed[end - 1] == '.'))
+        {
+            end--;
+        }
+
+        return start >= end ? "unknown error" : EscapeControls(collapsed[start..end]);
+    }
+
+    private static string EscapeControls(string value)
+    {
+        int first = -1;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (char.IsControl(value[i]))
+            {
+                first = i;
+                break;
+            }
+        }
+
+        if (first < 0)
+        {
+            return value;
+        }
+
+        var escaped = new StringBuilder(value.Length + 8);
+        escaped.Append(value, 0, first);
+        for (int i = first; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (char.IsControl(c))
+            {
+                escaped.Append(CultureInfo.InvariantCulture, $"\\u{(int)c:x4}");
+            }
+            else
+            {
+                escaped.Append(c);
+            }
+        }
+
+        return escaped.ToString();
     }
 
     private static string CollapseLineBreaks(string value)

@@ -321,10 +321,40 @@ public sealed class MessagesTests
         Assert.Equal("Deleted layout \"Work Desk\".", Messages.Log(deleted));
 
         Assert.Equal("Something went wrong: one two. The details are in the log.", Messages.Unexpected("  one\r\ntwo.. \n"));
+        Assert.Equal("Something went wrong: boom. The details are in the log.", Messages.Unexpected("boom . . "));
         Assert.Equal("Something went wrong: unknown error. The details are in the log.", Messages.Unexpected("  \r\n...  "));
         Assert.Equal("Berth could not write C:\\a b\\x.json: unknown error.", Messages.WriteFailed("C:\\a\r\nb\\x.json", "\t"));
+        Assert.Equal("Berth could not write p: Access denied.", Messages.WriteFailed("p", "Access denied. ."));
         Assert.Equal("Berth could not read C:\\a b\\layouts: Folder locked.", Messages.ReadFailed("C:\\a\r\nb\\layouts", "Folder\nlocked.."));
         Assert.Equal("Berth could not change the Start with Windows setting: unknown error.", Messages.StartWithWindowsFailed("   "));
+    }
+
+    [Fact]
+    public void ControlCharactersInNamesPathsOriginsAndReasonsAreEscapedAsUnicodeHex()
+    {
+        OperationResult backspaceSaved = OperationResult.Saved("AB\bC", 1, replacedEarlierSave: false);
+        OperationResult ansiRestored = OperationResult.Restored("\u001b[31mRed", 2, 2, 0, 0, "auto\tm");
+        OperationResult tabNamed = OperationResult.Renamed("Tab\tName");
+        OperationResult highControls = OperationResult.Deleted("Del\u007fC1\u009b");
+        OperationResult nullByteSaved = OperationResult.Saved("Zero\0Byte", 1, false);
+
+        Assert.Equal("Saved 1 icon to \"AB\\u0008C\".", Messages.Cli(backspaceSaved));
+        Assert.Equal("Saved 1 icon to \"AB\\u0008C\".", Messages.Log(backspaceSaved));
+        Assert.Equal("Restored 2 icons from \"\\u001b[31mRed\".", Messages.Cli(ansiRestored));
+        Assert.Equal("Restored 2 icons from \"\\u001b[31mRed\". (auto\\u0009m)", Messages.Log(ansiRestored));
+        Assert.Equal("Renamed layout to \"Tab\\u0009Name\".", Messages.Log(tabNamed));
+        Assert.Equal("Deleted layout \"Del\\u007fC1\\u009b\".", Messages.Log(highControls));
+        Assert.Equal("Saved 1 icon to \"Zero\\u0000Byte\".", Messages.Cli(nullByteSaved));
+
+        Assert.Equal(
+            "The layout file bad\\u0008.json could not be read. It was left untouched.",
+            Messages.UnreadableLayout(@"C:\data\layouts\bad" + "\b.json"));
+        Assert.Equal(
+            "Berth could not write C:\\x\\f\\u0008.json: Denied\\u001b[0m.",
+            Messages.WriteFailed("C:\\x\\f\b.json", "Denied\u001b[0m."));
+        Assert.Equal(
+            "Something went wrong: bad\\u0007bell. The details are in the log.",
+            Messages.Unexpected("bad\abell"));
     }
 
     [Fact]
@@ -381,6 +411,8 @@ public sealed class MessagesTests
 
         Assert.Throws<ArgumentException>(() => Messages.Status(OperationResult.Restored("Docked", 3, 2, 0, 0)));
         Assert.Throws<ArgumentException>(() => Messages.Status(OperationResult.Undone(3, 1, 0, 0)));
+        Assert.Throws<ArgumentException>(() => Messages.Cli(OperationResult.Undone(0, int.MaxValue, int.MaxValue, 2)));
+        Assert.Throws<ArgumentException>(() => Messages.Status(OperationResult.Undone(0, int.MaxValue, int.MaxValue, 2)));
         Assert.Throws<ArgumentException>(() => Messages.Status(OperationResult.Restored("Docked", 3, 1, 1, 1) with { NotPlaced = -1, InPlace = 3 }));
         Assert.Throws<ArgumentException>(() => Messages.Status(OperationResult.Undone(1, 1, 0, 0) with { LayoutName = "Docked" }));
         Assert.Throws<ArgumentException>(() => Messages.Cli(OperationResult.Undone(1, 1, 0, 0) with { LayoutName = "Docked" }));

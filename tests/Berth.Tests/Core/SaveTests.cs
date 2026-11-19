@@ -446,6 +446,18 @@ public sealed class SaveTests
         rig.Service().Save("  Office ");
         Assert.Equal("Office", rig.Stored()!.Name);
     }
+
+    [Fact]
+    public void SavingWithControlCharactersInTheNameEscapesThemInTheLogWhileStoringTheName()
+    {
+        using var rig = new Rig(Three);
+
+        OperationResult result = rig.Service().Save("AB\bC");
+
+        Assert.Equal(OperationResult.Saved("AB\bC", 3, replacedEarlierSave: false), result);
+        Assert.Equal("AB\bC", rig.Stored()!.Name);
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 3 icons to \"AB\\u0008C\"."], rig.LogLines());
+    }
 }
 
 public sealed class OperationResultTests

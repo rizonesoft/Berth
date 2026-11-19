@@ -253,7 +253,7 @@ internal sealed class LayoutService(
             // A change after the snapshot was taken: nothing has moved; stop rather than place another arrangement's icons.
             if (!StillThe(key))
             {
-                return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, "The displays changed before any icon was moved.", layout.Name);
+                return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
             }
 
             File.Move(staged, paths.UndoFile, overwrite: true);
@@ -279,7 +279,7 @@ internal sealed class LayoutService(
         {
             // Some icons may have moved and none can be counted: the snapshot stays, so undo still works.
             return OperationResult.Failed(
-                FailureKind.DesktopUnavailable, path: null, "The desktop could not be reached while the icons were being placed. Undo puts back what was there.", layout.Name);
+                FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringRestore, layout.Name);
         }
 
         IReadOnlyDictionary<string, IconPosition> now = LayoutComparison.ById(after);
@@ -345,7 +345,7 @@ internal sealed class LayoutService(
             if (ArrangementKey.From(beforeReadBack) != key)
             {
                 return OperationResult.Failed(
-                    FailureKind.DisplaysChanged, path: null, "The displays changed before the undo could be checked.");
+                    FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringUndo);
             }
 
             after = desktop.ReadIcons();
@@ -354,13 +354,13 @@ internal sealed class LayoutService(
         catch (DesktopUnavailableException)
         {
             return OperationResult.Failed(
-                FailureKind.DesktopUnavailable, path: null, "The desktop could not be reached while the icons were being placed.");
+                FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringUndo);
         }
 
         if (ArrangementKey.From(afterReadBack) != key)
         {
             return OperationResult.Failed(
-                FailureKind.DisplaysChanged, path: null, "The displays changed before the undo could be checked.");
+                FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringUndo);
         }
 
         IReadOnlyDictionary<string, IconPosition> now = LayoutComparison.ById(after);
@@ -695,6 +695,11 @@ internal sealed class LayoutService(
         OperationResult result;
         try
         {
+            if (origin is not null && string.IsNullOrWhiteSpace(origin))
+            {
+                throw new ArgumentException("An operation origin must not be blank.", nameof(origin));
+            }
+
             // Taking the lock is inside the boundary too: a mutex that cannot be opened is a failure, not a throw.
             result = gate.Run(work, () => OperationResult.Refused(Refusal.Busy));
         }
@@ -704,7 +709,7 @@ internal sealed class LayoutService(
         }
 
         // An automatic operation's trigger rides on every result, a refusal or failure included.
-        if (origin is not null)
+        if (!string.IsNullOrWhiteSpace(origin))
         {
             result = result with { Origin = origin };
         }

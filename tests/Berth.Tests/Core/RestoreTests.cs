@@ -413,4 +413,27 @@ public sealed class RestoreTests
             ],
             LinesAfter(rig, logged));
     }
+
+    [Fact]
+    public void ABlankOriginFailsBeforeTouchingDesktopOrUndoAndLogsFailure()
+    {
+        using Rig rig = Saved([A], A with { X = 1 });
+        byte[] undo = SeedUndo(rig);
+        int readsBefore = rig.Desktop.Reads;
+        int monitorReadsBefore = rig.Monitors.Reads;
+        int logged = rig.LogLines().Length;
+
+        OperationResult result = rig.Service().Restore(" ");
+
+        Assert.Equal(OperationKind.Failed, result.Kind);
+        Assert.Equal(FailureKind.Unexpected, result.Failure);
+        Assert.IsType<ArgumentException>(result.Error);
+        Assert.Equal((readsBefore, monitorReadsBefore), (rig.Desktop.Reads, rig.Monitors.Reads));
+        Assert.Empty(rig.Desktop.Calls);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        string[] lines = LinesAfter(rig, logged);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", lines[0], StringComparison.Ordinal);
+        Assert.Contains("ArgumentException", lines[1], StringComparison.Ordinal);
+    }
 }
