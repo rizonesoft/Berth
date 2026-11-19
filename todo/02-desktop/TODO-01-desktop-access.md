@@ -39,7 +39,7 @@ depends_on: ["layout-core"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Shell COM interface declarations | D00 T01 §2 | [x] |
 | 2 | §2 | The desktop's folder view | §1 | [x] |
-| 3 | §9 | STA worker that owns every shell call | §2 | [ ] |
+| 3 | §9 | STA worker that owns every shell call | §2 | [x] |
 | 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [ ] |
 | 5 | §4 | Setting icon positions | §3 | [ ] |
 | 6 | §5 | Auto arrange read and clear | §9 | [ ] |
@@ -245,9 +245,12 @@ The shell's folder view must be used from a single-threaded apartment, and the w
 - [x] Give `ShellDesktopIcons` (`src/Berth/Desktop/ShellDesktopIcons.cs`, implementing `IDesktopIcons` and `IDisposable`) one `StaWorker` and an internal `RunWithView<T>(Func<DesktopView, T> work)` helper (using an injectable `Func<DesktopView>` factory defaulting to `DesktopView.Open`) that acquires `DesktopView`, invokes `work`, and disposes `DesktopView` all inside one `_worker.Run(...)` invocation; route `ReadIcons`, `SetPositions`, `AutoArrange`, and `TryTurnAutoArrangeOff` through `_worker.Run(...)` (in `§9`, throwing `NotImplementedException` naming `D02 T01 §3`/`§4`/`§5` inside the worker invocation, observable via an internal pre-throw worker hook so tests prove no public member bypasses the shared worker). **Corrected 2026-11-19:** resolved `astra` plan-review P1 finding 3 and P2 finding 4 by verifying single-invocation `DesktopView` release on the STA worker on both success and callback failure (with callback exception preserved) using the `DesktopView` release seam, and proving pre-disposal worker execution through all four `IDesktopIcons` members; the `RealDesktop` test calls `ShellDesktopIcons.RunWithView` from `Task.Run` to open a live `DesktopView` and read `ItemCount(SVGIO_ALLVIEW, out int count) >= 0`. Done when: all unit tests and the `RealDesktop` test (in `[Collection(DesktopCollectionDefinition.Name)]`, skipping only when `!Sta.HasInteractiveDesktopSession`) pass with `0` skipped on the build machine. Cheaper substitute: requiring every caller to be on the UI thread, leaking `DesktopView`, or checking a disposed flag before bypassing the worker.
 - [x] `ShellDesktopIcons` is disposable and disposes its worker idempotently; `Composition` (`D03 T01 §3`) owns one for the life of the process. **Corrected 2026-11-19:** resolved `astra` plan-review P2 finding 5 by capturing the actual worker `Thread` during a callback, disposing `ShellDesktopIcons` twice from outside that thread, and asserting that the captured thread exits (`!IsAlive`) in addition to subsequent calls throwing `ObjectDisposedException`. Done when: the captured worker thread exits after disposal and later calls to `ReadIcons`, `SetPositions`, `AutoArrange`, `TryTurnAutoArrangeOff`, and `RunWithView` each throw `ObjectDisposedException`. Cheaper substitute: a thread that outlives the tray app's exit or a wrapper that only sets a disposed flag.
 - [x] Add `tests/Berth.Tests/Desktop/StaWorkerTests.cs` covering all unit behaviors above plus the `RealDesktop` thread-pool `DesktopView` test. Done when: all pass with `0` skipped on the build machine, and fail when the worker thread's apartment state is left as MTA, when the idle loop stops pumping messages, or when any public member bypasses the worker. Cheaper substitute: none needed.
-- [ ] Commit: `desktop: STA worker that owns every shell call`
+- [x] Commit: `desktop: STA worker that owns every shell call`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*StaWorkerTests" --filter-class "*LayerRuleTests"` passes with `0` skipped on a machine with a desktop session, and fails when the worker thread's apartment state is left as MTA, when the idle wait stops pumping Win32 messages, or when a public `ShellDesktopIcons` member bypasses the worker.
+
+> **Verified:** 2026-11-19 | §9 | cb30e5b8a7966941718812fce5c08018e8a494e7
+> **Review:** `docs/reviews/d02-t01-s9.json`
 
 ## 10. Desktop scoped to icons with a name prefix
 

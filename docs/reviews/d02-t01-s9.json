@@ -1,0 +1,84 @@
+{
+  "ref": "D02 T01 \u00a79",
+  "title": "STA worker that owns every shell call",
+  "implementation_sha": "cb30e5b8a7966941718812fce5c08018e8a494e7",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s9.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class \"*StaWorkerTests\" --filter-class \"*LayerRuleTests\" -> total: 52, failed: 0, succeeded: 52, skipped: 0",
+    "bosun run -- dotnet test --solution Berth.slnx -c Release -> total: 644, failed: 0, succeeded: 644, skipped: 0"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s9.md",
+    "verdict": "reconciled",
+    "candidate": "cb30e5b8a7966941718812fce5c08018e8a494e7",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s9.md",
+    "candidate": "7bde504438861be0b98b73819e2f6d68cfcc03d6",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "7bde504438861be0b98b73819e2f6d68cfcc03d6",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
