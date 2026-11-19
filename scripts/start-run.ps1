@@ -4,7 +4,7 @@
 #
 #   pwsh scripts/start-run.ps1                    start the run in Claude Code (the latest Opus)
 #   pwsh scripts/start-run.ps1 -Runner agy        start it in Antigravity on Gemini 4 Neon (medium effort)
-#   pwsh scripts/start-run.ps1 -InstallShortcut   put "Berth Claude campaign" and "Berth Carbon campaign" on the desktop,
+#   pwsh scripts/start-run.ps1 -InstallShortcut   put "Berth Claude campaign" and "Berth Gemini campaign" on the desktop,
 #                                                 each running the line above for its runner
 #   pwsh scripts/start-run.ps1 -DryRun            print what would run or be written, and change nothing
 #   pwsh scripts/start-run.ps1 -Model sonnet      start on another model
@@ -63,7 +63,7 @@ if (-not $GuardFile) { $GuardFile = Join-Path $repo 'build\claude-campaign-guard
 $shortcuts = @(
   @{ Runner = 'claude'; Name = 'Berth Claude campaign'; Icon = 'berth-campaign-claude.ico'
      Description = 'Start the Berth campaign in Claude Code (the latest Opus)' },
-  @{ Runner = 'agy'; Name = 'Berth Carbon campaign'; Icon = 'berth-campaign-carbon.ico'
+  @{ Runner = 'agy'; Name = 'Berth Gemini campaign'; Icon = 'berth-campaign-carbon.ico'
      Description = 'Start the Berth campaign in Google Antigravity on Gemini 4 Neon (medium effort)' }
 )
 $title = ($shortcuts | Where-Object { $_.Runner -eq $Runner }).Name
