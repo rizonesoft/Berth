@@ -12,6 +12,9 @@ internal sealed record SettingsLoad(Settings Value, bool Exists, string? Unreada
 /// <summary><c>settings.json</c> under the data root (SPEC §14), read and written through <see cref="JsonFile"/>.</summary>
 internal sealed class SettingsStore(BerthPaths paths)
 {
+    /// <summary>The full path to <c>settings.json</c> under the configured data root.</summary>
+    public string FilePath => paths.SettingsFile;
+
     public SettingsLoad Load() => Load(out _, afterRecover: null, afterRead: null);
 
     /// <summary>As <see cref="Load()"/>; the two actions let a test interleave a save with the read.</summary>
@@ -70,6 +73,39 @@ internal sealed class SettingsStore(BerthPaths paths)
 
     private (Action? AfterCheck, Action? AfterReplace) seams;
 
+    /// <summary>
+    /// Reads the current settled settings, applies <paramref name="change"/> to that exact snapshot, and writes it
+    /// only if the file on disk still matches that snapshot when replaced.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="change"/> is null.</exception>
+    /// <exception cref="ArgumentException">The resulting settings are null or break the SPEC §14 schema.</exception>
+    /// <exception cref="UnreadableSettingsException">The file on disk cannot be read, so it is kept.</exception>
+    /// <exception cref="IOException">The folder or the file cannot be written, or another writer changed it first.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
+    public SettingsLoad Update(Func<Settings, Settings> change) => Update(change, beforeReplace: null);
+
+    /// <summary>As <see cref="Update(Func{Settings, Settings})"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
+    internal SettingsLoad Update(Func<Settings, Settings> change, Action? beforeReplace)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        SettingsLoad current = Load(out byte[]? read);
+        if (current.Unreadable is { } unreadable)
+        {
+            throw new UnreadableSettingsException(unreadable);
+        }
+
+        Settings value = change(current.Value)
+            ?? throw new ArgumentException("These settings must not be null.", nameof(change));
+        string? problem = Problem(value);
+        if (problem is not null)
+        {
+            throw new ArgumentException($"These settings must not be saved: {problem}", nameof(change));
+        }
+
+        WriteLoaded(current.Exists, read, value, beforeReplace);
+        return current;
+    }
+
     /// <summary>As <see cref="Save(Settings)"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
     internal void Save(Settings value, Action? beforeReplace)
     {
@@ -86,8 +122,13 @@ internal sealed class SettingsStore(BerthPaths paths)
             throw new UnreadableSettingsException(unreadable);
         }
 
+        WriteLoaded(current.Exists, read, value, beforeReplace);
+    }
+
+    private void WriteLoaded(bool exists, byte[]? read, Settings value, Action? beforeReplace)
+    {
         BerthPaths.EnsureFolderFor(paths.SettingsFile);
-        if (current.Exists)
+        if (exists)
         {
             try
             {

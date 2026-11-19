@@ -260,6 +260,13 @@ public sealed class MessagesTests
             "Berth could not change the Start with Windows setting: Registry access denied.",
             Messages.StartWithWindowsFailed("Registry access denied."));
 
+        Assert.Equal("Restore automatically turned on.", Messages.SettingChanged(Messages.RestoreAutomaticallySetting, true));
+        Assert.Equal("Restore automatically turned off.", Messages.SettingChanged(Messages.RestoreAutomaticallySetting, false));
+        Assert.Equal("Start with Windows turned on.", Messages.SettingChanged(Messages.StartWithWindowsSetting, true));
+        Assert.Equal("Start with Windows turned off.", Messages.SettingChanged(Messages.StartWithWindowsSetting, false));
+        Assert.Equal("Restore automatically", Messages.RestoreAutomaticallySetting);
+        Assert.Equal("Start with Windows", Messages.StartWithWindowsSetting);
+
         Assert.Equal(
             "Something went wrong: The handle is invalid. The details are in the log.",
             Messages.Refusal(OperationResult.Failed(FailureKind.Unexpected, path: null, "The handle is invalid.")));
@@ -426,6 +433,10 @@ public sealed class MessagesTests
         Assert.Throws<ArgumentException>(() => Messages.UnreadableLayout(@"C:\layouts\"));
         Assert.Throws<ArgumentException>(() => Messages.WriteFailed(" ", "reason"));
         Assert.Throws<ArgumentException>(() => Messages.ReadFailed(" ", "reason"));
+        Assert.Throws<ArgumentNullException>(() => Messages.SettingChanged(null!, true));
+        Assert.Throws<ArgumentException>(() => Messages.SettingChanged("", true));
+        Assert.Throws<ArgumentException>(() => Messages.SettingChanged("restore automatically", true));
+        Assert.Throws<ArgumentException>(() => Messages.SettingChanged("Unknown", false));
         Assert.Throws<ArgumentException>(() => Messages.NameProblem(NameError.None));
         Assert.Throws<ArgumentException>(() => Messages.Refusal(OperationResult.Saved("Docked", 1, false)));
         Assert.Throws<ArgumentException>(() => Messages.Refusal(OperationResult.Refused(Refusal.AutoArrange) with { Refusal = Refusal.None }));

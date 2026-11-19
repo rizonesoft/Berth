@@ -394,9 +394,40 @@ public sealed class SettingsStoreTests
         (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
         using (data)
         {
+            Assert.Equal(paths.SettingsFile, store.FilePath);
             Assert.Throws<ArgumentException>(() => store.Save(new Settings(1, false, new WindowPlacement(0, 0, 0, 100))));
             Assert.Throws<ArgumentException>(() => store.Save(new Settings(2, false, null)));
             Assert.False(File.Exists(paths.SettingsFile));
+        }
+    }
+
+    [Fact]
+    public void UpdateAppliesChangeToTheCheckedSnapshotAndRejectsInvalidOrUnreadableFiles()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store) = Fresh();
+        using (data)
+        {
+            SettingsLoad first = store.Update(s => s with { RestoreAutomatically = true });
+            Assert.False(first.Exists);
+            Assert.Equal(Settings.Default, first.Value);
+            Assert.Equal(new Settings(1, true, null), new SettingsStore(paths).Load().Value);
+
+            var placed = new WindowPlacement(40, 80, 1024, 720);
+            new SettingsStore(paths).Save(new Settings(1, true, placed));
+            SettingsLoad second = store.Update(s => s with { RestoreAutomatically = false });
+            Assert.True(second.Exists);
+            Assert.Equal(new Settings(1, true, placed), second.Value);
+            Assert.Equal(new Settings(1, false, placed), new SettingsStore(paths).Load().Value);
+
+            Assert.Throws<ArgumentNullException>(() => store.Update(null!));
+            Assert.Throws<ArgumentException>(() => store.Update(_ => null!));
+            Assert.Throws<ArgumentException>(() => store.Update(s => s with { Window = new WindowPlacement(0, 0, 0, 100) }));
+            Assert.Equal(new Settings(1, false, placed), new SettingsStore(paths).Load().Value);
+
+            Put(paths, "{");
+            byte[] malformed = File.ReadAllBytes(paths.SettingsFile);
+            Assert.Throws<UnreadableSettingsException>(() => store.Update(s => s with { RestoreAutomatically = true }));
+            Assert.Equal(malformed, File.ReadAllBytes(paths.SettingsFile));
         }
     }
 }

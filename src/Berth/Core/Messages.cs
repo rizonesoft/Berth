@@ -13,6 +13,8 @@ internal static class Messages
     public const string Working = "Working";
     public const string Unsaved = "This monitor arrangement has no saved layout yet.";
     public const string UnreadableSettings = "The settings file settings.json could not be read. It was left untouched.";
+    public const string RestoreAutomaticallySetting = "Restore automatically";
+    public const string StartWithWindowsSetting = "Start with Windows";
 
     public const string AutoArrangeWouldNotTurnOff =
         "Windows did not turn auto arrange off. Turn it off from the desktop: right-click, View, Auto arrange icons.";
@@ -215,6 +217,21 @@ internal static class Messages
     {
         string cleanPath = RequireSingleLineToken(path, nameof(path));
         return $"Berth could not read {cleanPath}: {CleanSentence(reason)}.";
+    }
+
+    /// <summary>The SPEC §18 INFO sentence when a setting is turned on or off.</summary>
+    public static string SettingChanged(string setting, bool on)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+
+        return (setting, on) switch
+        {
+            (RestoreAutomaticallySetting, true) => "Restore automatically turned on.",
+            (RestoreAutomaticallySetting, false) => "Restore automatically turned off.",
+            (StartWithWindowsSetting, true) => "Start with Windows turned on.",
+            (StartWithWindowsSetting, false) => "Start with Windows turned off.",
+            _ => throw new ArgumentException($"Unsupported setting '{setting}'.", nameof(setting)),
+        };
     }
 
     /// <summary>The SPEC §18 sentence when changing the Start with Windows registry value fails.</summary>
