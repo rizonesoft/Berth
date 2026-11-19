@@ -104,4 +104,4 @@ A project with a branch workflow replaces the first rule with its own; the other
 
 Plan and build through the TODO system: [docs/todo-workflow.md](./docs/todo-workflow.md).
 
-- **Claude writes the surfaces (owner, 2026-11-19).** A `Surface: yes` section is written by Claude (Opus 5.5), never by Antigravity, which keeps the sections without a surface. Once the SDK's reviewer kit can route a lens (Conclave-SDK D00 T03 §17), the `design` lens of those sections is reviewed by Opus 5.5 at medium effort on the rendered window, and every other lens stays with Astra.
+- **Claude writes the surfaces (owner, 2026-11-19).** A `Surface: yes` section is written by Claude (Opus 5.5), never by Antigravity, which keeps the sections without a surface. Before its review, Opus 5.5 at medium effort checks the rendered window's design once, in a fresh session, and the writer fixes what it finds (Conclave-SDK D00 T03 §17 adds the step to the build skill). That check is the writer's own step, not a review: Astra then reviews the section through the pin's passes, the `design` lens included.
