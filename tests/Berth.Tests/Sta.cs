@@ -82,13 +82,19 @@ public static class Sta
                 _ = workTask.ContinueWith(
                     completed =>
                     {
-                        _ = dispatcher.InvokeAsync(() => { frame.Continue = false; }, DispatcherPriority.Send);
+                        if (!dispatcher.HasShutdownStarted)
+                        {
+                            _ = dispatcher.InvokeAsync(() => { frame.Continue = false; }, DispatcherPriority.Send);
+                        }
                     },
                     CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
 
-                Dispatcher.PushFrame(frame);
+                if (!workTask.IsCompleted)
+                {
+                    Dispatcher.PushFrame(frame);
+                }
             }
             catch (Exception error)
             {
@@ -109,6 +115,11 @@ public static class Sta
                 else if (workTask is null)
                 {
                     tcs.TrySetException(new InvalidOperationException("STA work task was not created."));
+                }
+                else if (!workTask.IsCompleted)
+                {
+                    tcs.TrySetException(new InvalidOperationException(
+                        "STA dispatcher stopped before the work task completed."));
                 }
                 else if (workTask.IsCanceled)
                 {

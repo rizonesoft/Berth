@@ -70,24 +70,58 @@ public sealed class UnitDesktopViewTests
     public void OpenFromMtaThreadThrowsInvalidOperationExceptionBeforeInvokingFactory()
     {
         int factoryCalls = 0;
-        InvalidOperationException? error = null;
+        Exception? caught = null;
 
         var mta = new Thread(() =>
         {
-            error = Assert.Throws<InvalidOperationException>(() =>
-                DesktopView.Open(() =>
+            try
+            {
+                using DesktopView _ = DesktopView.Open(() =>
                 {
                     factoryCalls++;
                     return null;
-                }));
+                });
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
         });
         mta.SetApartmentState(ApartmentState.MTA);
         mta.Start();
         mta.Join();
 
-        Assert.NotNull(error);
+        InvalidOperationException error = Assert.IsType<InvalidOperationException>(caught);
         Assert.Contains("STA", error.Message, StringComparison.Ordinal);
         Assert.Equal(0, factoryCalls);
+    }
+
+    [Fact]
+    public void StaRunAsyncFailsPromptlyWhenDispatcherShutsDownBeforeContinuation()
+    {
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+            Sta.RunAsync(async () =>
+            {
+                Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+                await Task.Yield();
+            }));
+
+        Assert.Contains("dispatcher", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [StaFact]
+    public void FindWindowSwOutOfMemoryHResultWrapsInDesktopUnavailableAndReleasesShellWindows()
+    {
+        const int eOutOfMemory = unchecked((int)0x8007000E);
+        var released = new List<object>();
+        var shellWindows = new FakeShellWindows(hr: eOutOfMemory);
+
+        DesktopUnavailableException error = Assert.Throws<DesktopUnavailableException>(() =>
+            DesktopView.Open(() => shellWindows, released.Add));
+
+        OutOfMemoryException inner = Assert.IsType<OutOfMemoryException>(error.InnerException);
+        Assert.Equal(eOutOfMemory, inner.HResult);
+        Assert.Equal(new object[] { shellWindows }, released);
     }
 
     [StaFact]

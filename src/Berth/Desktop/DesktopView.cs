@@ -64,7 +64,11 @@ internal sealed class DesktopView : IDisposable
                 out dispatchObj);
             if (hr < 0)
             {
-                Marshal.ThrowExceptionForHR(hr);
+                Exception? hrException = Marshal.GetExceptionForHR(hr);
+                throw hrException is not null
+                    ? Unavailable(hrException)
+                    : new DesktopUnavailableException(
+                        $"Explorer desktop window is unavailable (FindWindowSW returned 0x{hr:X8}).");
             }
 
             if (hr != ShellConstants.S_OK || dispatchObj is null)
