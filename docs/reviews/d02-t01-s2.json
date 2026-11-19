@@ -1,0 +1,83 @@
+{
+  "ref": "D02 T01 \u00a72",
+  "title": "The desktop's folder view",
+  "implementation_sha": "a7f3567cbc7d93453b58dbb62b5e579cdfb0ec1c",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s2.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "pwsh scripts/check-all.ps1 (630/630, 0 skipped); DesktopViewTests + LayerRuleTests (56/56, 0 skipped) + 3 mutants"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s2.md",
+    "verdict": "complete",
+    "candidate": "a7f3567cbc7d93453b58dbb62b5e579cdfb0ec1c",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s2.md",
+    "candidate": "b6d2d1bd3373bb6dfad53b7d45a5dfa87a8e9dee",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "b6d2d1bd3373bb6dfad53b7d45a5dfa87a8e9dee",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
