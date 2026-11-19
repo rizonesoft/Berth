@@ -98,15 +98,23 @@ internal sealed class StaWorker : IDisposable
             return work();
         }
 
-        using var item = new WorkItem<T>(work);
+        var item = new WorkItem<T>(work);
+        DispatcherOperation operation;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _ = _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(item.Execute));
+            operation = _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(item.Execute));
             _onItemEnqueued?.Invoke();
         }
 
-        return item.WaitAndGetResult();
+        DispatcherOperationStatus status = operation.Wait();
+        if (status != DispatcherOperationStatus.Completed)
+        {
+            throw new InvalidOperationException(
+                $"The STA worker operation did not complete (status: {status}).");
+        }
+
+        return item.GetResult();
     }
 
     public void Dispose()
@@ -128,9 +136,8 @@ internal sealed class StaWorker : IDisposable
         }
     }
 
-    private sealed class WorkItem<T>(Func<T> work) : IDisposable
+    private sealed class WorkItem<T>(Func<T> work)
     {
-        private readonly ManualResetEventSlim _done = new(false);
         private T? _result;
         private ExceptionDispatchInfo? _error;
 
@@ -144,19 +151,12 @@ internal sealed class StaWorker : IDisposable
             {
                 _error = ExceptionDispatchInfo.Capture(ex);
             }
-            finally
-            {
-                _done.Set();
-            }
         }
 
-        public T WaitAndGetResult()
+        public T GetResult()
         {
-            _done.Wait();
             _error?.Throw();
             return _result!;
         }
-
-        public void Dispose() => _done.Dispose();
     }
 }

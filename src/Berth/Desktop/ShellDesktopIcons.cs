@@ -9,7 +9,7 @@ namespace Berth.Desktop;
 /// </summary>
 internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
 {
-    private readonly StaWorker _worker = new();
+    private readonly StaWorker _worker;
     private readonly Func<DesktopView> _openView;
     private readonly Action<string>? _onMemberExecuted;
 
@@ -23,6 +23,7 @@ internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
         ArgumentNullException.ThrowIfNull(openView);
         _openView = openView;
         _onMemberExecuted = onMemberExecuted;
+        _worker = new StaWorker();
     }
 
     public IReadOnlyList<IconPosition> ReadIcons() =>

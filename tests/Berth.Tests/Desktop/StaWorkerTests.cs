@@ -11,8 +11,15 @@ namespace Berth.Tests.Desktop;
 
 [Collection(DesktopCollectionDefinition.Name)]
 [Trait("Category", "RealDesktop")]
-public sealed class StaWorkerTests
+public sealed partial class StaWorkerTests
 {
+    private const int WmApp = 0x8000;
+    private const int WmPumpProbe = WmApp + 1;
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PostMessageW(nint hWnd, uint msg, nuint wParam, nint lParam);
+
     [Fact]
     public async Task ShellDesktopIconsRunWithViewFromThreadPoolOpensLiveDesktopView()
     {
@@ -32,58 +39,6 @@ public sealed class StaWorkerTests
         Assert.Equal(ApartmentState.MTA, result.CallerApartment);
         Assert.Equal(ApartmentState.STA, result.WorkerApartment);
         Assert.True(result.Count >= 0, $"Expected nonnegative desktop icon count, got {result.Count}.");
-    }
-}
-
-public sealed partial class UnitStaWorkerTests
-{
-    private const int WmApp = 0x8000;
-    private const int WmPumpProbe = WmApp + 1;
-
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool PostMessageW(nint hWnd, uint msg, nuint wParam, nint lParam);
-
-    [Fact]
-    public void RunExecutesOnSingleStaThreadAcrossThreeExternalMtaThreads()
-    {
-        using var worker = new StaWorker();
-        var results = new (int WorkerThreadId, ApartmentState Apartment, bool IsBackground, int CallerThreadId)[3];
-
-        for (int i = 0; i < 3; i++)
-        {
-            int index = i;
-            Exception? threadError = null;
-            var caller = new Thread(() =>
-            {
-                try
-                {
-                    int callerId = Environment.CurrentManagedThreadId;
-                    results[index] = worker.Run(() => (
-                        Environment.CurrentManagedThreadId,
-                        Thread.CurrentThread.GetApartmentState(),
-                        Thread.CurrentThread.IsBackground,
-                        callerId));
-                }
-                catch (Exception ex)
-                {
-                    threadError = ex;
-                }
-            });
-            caller.SetApartmentState(ApartmentState.MTA);
-            caller.Start();
-            Assert.True(caller.Join(TimeSpan.FromSeconds(5)), "External MTA caller thread timed out.");
-            Assert.Null(threadError);
-        }
-
-        int expectedWorkerId = results[0].WorkerThreadId;
-        foreach ((int workerId, ApartmentState apartment, bool isBackground, int callerId) in results)
-        {
-            Assert.Equal(ApartmentState.STA, apartment);
-            Assert.True(isBackground);
-            Assert.Equal(expectedWorkerId, workerId);
-            Assert.NotEqual(callerId, workerId);
-        }
     }
 
     [Fact]
@@ -135,6 +90,52 @@ public sealed partial class UnitStaWorkerTests
             worker.Run(() => setup.Source.Dispose());
         }
     }
+}
+
+public sealed class UnitStaWorkerTests
+{
+
+    [Fact]
+    public void RunExecutesOnSingleStaThreadAcrossThreeExternalMtaThreads()
+    {
+        using var worker = new StaWorker();
+        var results = new (int WorkerThreadId, ApartmentState Apartment, bool IsBackground, int CallerThreadId)[3];
+
+        for (int i = 0; i < 3; i++)
+        {
+            int index = i;
+            Exception? threadError = null;
+            var caller = new Thread(() =>
+            {
+                try
+                {
+                    int callerId = Environment.CurrentManagedThreadId;
+                    results[index] = worker.Run(() => (
+                        Environment.CurrentManagedThreadId,
+                        Thread.CurrentThread.GetApartmentState(),
+                        Thread.CurrentThread.IsBackground,
+                        callerId));
+                }
+                catch (Exception ex)
+                {
+                    threadError = ex;
+                }
+            });
+            caller.SetApartmentState(ApartmentState.MTA);
+            caller.Start();
+            Assert.True(caller.Join(TimeSpan.FromSeconds(5)), "External MTA caller thread timed out.");
+            Assert.Null(threadError);
+        }
+
+        int expectedWorkerId = results[0].WorkerThreadId;
+        foreach ((int workerId, ApartmentState apartment, bool isBackground, int callerId) in results)
+        {
+            Assert.Equal(ApartmentState.STA, apartment);
+            Assert.True(isBackground);
+            Assert.Equal(expectedWorkerId, workerId);
+            Assert.NotEqual(callerId, workerId);
+        }
+    }
 
     [Fact]
     public void NestedRunOnWorkerThreadExecutesInlineWithoutDeadlock()
@@ -146,7 +147,10 @@ public sealed partial class UnitStaWorkerTests
             int outerId = Environment.CurrentManagedThreadId;
             int innerFuncId = worker.Run(() => Environment.CurrentManagedThreadId);
             int innerActionId = 0;
-            worker.Run(() => innerActionId = Environment.CurrentManagedThreadId);
+            worker.Run(() =>
+            {
+                innerActionId = Environment.CurrentManagedThreadId;
+            });
             return (outerId, innerFuncId, innerActionId, Thread.CurrentThread.GetApartmentState());
         });
 
@@ -206,9 +210,11 @@ public sealed partial class UnitStaWorkerTests
         int firstExecutions = 0;
         int secondExecutions = 0;
         int thirdExecutions = 0;
+        var executionOrder = new List<int>(3);
 
         Task<int> firstTask = Task.Run(() => worker.Run(() =>
         {
+            executionOrder.Add(1);
             Interlocked.Increment(ref firstExecutions);
             firstEntered.Set();
             Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(5), ct), "Timed out waiting to release first callback.");
@@ -218,6 +224,7 @@ public sealed partial class UnitStaWorkerTests
 
         Task<int> secondTask = Task.Run(() => worker.Run(() =>
         {
+            executionOrder.Add(2);
             Interlocked.Increment(ref secondExecutions);
             return 202;
         }), ct);
@@ -225,6 +232,7 @@ public sealed partial class UnitStaWorkerTests
 
         Task thirdTask = Task.Run(() => worker.Run(() =>
         {
+            executionOrder.Add(3);
             Interlocked.Increment(ref thirdExecutions);
             throw new InvalidOperationException("queued-failure");
         }), ct);
@@ -250,6 +258,7 @@ public sealed partial class UnitStaWorkerTests
         Assert.Equal(1, firstExecutions);
         Assert.Equal(1, secondExecutions);
         Assert.Equal(1, thirdExecutions);
+        Assert.Equal([1, 2, 3], executionOrder);
         Assert.True(workerThread.Join(TimeSpan.FromSeconds(2)), "Worker thread did not exit after draining.");
         Assert.False(workerThread.IsAlive);
     }
@@ -397,6 +406,12 @@ public sealed partial class UnitStaWorkerTests
             Assert.Equal(expectedWorkerId, threadId);
             Assert.Equal(ApartmentState.STA, apartment);
         }
+    }
+
+    [Fact]
+    public void ShellDesktopIconsRejectsNullViewFactory()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ShellDesktopIcons(null!));
     }
 
     [Fact]
