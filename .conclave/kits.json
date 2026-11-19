@@ -46,7 +46,7 @@
     },
     ".agents/skills/process-phase/SKILL.md": {
       "kit": "todo",
-      "sha256": "b0c55b75e8a045c6b81f11453a2388cd16d25baf7ff1dc6417e7343b2e40c2e0"
+      "sha256": "1ca6ce96b8c6f799d943da6b4b5973186261d54d9c1f4fac913eb19b0a6ef9b1"
     },
     ".agents/skills/process-plan/SKILL.md": {
       "kit": "todo",
@@ -58,7 +58,7 @@
     },
     ".agents/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "01f7cabccffc013cc17f85165d7b0904a9e62c1e76fe0307b7cc11c9d8b1e431"
+      "sha256": "b7820acb493353988704c060b848d216c032ba8880bed97a5efbf4928db3f6fa"
     },
     ".agents/skills/review-todo-section/SKILL.md": {
       "kit": "todo",
@@ -130,11 +130,11 @@
     },
     ".claude/skills/process-phase/SKILL.md": {
       "kit": "todo",
-      "sha256": "6db729c20d11e0256975f63f14ae50702342ef038e979d0c9003c5876247ab5d"
+      "sha256": "f0c9736efbec087d5195aa8b8930683821bd99348da223f539473c4e770decf5"
     },
     ".claude/skills/process-plan/SKILL.md": {
       "kit": "todo",
-      "sha256": "66f9ca16e1bb39970b1848d8b350a09cdeb815a76af1b63aca5cb8dcfdefa83b"
+      "sha256": "0d75a6bef00dca8370255ce632c30818eb2d7bb7e7b8ee329fdaee7034170740"
     },
     ".claude/skills/process-todo-file/SKILL.md": {
       "kit": "todo",
@@ -142,7 +142,7 @@
     },
     ".claude/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "a8afad804c9123ef4945f1c5f36f9f30b897ecab5f74eb542420ddc7dbef48bc"
+      "sha256": "5c97bb5b25599098046db556660a97e3ec2a96943140841f81fbf1733b45ba20"
     },
     ".claude/skills/review-todo-section/SKILL.md": {
       "kit": "todo",
@@ -218,7 +218,7 @@
     },
     ".codex/skills/process-phase/SKILL.md": {
       "kit": "todo",
-      "sha256": "919e424fd64691f903a63058deacfe666fba88bd60cdf7c6fe407b503f731194"
+      "sha256": "55717ae6c561da658f06153b79bb2635398a3ae5cf25fb5a8b51f53707b33f8d"
     },
     ".codex/skills/process-phase/agents/openai.yaml": {
       "kit": "todo",
@@ -242,7 +242,7 @@
     },
     ".codex/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "0b56da3c7ab40221fe98832d981d5ca7f216e8641eed9871dd0e5fb3095bf732"
+      "sha256": "af5f9447904b42230422061f81508fc55b63930d69817d94772b61c2835ebe4a"
     },
     ".codex/skills/process-todo-section/agents/openai.yaml": {
       "kit": "todo",
@@ -292,6 +292,10 @@
       "kit": "reviewer",
       "sha256": "f29a940268338090cdd82993d97e6a01f8eb2806229c255f1a4a4dd6e66083fb"
     },
+    "docs/design-check-prompt.md": {
+      "kit": "todo",
+      "sha256": "2252b9562da5811ddd11978828ca0cf38d790f53664927866d901a139027ca62"
+    },
     "docs/plan-review-prompt.md": {
       "kit": "reviewer",
       "sha256": "da43e71ae848dd2fac254f04976b2cd494b24d40ede69a1bac49868eadf6528f"
@@ -314,7 +318,7 @@
     },
     "scripts/ci_status.py": {
       "kit": "todo",
-      "sha256": "72a5ece79ed3aea70d5b5a20689f1e644c4f65e9842c91840664951e300517c4"
+      "sha256": "ebbd8681e4bebff135c0376b3de87370c54f691f2eeb5099477515fa07cf0df8"
     },
     "scripts/codex-campaign-hook.py": {
       "kit": "todo",
@@ -334,7 +338,7 @@
     },
     "scripts/lib/todo_graph.py": {
       "kit": "todo",
-      "sha256": "d41ce27e5c4f9e395bf761c336440204b50bf407e7e291c16235c3fa76a9289c"
+      "sha256": "bacb8add2f1c81a02f260c164d5c5a234e9a539f0c2f927d172720d585c0d3e1"
     },
     "scripts/merge_prs.py": {
       "kit": "todo",
@@ -378,7 +382,7 @@
     },
     "scripts/todo-graph.py": {
       "kit": "todo",
-      "sha256": "f2d55663966071cfcee1a87a9d080c2b51623a2fd584dd9b09e0991b6b68f748"
+      "sha256": "8f1ad06d54e6ac1d0492a3429d73e652bd7b91e06b1107aca761dbb50fee67e1"
     },
     "scripts/verify-agent-tiers.mjs": {
       "kit": "base",
@@ -431,7 +435,7 @@
         "codex"
       ],
       "host": null,
-      "sdk_commit": "394878c66bdfccbbf4757fc90a9f624d9270ab00"
+      "sdk_commit": "2f8d6e286fec3962faeca465911e888db17f90dc"
     }
   },
   "schema_version": 1

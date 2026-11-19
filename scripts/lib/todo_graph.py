@@ -66,6 +66,13 @@ FILED = re.compile(r"^- Filed: (D\d{2} T\d{2} §[1-9]\d*)(?![\w§]|\.\d)")
 PIN = ".conclave/reviewers.toml"
 PLAN_KEYS = {"report", "candidate", "reviewer", "model", "effort", "lenses"}
 STARTED = re.compile(r"^> \*\*Started:\*\* .+$", re.M)
+# The Corrected note replan writes, naming the chain it kept: a retry finds it whatever day it ran.
+REPLANNED = re.compile(r"re-planned with `todo-graph\.py replan`; the build first began at [^;\n]+; its review chain is "
+                       r"kept as `([^`\n]+)`\.")
+REPLAN_LOCK_SECONDS = 60  # replan holds the section's review lock only while it moves a file and writes the note
+# A section's earlier review chain, kept beside its findings file when the section is re-planned (`replan`, D00 T01
+# §9): `D<NN>-T<NN>-s<N>-chain<k>.md`. It is closed: no pass is appended to it and no stamp takes it.
+KEPT_CHAIN = re.compile(r"-s[1-9]\d*-chain([1-9]\d*)\.md$", re.IGNORECASE)  # Windows folds the case
 # A round scripts/review-dispatch.py recorded in a findings file, reviewed or not ("## Round 2: none").
 ROUND_RECORD = re.compile(r"^## Round ([0-9]+): ", re.M)
 ADJACENCY_KEYS = ["list", "document", "settings", "reporting", "notifications", "permissions",
@@ -515,6 +522,9 @@ def completion_record(root, completion, ref, stamp_sha, commits=None):
     require(isinstance(completion, dict) and isinstance(completion.get("report"), str)
             and isinstance(completion.get("verdict"), str), f"receipt completion is malformed: {ref}")
     report, verdict = completion["report"], completion["verdict"]
+    require(not KEPT_CHAIN.search(report),
+            f"{report} is a kept earlier review chain (`replan`): --completion names the section's own findings file: "
+            f"{ref}")
     require(verdict in COMPLETION_VERDICTS,
             f"--completion verdict must be one of {', '.join(COMPLETION_VERDICTS)}, not {verdict!r}: {ref}")
     path = report_ok(root, report, ref)
@@ -536,7 +546,10 @@ def completion_record(root, completion, ref, stamp_sha, commits=None):
               if dispatch.returned_one_pass(e, "reconciliation")]
     final = passed[-1] if passed else entry
     for earlier in passed[:-1]:
-        require(ending(earlier) == "RECONCILIATION: gaps",
+        # One that ended complete on a changed promise settled nothing (`reconciliation_settles`), so a later one
+        # follows it; any other complete ends the chain.
+        require(ending(earlier) == "RECONCILIATION: gaps"
+                or not reconciliation_settles(root, ref, entry["candidate"], earlier["candidate"]),
                 f"only the last reconciliation in {report} may end RECONCILIATION: complete: {ref}")
     if verdict == "reconciled":
         require(bool(passed), f"completion verdict reconciled needs a returned ## Reconciliation review in {report}: {ref}")
@@ -623,6 +636,8 @@ def plan_record(root, report, ref, commits=None, start=None):
     review returned by a reviewer of another model family, ending in the plan prompt's `PLAN:` and `OVERALL:` verdict
     lines, and its candidate is the commit the build began at (`start`) or one before it."""
     require(isinstance(report, str), f"receipt plan is malformed: {ref}")
+    require(not KEPT_CHAIN.search(report),
+            f"{report} is a kept earlier review chain (`replan`): --plan names the section's own findings file: {ref}")
     expected = section_findings(root, ref)
     require(report == expected,
             f"--plan must be the section's own findings file {expected}, not {report}: {ref}")
@@ -790,6 +805,14 @@ def section_contract(root, sha, ref):
     return re.sub(r"\n{3,}", "\n\n", body).rstrip()
 
 
+def reconciliation_settles(root, ref, failed_candidate, candidate):
+    """Whether a reconciliation that ended complete settles the section's chain: only when its candidate holds the
+    promise the failed completion reviewed (`section_contract`). One that ended complete on a changed promise cannot
+    be stamped, so it settles nothing: the dispatcher takes another reconciliation after it, and `three_pass_ok`
+    reads the chain the same way. One rule for both (D01 T02 §11, after D07 T02 §1 could not stamp, 2026-11-17)."""
+    return section_contract(root, candidate, ref) == section_contract(root, failed_candidate, ref)
+
+
 def three_pass_ok(root, data, ref, found):
     """The three-pass chain: one plan review, exactly one returned round naming its candidate, one completion review,
     then reconciliations up to the section pin's `pass_cap` returned passes in all, each run after the pass before on
@@ -829,8 +852,13 @@ def three_pass_ok(root, data, ref, found):
     worst = [dispatch.review_pin.declared_highest(e["review"]) for e in tail]
     stall = dispatch.review_pin.no_progress_cap(schedule)
     for i in range(len(passed)):
-        require(ended_gaps(tail[i]), f"a reconciliation follows a pass that returned gaps, not one that was complete: {ref}")
-        require("blocking" not in schedule or dispatch.review_pin.blocks(schedule, worst[i]),
+        # A reconciliation before this one that ended complete on a changed promise settled nothing; it is held to
+        # neither the gaps rule nor the blocking levels, since it raised no finding to reconcile.
+        unsettled = i > 0 and not ended_gaps(tail[i]) and not reconciliation_settles(
+            root, ref, completion["candidate"], tail[i]["candidate"])
+        require(ended_gaps(tail[i]) or unsettled,
+                f"a reconciliation follows a pass that returned gaps, not one that was complete: {ref}")
+        require(unsettled or "blocking" not in schedule or dispatch.review_pin.blocks(schedule, worst[i]),
                 f"a reconciliation followed a pass whose worst finding ({worst[i]}) is below the pin's blocking "
                 f"levels; its findings are filed, not reviewed again: {ref}")
         if stall is not None:
@@ -876,7 +904,9 @@ def three_pass_ok(root, data, ref, found):
     # candidates in between are not held to it (D02 T02 §5, 2026-11-12).
     promised = section_contract(root, completion["candidate"], ref)
     require(not passed or section_contract(root, sha, ref) == promised,
-            f"the section's contract changed between the failed completion and its reconciliation: {ref}")
+            f"the section's contract changed between the failed completion and its reconciliation: {ref} (restore "
+            f"the promised text, writing any correction as a dated ' **Corrected YYYY-MM-DD:** ...' note at the end "
+            f"of the line it corrects, commit, and run another reconciliation, which the dispatcher then takes)")
 
 
 def receipt_data_ok(data, ref, stamp_sha, root=None, building=False, commits=None, surface=None):
@@ -2002,6 +2032,86 @@ def rounds_recorded(root, reviews):
     return spent
 
 
+def returned_passes(text):
+    """How many passes a findings file holds that returned a review: plan, rounds, completion and reconciliations
+    (an attempt that returned none counts for nothing), or None when the file cannot be read."""
+    dispatch = review_dispatch()
+    found = dispatch.read_findings(text)
+    if found is None:
+        return None
+    return (sum(dispatch.returned_one_pass(e, "plan") for e in found["plans"])
+            + sum(bool(dispatch.returned_review(e)) for e in found["rounds"])
+            + sum(dispatch.returned_one_pass(e, "completion") for e in found["completions"])
+            + sum(dispatch.returned_one_pass(e, "reconciliation") for e in found["reconciliations"]))
+
+
+def kept_chain_files(root, ref):
+    """The section's kept earlier chains, beside its findings file, in chain order."""
+    own = Path(root) / section_findings(root, ref)
+    found = [(int(m[1]), p) for p in own.parent.glob(f"{own.stem}-chain*.md")
+             if (m := KEPT_CHAIN.search(p.name)) and p.name == f"{own.stem}-chain{m[1]}.md"]
+    return [p for _, p in sorted(found)]
+
+
+def kept_chains(root, ref):
+    """Each kept chain of the section with its returned passes, for `query rounds`."""
+    root = Path(root)
+    # Bytes, not read_text: universal newlines would turn a stored lone "\r" into a line break and break the digest
+    # the dispatcher sealed the review under.
+    return [{"file": p.relative_to(root).as_posix(),
+             "passes_returned": returned_passes(p.read_bytes().decode("utf-8"))} for p in kept_chain_files(root, ref)]
+
+
+def replan(root, ref, date, now):
+    """Re-plan a section whose review chain cannot settle (D00 T01 §9): keep its findings file as the next unused
+    `-chain<k>.md` beside it (never over a kept one), then replace its `Started:` line with `now` and keep the old
+    one in a dated Corrected note naming the kept chain. It runs under the section's review lock, the one the
+    dispatcher holds through a pass, so no pass lands in the file as it moves. Either step done already is not done
+    again, so a retry after a stop finishes the route. The writer then corrects the item, commits the section, and
+    runs a new plan review."""
+    root = Path(root)
+    require(re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) is not None, f"invalid date: {date}")
+    require(re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z", now) is not None, f"invalid instant: {now}")
+    rows = graph(root)
+    require(ref in rows, "unresolved section: " + ref)
+    row = rows[ref]
+    require(not row.done, f"{ref} is stamped: a stamped section is reopened with unstamp, not re-planned")
+    started = STARTED.search(row.body)
+    require(started is not None, f"{ref} has no '> **Started:**' line: re-plan a section whose build began")
+    own = root / section_findings(root, ref)
+    dispatch = review_dispatch()
+    try:
+        dispatch.lock_section(own, REPLAN_LOCK_SECONDS)
+    except dispatch.Refused as exc:
+        raise Refused(f"{exc}: replan waits for it") from None
+    try:
+        chains = kept_chain_files(root, ref)
+        moved = None
+        if own.exists():
+            number = max([int(KEPT_CHAIN.search(p.name)[1]) for p in chains], default=0) + 1
+            moved = own.with_name(f"{own.stem}-chain{number}.md")
+            require(not moved.exists(), f"{moved} exists: a kept chain is never written over")
+            os.replace(own, moved)
+            kept = moved
+        else:
+            require(bool(chains), f"{ref} has no findings file to keep: nothing to re-plan")
+            kept = chains[-1]
+        kept_rel = kept.relative_to(root).as_posix()
+        if REPLANNED.search(row.body) and any(m == kept_rel for m in REPLANNED.findall(row.body)):
+            return {"kept": kept_rel, "started": started.group(0), "done": "already"}
+        old = started.group(0)[len("> **Started:** "):]
+        body = row.body.replace(started.group(0),
+                                f"> **Started:** {now}\n\n**Corrected {date}:** re-planned with `todo-graph.py "
+                                f"replan`; the build first began at {old}; its review chain is kept as `{kept_rel}`.", 1)
+        path = root / row.path
+        text = read_text(path)
+        require(text.count(row.body) == 1, f"section body is not unique in {row.path}")
+        atomic(path, text.replace(row.body, body))
+        return {"kept": kept_rel, "started": f"> **Started:** {now}", "done": "moved" if moved else "noted"}
+    finally:
+        dispatch._release_held()
+
+
 def review_rounds(root=ROOT):
     """Rounds spent per stamped section, from each receipt (or its findings files, for receipts older than the
     rounds_spent field), and a summary for tuning the cap."""
@@ -2009,21 +2119,29 @@ def review_rounds(root=ROOT):
     sections = []
     for row in ordered(graph(root)):
         if not row.done or not row.receipt:
+            # A section re-planned and not yet stamped: its kept chains are the history its new chain builds on.
+            chains = kept_chains(root, row.ref) if not row.done else []
+            if chains:
+                sections.append({"ref": row.ref, "open": True, "kept_chains": chains})
             continue
         data = json.loads(read_text(root / row.receipt))
         spent = data.get("rounds_spent") or rounds_recorded(root, data["reviews"])
-        sections.append({"ref": row.ref, "rounds_spent": spent, "round_cap": data.get("round_cap"),
-                         "verdicts": [r["verdict"] for r in data["reviews"]],
-                         "cap_outcome": data.get("cap_outcome"),
-                         "completion": (data.get("completion") or {}).get("verdict")})
-    spent = [s["rounds_spent"] for s in sections]
+        entry = {"ref": row.ref, "rounds_spent": spent, "round_cap": data.get("round_cap"),
+                 "verdicts": [r["verdict"] for r in data["reviews"]],
+                 "cap_outcome": data.get("cap_outcome"),
+                 "completion": (data.get("completion") or {}).get("verdict")}
+        chains = kept_chains(root, row.ref)
+        if chains:
+            entry["kept_chains"] = chains
+        sections.append(entry)
+    spent = [s["rounds_spent"] for s in sections if "rounds_spent" in s]
     return {"cap": REVIEW_ROUND_CAP, "sections": sections,
-            "summary": {"stamped": len(sections), "rounds": sum(spent),
+            "summary": {"stamped": len(spent), "rounds": sum(spent),
                         "mean": round(sum(spent) / len(spent), 2) if spent else None,
                         "max": max(spent, default=None),
-                        "stopped_at_cap": sum(any(v.startswith("stopped-at-") for v in s["verdicts"])
+                        "stopped_at_cap": sum(any(v.startswith("stopped-at-") for v in s.get("verdicts", ()))
                                               for s in sections),
-                        "stopped_low_severity": sum("stopped-low-severity" in s["verdicts"] for s in sections)}}
+                        "stopped_low_severity": sum("stopped-low-severity" in s.get("verdicts", ()) for s in sections)}}
 
 
 def same_request(persisted, data):
