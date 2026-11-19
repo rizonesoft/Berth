@@ -20,10 +20,11 @@ internal interface IShellFolder
         out nint ppidl,
         ref uint pdwAttributes);
 
-    void EnumObjects(
+    [PreserveSig]
+    int EnumObjects(
         nint hwnd,
         uint grfFlags,
-        [MarshalAs(UnmanagedType.Interface)] out IEnumIDList ppenumIDList);
+        [MarshalAs(UnmanagedType.Interface)] out IEnumIDList? ppenumIDList);
 
     void BindToObject(
         nint pidl,
@@ -55,7 +56,7 @@ internal interface IShellFolder
         uint cidl,
         [In, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)] nint[] apidl,
         in Guid riid,
-        ref uint rgfReserved,
+        nint rgfReserved,
         [MarshalAs(UnmanagedType.Interface)] out object ppv);
 
     void GetDisplayNameOf(nint pidl, uint uFlags, out StrRet pName);

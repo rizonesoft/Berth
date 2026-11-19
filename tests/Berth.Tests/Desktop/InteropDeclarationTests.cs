@@ -381,8 +381,8 @@ public sealed class InteropDeclarationTests
             typeof(IShellFolder),
             1,
             "EnumObjects",
-            typeof(void),
-            PreserveSig: false,
+            typeof(int),
+            PreserveSig: true,
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(IEnumIDList).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
@@ -396,6 +396,19 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        data.Add(new MethodSpec(
+            typeof(IShellFolder),
+            7,
+            "GetUIObjectOf",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint[]), IsIn: true, IsOut: false, UnmanagedType.LPArray, SizeParamIndex: 1),
+            new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
         data.Add(new MethodSpec(
             typeof(IShellFolder),
@@ -414,7 +427,7 @@ public sealed class InteropDeclarationTests
             typeof(int),
             PreserveSig: true,
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
-            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true),
+            new ParamSpec(typeof(nint[]), IsIn: false, IsOut: true, UnmanagedType.LPArray, SizeParamIndex: 0),
             new ParamSpec(typeof(uint).MakeByRefType(), IsIn: false, IsOut: true)));
 
         data.Add(new MethodSpec(
@@ -441,6 +454,68 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(IEnumIDList).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
         return data;
+    }
+
+    [Fact]
+    public void StatusBearingOutParametersAreMarkedNullable()
+    {
+        var nullability = new NullabilityInfoContext();
+
+        ParameterInfo findWindowDisp = DeclaredMethods(typeof(IShellWindows))[8].GetParameters()[5];
+        Assert.Equal("FindWindowSW", findWindowDisp.Member.Name);
+        Assert.Equal("ppdispOut", findWindowDisp.Name);
+        Assert.Equal(NullabilityState.Nullable, nullability.Create(findWindowDisp).WriteState);
+
+        ParameterInfo enumOut = DeclaredMethods(typeof(IShellFolder))[1].GetParameters()[2];
+        Assert.Equal("EnumObjects", enumOut.Member.Name);
+        Assert.Equal("ppenumIDList", enumOut.Name);
+        Assert.Equal(NullabilityState.Nullable, nullability.Create(enumOut).WriteState);
+    }
+
+    [Fact]
+    public void IFolderView2FlattensAllFourteenIFolderViewMethodsVerbatim()
+    {
+        MethodInfo[] baseMethods = DeclaredMethods(typeof(IFolderView));
+        MethodInfo[] derivedMethods = DeclaredMethods(typeof(IFolderView2));
+
+        Assert.Equal(14, baseMethods.Length);
+        Assert.True(derivedMethods.Length >= baseMethods.Length);
+
+        for (int i = 0; i < baseMethods.Length; i++)
+        {
+            MethodInfo expected = baseMethods[i];
+            MethodInfo actualMethod = derivedMethods[i];
+
+            Assert.Equal(expected.Name, actualMethod.Name);
+            Assert.Equal(expected.ReturnType, actualMethod.ReturnType);
+            Assert.Equal(
+                (expected.MethodImplementationFlags & MethodImplAttributes.PreserveSig) != 0,
+                (actualMethod.MethodImplementationFlags & MethodImplAttributes.PreserveSig) != 0);
+            Assert.Equal(
+                expected.ReturnParameter.GetCustomAttribute<MarshalAsAttribute>()?.Value,
+                actualMethod.ReturnParameter.GetCustomAttribute<MarshalAsAttribute>()?.Value);
+
+            ParameterInfo[] expParams = expected.GetParameters();
+            ParameterInfo[] actParams = actualMethod.GetParameters();
+            Assert.Equal(expParams.Length, actParams.Length);
+
+            for (int j = 0; j < expParams.Length; j++)
+            {
+                Assert.Equal(expParams[j].ParameterType, actParams[j].ParameterType);
+                Assert.Equal(expParams[j].IsIn, actParams[j].IsIn);
+                Assert.Equal(expParams[j].IsOut, actParams[j].IsOut);
+
+                UnmanagedType? expMarshal = expParams[j].GetCustomAttribute<MarshalAsAttribute>()?.Value;
+                UnmanagedType? actMarshal = actParams[j].GetCustomAttribute<MarshalAsAttribute>()?.Value;
+                Assert.Equal(expMarshal, actMarshal);
+                if (expMarshal == UnmanagedType.LPArray)
+                {
+                    Assert.Equal(
+                        ReadExplicitLpArraySizeParamIndex(expParams[j]),
+                        ReadExplicitLpArraySizeParamIndex(actParams[j]));
+                }
+            }
+        }
     }
 
     [Theory]

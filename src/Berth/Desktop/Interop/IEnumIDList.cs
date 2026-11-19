@@ -13,7 +13,10 @@ namespace Berth.Desktop.Interop;
 internal interface IEnumIDList
 {
     [PreserveSig]
-    int Next(uint celt, out nint rgelt, out uint pceltFetched);
+    int Next(
+        uint celt,
+        [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] nint[] rgelt,
+        out uint pceltFetched);
 
     [PreserveSig]
     int Skip(uint celt);
