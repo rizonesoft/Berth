@@ -22,7 +22,7 @@ internal sealed class LayoutService(
     /// names it "1 monitor" or "N monitors" (numbered when taken), a later one keeps its name and moves the earlier
     /// icons and time into <c>previous</c>. A given <paramref name="name"/> is validated and stored trimmed.
     /// </summary>
-    public OperationResult Save(string? name = null) => Logged("Save", () => SaveLocked(name), origin: null);
+    public OperationResult Save(string? name = null) => Logged(() => SaveLocked(name));
 
     /// <summary>
     /// Puts the current arrangement's saved icons back (SPEC §15 "Restore"): refused, in this order, when the desktop
@@ -31,7 +31,7 @@ internal sealed class LayoutService(
     /// reads the desktop back and counts. <paramref name="origin"/> (an automatic restore's trigger) rides on the
     /// result and its log line.
     /// </summary>
-    public OperationResult Restore(string? origin = null) => Logged("Restore", () => RestoreLocked(origin), origin);
+    public OperationResult Restore(string? origin = null) => Logged(() => RestoreLocked(origin), origin);
 
     /// <summary>
     /// Whether <c>undo.json</c> holds a valid snapshot for the monitors connected now, without touching the desktop.
@@ -61,25 +61,25 @@ internal sealed class LayoutService(
     /// desktop cannot be reached, when there is nothing to undo for the current arrangement, or while auto arrange is
     /// on. Deletes <c>undo.json</c> only when every snapshot icon still on the desktop matches its saved position.
     /// </summary>
-    public OperationResult Undo() => Logged("Undo", UndoLocked, origin: null);
+    public OperationResult Undo() => Logged(UndoLocked);
 
     /// <summary>
     /// Renames the saved layout of <paramref name="key"/> to trimmed <paramref name="name"/> (SPEC §10), validating
     /// against the other layouts' names and reading the file back before reporting.
     /// </summary>
-    public OperationResult Rename(string key, string name) => Logged("Rename", () => RenameLocked(key, name), origin: null);
+    public OperationResult Rename(string key, string name) => Logged(() => RenameLocked(key, name));
 
     /// <summary>
     /// Swaps the saved layout of <paramref name="key"/> with its <c>previous</c> save (SPEC §10) and reads the file
     /// back before reporting; moves no icons and leaves <c>undo.json</c> untouched.
     /// </summary>
-    public OperationResult Revert(string key) => Logged("Revert", () => RevertLocked(key), origin: null);
+    public OperationResult Revert(string key) => Logged(() => RevertLocked(key));
 
     /// <summary>
     /// Deletes the saved layout of <paramref name="key"/> (SPEC §10) and reads the folder back before reporting; moves
     /// no icons and leaves <c>undo.json</c> untouched.
     /// </summary>
-    public OperationResult Delete(string key) => Logged("Delete", () => DeleteLocked(key), origin: null);
+    public OperationResult Delete(string key) => Logged(() => DeleteLocked(key));
 
     /// <summary>Lets a test act between an operation's read of the layouts and its write. Production leaves it null.</summary>
     internal Action? BeforeWrite { get; init; }
@@ -690,7 +690,7 @@ internal sealed class LayoutService(
     /// nobody expected into a failure that keeps it (SPEC §18 "Something went wrong"), and logs the one result.
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Every operation ends in one result and one log event; an unexpected error is that failure (SPEC §18).")]
-    private OperationResult Logged(string operation, Func<OperationResult> work, string? origin)
+    private OperationResult Logged(Func<OperationResult> work, string? origin = null)
     {
         OperationResult result;
         try
@@ -700,7 +700,7 @@ internal sealed class LayoutService(
         }
         catch (Exception error)
         {
-            result = OperationResult.Failed(FailureKind.Unexpected, path: null, error.Message, error: error);
+            result = OperationResult.Failed(FailureKind.Unexpected, path: null, error.Message ?? string.Empty, error: error);
         }
 
         // An automatic operation's trigger rides on every result, a refusal or failure included.
@@ -709,21 +709,7 @@ internal sealed class LayoutService(
             result = result with { Origin = origin };
         }
 
-        log.Result(result, Describe(operation, result));
+        log.Result(result, Messages.Log(result));
         return result;
     }
-
-    /// <summary>The log text until the messages of SPEC §16 and §18 word it (D01 T01 §16).</summary>
-    private static string Describe(string operation, OperationResult result) =>
-        $"{operation}: {result.Kind}"
-        + (result.LayoutName is null ? string.Empty : $" \"{result.LayoutName}\"")
-        + (result.Kind == OperationKind.Saved ? $", {Formats.IconCount(result.Total)}" : string.Empty)
-        + (result.SavedAt is null ? string.Empty : $", {result.SavedAt.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}")
-        + (result.Refusal == Refusal.None ? string.Empty : $", {result.Refusal}")
-        + (result.NameError == NameError.None ? string.Empty : $" ({result.NameError})")
-        + (result.Path is null ? string.Empty : $", {result.Path}")
-        + (result.Kind is OperationKind.Restored or OperationKind.Undone or OperationKind.Failed && result.Total > 0
-            ? $", {result.InPlace} of {result.Total} in place, {result.NotPlaced} not placed, {result.Missing} missing" : string.Empty)
-        + (result.Detail is null ? string.Empty : $": {result.Detail}")
-        + (result.Origin is null ? string.Empty : $" ({result.Origin})");
 }

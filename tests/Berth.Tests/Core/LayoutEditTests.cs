@@ -88,7 +88,7 @@ public sealed class LayoutEditTests
         }
 
         Assert.Equal(undoBefore, File.ReadAllBytes(rig.Paths.UndoFile));
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Rename: Renamed \"Docked\""], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Renamed layout to \"Docked\"."], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public sealed class LayoutEditTests
         Assert.Equal(OperationResult.Refused(Refusal.InvalidName, nameError: NameError.Taken), taken);
         Assert.Equal(dockedBytes, File.ReadAllBytes(rig.Paths.LayoutFile(dockedKey)));
         Assert.Equal(laptopBytes, File.ReadAllBytes(laptopFile));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Rename: Refused, InvalidName (Taken)"], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Another layout already has this name."], LinesAfter(rig, logged));
 
         // While another layout is held open by another program, a name needing LoadAll refuses with UnreadableLayout.
         using (new FileStream(rig.Paths.LayoutFile(dockedKey), FileMode.Open, FileAccess.Read, FileShare.None))
@@ -176,7 +176,7 @@ public sealed class LayoutEditTests
         Assert.Equal(t1, afterFirst.SavedAt);
         Assert.Equal(first, afterFirst.Icons);
         Assert.Equal(new PreviousSave(t2, [.. second]), afterFirst.Previous);
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Revert: Reverted \"Docked\", 2026-11-15T07:00:00Z"], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Reverted \"Docked\" to the save from 2026-11-15T07:00:00Z."], LinesAfter(rig, logged));
 
         OperationResult secondRevert = EditService(rig).Revert(dockedKey);
 
@@ -203,7 +203,7 @@ public sealed class LayoutEditTests
 
         Assert.Equal(OperationResult.Refused(Refusal.NoPreviousSave), result);
         Assert.Equal(before, File.ReadAllBytes(rig.File));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Revert: Refused, NoPreviousSave"], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z WARN This layout has no previous save."], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public sealed class LayoutEditTests
         Assert.Null(new LayoutStore(rig.Paths).Find(dockedKey));
         Assert.Equal(laptopBytes, File.ReadAllBytes(laptopFile));
         Assert.Equal(undoBefore, File.ReadAllBytes(rig.Paths.UndoFile));
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Delete: Deleted \"Docked\""], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Deleted layout \"Docked\"."], LinesAfter(rig, logged));
     }
 
     [Theory]
@@ -326,7 +326,8 @@ public sealed class LayoutEditTests
         Assert.Equal(FailureKind.Unexpected, nullKey.Failure);
         Assert.IsType<ArgumentNullException>(nullKey.Error);
         string[] nullLines = LinesAfter(rig, logged);
-        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed", nullLines[0], StringComparison.Ordinal);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", nullLines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", nullLines[0], StringComparison.Ordinal);
         Assert.Contains(nullLines.Skip(1), line => line.StartsWith("  System.ArgumentNullException:", StringComparison.Ordinal));
         Assert.Contains(nullLines.Skip(1), line => line.StartsWith("  ", StringComparison.Ordinal) && line.Contains("LayoutService", StringComparison.Ordinal));
 
@@ -337,7 +338,9 @@ public sealed class LayoutEditTests
             Assert.Equal(OperationKind.Failed, nullName.Kind);
             Assert.Equal(FailureKind.Unexpected, nullName.Failure);
             Assert.IsType<ArgumentNullException>(nullName.Error);
-            Assert.StartsWith("2026-11-15T07:14:03Z FAIL Rename: Failed", LinesAfter(rig, renameNullLogged)[0], StringComparison.Ordinal);
+            string[] renameNullLines = LinesAfter(rig, renameNullLogged);
+            Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", renameNullLines[0], StringComparison.Ordinal);
+            Assert.EndsWith(". The details are in the log.", renameNullLines[0], StringComparison.Ordinal);
         }
 
         foreach (string badKey in new[] { "", "   ", "not-a-key", "../escape", rig.Key.ToUpperInvariant(), "0123456789abcdef" })
@@ -345,7 +348,7 @@ public sealed class LayoutEditTests
             int beforeRefusal = rig.LogLines().Length;
             OperationResult refused = Run(EditService(rig), operation, badKey);
             Assert.Equal(OperationResult.Refused(Refusal.NoLayout), refused);
-            Assert.Equal([$"2026-11-15T07:14:03Z WARN {operation}: Refused, NoLayout"], LinesAfter(rig, beforeRefusal));
+            Assert.Equal(["2026-11-15T07:14:03Z WARN This monitor arrangement has no saved layout."], LinesAfter(rig, beforeRefusal));
         }
 
         Assert.Equal(before, File.ReadAllBytes(rig.File));
@@ -430,7 +433,7 @@ public sealed class LayoutEditTests
         }
 
         string added = Assert.Single(LinesAfter(rig, logged));
-        Assert.StartsWith($"2026-11-15T07:14:03Z WARN {operation}: Refused, UnreadableLayout, {expectedName}: ", added, StringComparison.Ordinal);
+        Assert.Equal($"2026-11-15T07:14:03Z WARN The layout file {expectedName} could not be read. It was left untouched.", added);
     }
 
     [Theory]
@@ -459,8 +462,8 @@ public sealed class LayoutEditTests
         Assert.False(string.IsNullOrWhiteSpace(result.Detail));
         Assert.Equal(before, File.ReadAllBytes(rig.File));
         string added = Assert.Single(LinesAfter(rig, logged));
-        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed ", added, StringComparison.Ordinal);
-        Assert.Contains(rig.File, added, StringComparison.Ordinal);
+        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL Berth could not write {rig.File}: ", added, StringComparison.Ordinal);
+        Assert.EndsWith(".", added, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -507,21 +510,22 @@ public sealed class LayoutEditTests
 
         if (change == "damaged")
         {
-            Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, Path.GetFileName(rig.File)), (result.Kind, result.Refusal, result.Path));
+            string fileName = Path.GetFileName(rig.File);
+            Assert.Equal((OperationKind.Refused, Refusal.UnreadableLayout, fileName), (result.Kind, result.Refusal, result.Path));
             Assert.Equal(kept, File.ReadAllBytes(rig.File));
-            Assert.StartsWith($"2026-11-15T07:14:03Z WARN {operation}: Refused, UnreadableLayout", added, StringComparison.Ordinal);
+            Assert.Equal($"2026-11-15T07:14:03Z WARN The layout file {fileName} could not be read. It was left untouched.", added);
         }
         else if (change == "edited")
         {
             Assert.Equal((OperationKind.Failed, FailureKind.WriteFailed, rig.File), (result.Kind, result.Failure, result.Path));
             Assert.Equal(kept, File.ReadAllBytes(rig.File));
-            Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed", added, StringComparison.Ordinal);
+            Assert.StartsWith($"2026-11-15T07:14:03Z FAIL Berth could not write {rig.File}: ", added, StringComparison.Ordinal);
         }
         else
         {
             Assert.Equal((OperationKind.Failed, FailureKind.WriteFailed, rig.File), (result.Kind, result.Failure, result.Path));
             Assert.Equal(kept, File.ReadAllBytes(aside));
-            Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed", added, StringComparison.Ordinal);
+            Assert.StartsWith($"2026-11-15T07:14:03Z FAIL Berth could not write {rig.File}: ", added, StringComparison.Ordinal);
         }
     }
 
@@ -561,7 +565,8 @@ public sealed class LayoutEditTests
         Assert.Equal((OperationKind.Failed, FailureKind.WriteFailed, rig.File), (result.Kind, result.Failure, result.Path));
         Assert.False(string.IsNullOrWhiteSpace(result.Detail));
         string added = Assert.Single(LinesAfter(rig, logged));
-        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed", added, StringComparison.Ordinal);
+        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL Berth could not write {rig.File}: ", added, StringComparison.Ordinal);
+        Assert.EndsWith(".", added, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -581,7 +586,8 @@ public sealed class LayoutEditTests
         Assert.False(string.IsNullOrWhiteSpace(result.Detail));
         Assert.Equal("file where folder belongs", File.ReadAllText(rig.Paths.LayoutsFolder));
         string added = Assert.Single(LinesAfter(rig, logged));
-        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed, {rig.Paths.LayoutsFolder}: ", added, StringComparison.Ordinal);
+        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL Berth could not read {rig.Paths.LayoutsFolder}: ", added, StringComparison.Ordinal);
+        Assert.EndsWith(".", added, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -600,7 +606,7 @@ public sealed class LayoutEditTests
             OperationResult result = Run(EditService(rig), operation, rig.Key);
             Assert.Equal(OperationResult.Refused(Refusal.Busy), result);
             Assert.Equal(before, File.ReadAllBytes(rig.File));
-            Assert.Equal([$"2026-11-15T07:14:03Z WARN {operation}: Refused, Busy"], LinesAfter(rig, logged));
+            Assert.Equal(["2026-11-15T07:14:03Z WARN Berth is busy with another save or restore. Try again in a moment."], LinesAfter(rig, logged));
         }
 
         // Even when the layouts path would fail to read, Busy refuses before touching disk.
@@ -762,7 +768,8 @@ public sealed class LayoutEditTests
         Assert.Equal(FailureKind.Unexpected, result.Failure);
         Assert.NotNull(result.Error);
         string[] lines = LinesAfter(rig, logged);
-        Assert.StartsWith($"2026-11-15T07:14:03Z FAIL {operation}: Failed", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", lines[0], StringComparison.Ordinal);
         Assert.Contains(lines.Skip(1), line => line.StartsWith("  ", StringComparison.Ordinal) && line.Contains("OperationLock", StringComparison.Ordinal));
     }
 

@@ -187,12 +187,15 @@ public sealed class RestoreTests
             }
         };
 
+        int logged = rig.LogLines().Length;
+
         OperationResult result = rig.Service().Restore();
 
         Assert.Equal((OperationKind.Failed, FailureKind.DisplaysChanged, "2 monitors"), (result.Kind, result.Failure, result.LayoutName));
         Assert.Empty(rig.Desktop.Calls);
         Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
         Assert.False(File.Exists(rig.Paths.UndoFile + ".next"));
+        Assert.Equal(["2026-11-15T07:14:03Z FAIL The displays changed before any icon was moved."], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -206,6 +209,9 @@ public sealed class RestoreTests
 
         Assert.Equal((OperationKind.Failed, FailureKind.ReadFailed, rig.Paths.LayoutsFolder), (result.Kind, result.Failure, result.Path));
         Assert.Empty(rig.Desktop.Calls);
+        string line = Assert.Single(rig.LogLines());
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Berth could not read " + rig.Paths.LayoutsFolder + ": ", line, StringComparison.Ordinal);
+        Assert.EndsWith(".", line, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -327,25 +333,28 @@ public sealed class RestoreTests
     public void ADesktopLostWhilePlacingIsAFailureWithoutCountsThatKeepsTheWayBack()
     {
         using Rig rig = Saved([A], A with { X = 1 });
+        int logged = rig.LogLines().Length;
         rig.Desktop.UnavailableOnSet = true;
 
         OperationResult result = rig.Service().Restore();
 
         Assert.Equal((OperationKind.Failed, FailureKind.DesktopUnavailable, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
         Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
+        Assert.Equal(["2026-11-15T07:14:03Z FAIL The desktop could not be reached while the icons were being placed. Undo puts back what was there."], LinesAfter(rig, logged));
     }
 
     [Fact]
     public void ADesktopLostWhileReadingBackIsAFailureWithoutCounts()
     {
         using Rig rig = Saved([A], A with { X = 1 });
+        int logged = rig.LogLines().Length;
         rig.Desktop.BeforeSet = () => rig.Desktop.Unavailable = true;
 
         OperationResult result = rig.Service().Restore();
 
         Assert.Equal((OperationKind.Failed, 0), (result.Kind, result.Total));
         Assert.Equal([A with { X = 1 }], ReadUndo(rig).Icons);
-        Assert.Single(rig.LogLines(), line => line.Contains(" FAIL Restore: Failed", StringComparison.Ordinal));
+        Assert.Equal(["2026-11-15T07:14:03Z FAIL The desktop could not be reached while the icons were being placed. Undo puts back what was there."], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -359,7 +368,7 @@ public sealed class RestoreTests
 
         Assert.Equal((OperationKind.Failed, "boom"), (result.Kind, result.Detail));
         string[] lines = LinesAfter(rig, logged);
-        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Restore: Failed: boom", lines[0], StringComparison.Ordinal);
+        Assert.Equal("2026-11-15T07:14:03Z FAIL Something went wrong: boom. The details are in the log.", lines[0]);
         Assert.Equal("  System.InvalidOperationException: boom", lines[1]);
         Assert.All(lines.Skip(1), line => Assert.StartsWith("  ", line, StringComparison.Ordinal));
     }
@@ -378,7 +387,7 @@ public sealed class RestoreTests
         Assert.Empty(rig.Desktop.Calls);
         Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
         Assert.Equal(layout, File.ReadAllBytes(rig.File));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Restore: Refused, Busy (automatic, display change)"], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Berth is busy with another save or restore. Try again in a moment. (automatic, display change)"], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -397,10 +406,10 @@ public sealed class RestoreTests
 
         Assert.Equal(
             [
-                "2026-11-15T07:14:03Z INFO Restore: Restored \"2 monitors\", 2 of 2 in place, 0 not placed, 0 missing (automatic, display change)",
-                "2026-11-15T07:14:03Z INFO Restore: Restored \"2 monitors\", 2 of 2 in place, 0 not placed, 0 missing",
-                "2026-11-15T07:14:03Z WARN Restore: Refused \"2 monitors\", AutoArrange (automatic, display change)",
-                "2026-11-15T07:14:03Z FAIL Restore: Failed \"2 monitors\", 0 of 2 in place, 2 not placed, 0 missing (automatic, display change)",
+                "2026-11-15T07:14:03Z INFO Restored 2 icons from \"2 monitors\". (automatic, display change)",
+                "2026-11-15T07:14:03Z INFO Restored 2 icons from \"2 monitors\".",
+                "2026-11-15T07:14:03Z WARN Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again. (automatic, display change)",
+                "2026-11-15T07:14:03Z FAIL Restored 0 of 2 icons from \"2 monitors\". 2 did not stay where they were saved. (automatic, display change)",
             ],
             LinesAfter(rig, logged));
     }

@@ -419,6 +419,7 @@ public sealed class UndoTests
         using (var rig = new Rig(A with { X = 1 }))
         {
             byte[] undo = SeedUndo(rig, rig.Key, A);
+            int logged = rig.LogLines().Length;
             rig.Desktop.BeforeSet = () => rig.Monitors.Monitors = [Rig.Main];
 
             OperationResult result = rig.Service().Undo();
@@ -426,12 +427,14 @@ public sealed class UndoTests
             Assert.Equal((OperationKind.Failed, FailureKind.DisplaysChanged, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
             Assert.Single(rig.Desktop.Calls);
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+            Assert.Equal(["2026-11-15T07:14:03Z FAIL The displays changed before the undo could be checked."], LinesAfter(rig, logged));
         }
 
         // Display change during post-move ReadIcons() fails with DisplaysChanged, makes no second move, and preserves undo.json.
         using (var rig = new Rig(A with { X = 1 }))
         {
             byte[] undo = SeedUndo(rig, rig.Key, A);
+            int logged = rig.LogLines().Length;
             int reads = rig.Monitors.Reads;
             rig.Monitors.AfterRead = read =>
             {
@@ -446,6 +449,7 @@ public sealed class UndoTests
             Assert.Equal((OperationKind.Failed, FailureKind.DisplaysChanged, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
             Assert.Single(rig.Desktop.Calls);
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+            Assert.Equal(["2026-11-15T07:14:03Z FAIL The displays changed before the undo could be checked."], LinesAfter(rig, logged));
         }
     }
 
@@ -492,24 +496,28 @@ public sealed class UndoTests
         using (var rig = new Rig(A with { X = 1 }))
         {
             byte[] undo = SeedUndo(rig, rig.Key, A);
+            int logged = rig.LogLines().Length;
             rig.Desktop.UnavailableOnSet = true;
 
             OperationResult result = rig.Service().Undo();
 
             Assert.Equal((OperationKind.Failed, FailureKind.DesktopUnavailable, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+            Assert.Equal(["2026-11-15T07:14:03Z FAIL The desktop could not be reached while the icons were being placed."], LinesAfter(rig, logged));
         }
 
         // Explorer lost during read-back.
         using (var rig = new Rig(A with { X = 1 }))
         {
             byte[] undo = SeedUndo(rig, rig.Key, A);
+            int logged = rig.LogLines().Length;
             rig.Desktop.BeforeSet = () => rig.Desktop.Unavailable = true;
 
             OperationResult result = rig.Service().Undo();
 
             Assert.Equal((OperationKind.Failed, FailureKind.DesktopUnavailable, 0, 0, 0, 0), (result.Kind, result.Failure, result.Total, result.InPlace, result.NotPlaced, result.Missing));
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+            Assert.Equal(["2026-11-15T07:14:03Z FAIL The desktop could not be reached while the icons were being placed."], LinesAfter(rig, logged));
         }
 
         // Unexpected exception: Failed with Unexpected, preserved undo.json, and multi-line FAIL log event (SPEC §18).
@@ -525,7 +533,7 @@ public sealed class UndoTests
             Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
             string[] lines = LinesAfter(rig, logged);
             Assert.Single(lines, line => !line.StartsWith("  ", StringComparison.Ordinal));
-            Assert.Equal("2026-11-15T07:14:03Z FAIL Undo: Failed: boom", lines[0]);
+            Assert.Equal("2026-11-15T07:14:03Z FAIL Something went wrong: boom. The details are in the log.", lines[0]);
             Assert.Equal("  System.InvalidOperationException: boom", lines[1]);
             Assert.True(lines.Length > 2);
             Assert.All(lines.Skip(1), line => Assert.StartsWith("  ", line, StringComparison.Ordinal));
@@ -546,7 +554,7 @@ public sealed class UndoTests
         Assert.Equal((0, 0), (rig.Desktop.Reads, rig.Monitors.Reads));
         Assert.Empty(rig.Desktop.Calls);
         Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Undo: Refused, Busy"], LinesAfter(rig, logged));
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Berth is busy with another save or restore. Try again in a moment."], LinesAfter(rig, logged));
     }
 
     [Fact]
@@ -565,9 +573,9 @@ public sealed class UndoTests
 
         Assert.Equal(
             [
-                "2026-11-15T07:14:03Z INFO Undo: Undone, 2 of 2 in place, 0 not placed, 0 missing",
-                "2026-11-15T07:14:03Z WARN Undo: Refused, NothingToUndo",
-                "2026-11-15T07:14:03Z FAIL Undo: Failed, 0 of 2 in place, 2 not placed, 0 missing",
+                "2026-11-15T07:14:03Z INFO Put 2 icons back.",
+                "2026-11-15T07:14:03Z WARN There is nothing to undo.",
+                "2026-11-15T07:14:03Z FAIL Put 0 of 2 icons back. 2 did not stay where they were.",
             ],
             LinesAfter(rig, logged));
     }

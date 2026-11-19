@@ -78,7 +78,7 @@ public sealed class SaveTests
         Assert.Equal(Three, stored.Icons);
         Assert.Equal(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), stored.SavedAt);
         Assert.Null(stored.Previous);
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Save: Saved \"2 monitors\", 3 icons"], rig.LogLines());
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 3 icons to \"2 monitors\"."], rig.LogLines());
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class SaveTests
         OperationResult result = rig.Service().Save();
 
         Assert.Equal(OperationResult.Saved("2 monitors", 1, replacedEarlierSave: false), result);
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Save: Saved \"2 monitors\", 1 icon"], rig.LogLines());
+        Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 1 icon to \"2 monitors\"."], rig.LogLines());
     }
 
     [Fact]
@@ -154,6 +154,7 @@ public sealed class SaveTests
     {
         using var rig = new Rig(Three);
         rig.Service().Save();
+        int logged = rig.LogLines().Length;
         byte[]? edited = null;
         rig.BeforeWrite = () =>
         {
@@ -167,6 +168,9 @@ public sealed class SaveTests
         Assert.Equal(OperationKind.Failed, result.Kind);
         Assert.Equal(rig.File, result.Path);
         Assert.Equal(edited, System.IO.File.ReadAllBytes(rig.File));
+        Assert.Equal(
+            [$"2026-11-15T07:14:03Z FAIL Berth could not write {rig.File}: The layout file changed while it was being saved. It was left as it is."],
+            rig.LogLines().Skip(logged));
     }
 
     [Fact]
@@ -205,7 +209,7 @@ public sealed class SaveTests
 
         Assert.Equal(OperationResult.Refused(Refusal.DesktopUnavailable), result);
         Assert.False(Directory.Exists(rig.Paths.LayoutsFolder));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Save: Refused, DesktopUnavailable"], rig.LogLines());
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Berth cannot reach the desktop. Explorer may be restarting."], rig.LogLines());
     }
 
     [Theory]
@@ -279,7 +283,8 @@ public sealed class SaveTests
 
         // The failed call added exactly one event: its FAIL line naming the file.
         string added = Assert.Single(rig.LogLines().Skip(logged));
-        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed \"2 monitors\", " + rig.File + ": ", added, StringComparison.Ordinal);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Berth could not write " + rig.File + ": ", added, StringComparison.Ordinal);
+        Assert.EndsWith(".", added, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -293,7 +298,9 @@ public sealed class SaveTests
 
         Assert.Equal((OperationKind.Failed, FailureKind.ReadFailed, rig.Paths.LayoutsFolder), (result.Kind, result.Failure, result.Path));
         Assert.Equal("a file where the layouts folder belongs", System.IO.File.ReadAllText(rig.Paths.LayoutsFolder));
-        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed, " + rig.Paths.LayoutsFolder + ": ", Assert.Single(rig.LogLines()), StringComparison.Ordinal);
+        string line = Assert.Single(rig.LogLines());
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Berth could not read " + rig.Paths.LayoutsFolder + ": ", line, StringComparison.Ordinal);
+        Assert.EndsWith(".", line, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -308,7 +315,8 @@ public sealed class SaveTests
         Assert.IsType<ArgumentException>(result.Error);
         Assert.Equal(result.Error!.Message, result.Detail);
         string[] lines = rig.LogLines();
-        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Save: Failed", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", lines[0], StringComparison.Ordinal);
         Assert.Equal("  System.ArgumentException: " + result.Error.Message.Split('\n')[0].TrimEnd('\r'), lines[1]);
         Assert.Contains(lines, line => line.StartsWith("  ", StringComparison.Ordinal) && line.Contains("LayoutStore", StringComparison.Ordinal));
         Assert.False(System.IO.File.Exists(rig.File));
@@ -325,7 +333,7 @@ public sealed class SaveTests
         Assert.Equal(OperationResult.Refused(Refusal.Busy), result);
         Assert.Equal((0, 0), (rig.Desktop.Reads, rig.Monitors.Reads));
         Assert.False(Directory.Exists(rig.Paths.LayoutsFolder));
-        Assert.Equal(["2026-11-15T07:14:03Z WARN Save: Refused, Busy"], rig.LogLines());
+        Assert.Equal(["2026-11-15T07:14:03Z WARN Berth is busy with another save or restore. Try again in a moment."], rig.LogLines());
     }
 
     [Fact]
@@ -411,7 +419,11 @@ public sealed class SaveTests
 
         Assert.Equal(OperationKind.Failed, result.Kind);
         Assert.NotNull(result.Error);
-        Assert.Single(rig.LogLines(), line => line.Contains(" FAIL Save: Failed", StringComparison.Ordinal));
+        string[] lines = rig.LogLines();
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", lines[0], StringComparison.Ordinal);
+        Assert.Contains("WaitHandleCannotBeOpenedException", lines[1], StringComparison.Ordinal);
+        Assert.All(lines.Skip(1), line => Assert.StartsWith("  ", line, StringComparison.Ordinal));
     }
 
     [Fact]
