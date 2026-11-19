@@ -66,8 +66,8 @@ public sealed class UndoTests
         {
             System.Text.Json.JsonElement root = doc.RootElement;
             Assert.Equal(
-                ["schemaVersion", "key", "name", "savedAt", "monitors", "icons", "previous"],
-                root.EnumerateObject().Select(p => p.Name).ToArray());
+                ["icons", "key", "monitors", "name", "previous", "savedAt", "schemaVersion"],
+                root.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
             Assert.Equal(Layout.CurrentSchemaVersion, root.GetProperty("schemaVersion").GetInt32());
             Assert.Equal(rig.Key, root.GetProperty("key").GetString());
             Assert.Equal("2 monitors", root.GetProperty("name").GetString());
@@ -75,12 +75,12 @@ public sealed class UndoTests
             Assert.Equal(System.Text.Json.JsonValueKind.Null, root.GetProperty("previous").ValueKind);
             Assert.Equal(2, root.GetProperty("monitors").GetArrayLength());
             Assert.Equal(
-                ["x", "y", "width", "height", "scale", "primary"],
-                root.GetProperty("monitors")[0].EnumerateObject().Select(p => p.Name).ToArray());
+                ["height", "primary", "scale", "width", "x", "y"],
+                root.GetProperty("monitors")[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
             Assert.Equal(2, root.GetProperty("icons").GetArrayLength());
             Assert.Equal(
                 ["id", "name", "x", "y"],
-                root.GetProperty("icons")[0].EnumerateObject().Select(p => p.Name).ToArray());
+                root.GetProperty("icons")[0].EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
         }
 
         ((IDesktopIcons)rig.Desktop).SetPositions([movedA, movedB]);

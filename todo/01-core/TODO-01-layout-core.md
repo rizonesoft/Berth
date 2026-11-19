@@ -688,5 +688,5 @@ Filed 2026-11-19 from the D01 T01 §16 completion review (P3, below the pin's bl
 
 ## Verification
 
-- With `FakeDesktopIcons`, a save, a move, a restore and an undo leave the fake desktop where it started, the layout file in the SPEC §14 shape, and one log line per operation.
+- With `FakeDesktopIcons`, a save, a move, a restore and an undo return the fake desktop to the saved positions on restore and to the pre-restore moved positions on undo (clarified 2026-11-19), leaving the layout file in the SPEC §14 shape and one log line per operation.
 - `python scripts/todo-graph.py validate` and `python scripts/todo-graph.py plan --check` pass.

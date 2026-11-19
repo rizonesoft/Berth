@@ -246,9 +246,9 @@ internal static partial class JsonFile
     /// Creates the redo note, waiting out a brief delete-pending state if an earlier writer or recovery just called
     /// <see cref="File.Delete(string)"/> before closing its handle.
     /// </summary>
-    private static FileStream CreatePendingNote(string pending) => CreatePendingNote(pending, afterCreateDenied: null);
+    private static FileStream CreatePendingNote(string pending) => CreatePendingNote(pending, afterCreateDenied: null, sleep: null);
 
-    internal static FileStream CreatePendingNote(string pending, Action<int>? afterCreateDenied)
+    internal static FileStream CreatePendingNote(string pending, Action<int>? afterCreateDenied = null, Action<int>? sleep = null)
     {
         DateTime giveUp = DateTime.UtcNow + LiveSaveWait;
         int failures = 0;
@@ -271,7 +271,7 @@ internal static partial class JsonFile
                     }
 
                     retriedAfterGone = false;
-                    Thread.Sleep(20);
+                    (sleep ?? Thread.Sleep)(20);
                 }
                 else
                 {

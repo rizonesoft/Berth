@@ -360,6 +360,7 @@ public sealed partial class JsonFileTests
         Directory.CreateDirectory(paths.DataRoot);
         string pending = paths.SettingsFile + JsonFile.PendingSuffix;
         using Microsoft.Win32.SafeHandles.SafeFileHandle closing = OpenDeletePending(pending);
+        var sleeps = new List<int>();
 
         using FileStream note = JsonFile.CreatePendingNote(
             pending,
@@ -369,10 +370,12 @@ public sealed partial class JsonFileTests
                 {
                     closing.Dispose();
                 }
-            });
+            },
+            sleep: sleeps.Add);
         note.WriteByte((byte)'x');
 
         Assert.True(File.Exists(pending));
+        Assert.Equal([20], sleeps);
     }
 
     [Fact]
@@ -392,13 +395,15 @@ public sealed partial class JsonFileTests
         try
         {
             int attempts = 0;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var sleeps = new List<int>();
             Assert.Throws<UnauthorizedAccessException>(() =>
-                JsonFile.CreatePendingNote(Path.Combine(deniedDir, "x.berth-pending"), afterCreateDenied: _ => attempts++));
-            sw.Stop();
+                JsonFile.CreatePendingNote(
+                    Path.Combine(deniedDir, "x.berth-pending"),
+                    afterCreateDenied: _ => attempts++,
+                    sleep: sleeps.Add));
 
             Assert.Equal(2, attempts);
-            Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(500), $"CreatePendingNote took {sw.Elapsed}");
+            Assert.Empty(sleeps);
         }
         finally
         {
