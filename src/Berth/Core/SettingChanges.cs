@@ -39,11 +39,16 @@ internal sealed class SettingChanges
     public SettingChange SetRestoreAutomatically(bool on, bool? current = null)
     {
         SettingsLoad before = store.Load();
-        bool rollback = before.Unreadable is null ? before.Value.RestoreAutomatically : (current ?? !on);
+        bool rollback = current ?? !on;
         if (before.Unreadable is not null)
         {
             log.Fail(Messages.UnreadableSettings);
             return new SettingChange(Applied: false, Value: rollback, Message: Messages.UnreadableSettings);
+        }
+
+        if (before.Exists)
+        {
+            rollback = before.Value.RestoreAutomatically;
         }
 
         for (int attempt = 1; attempt <= MaxSaveAttempts; attempt++)
@@ -91,6 +96,12 @@ internal sealed class SettingChanges
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
+                SettingsLoad latest = store.Load();
+                if (latest.Exists && latest.Unreadable is null)
+                {
+                    rollback = latest.Value.RestoreAutomatically;
+                }
+
                 string writeMessage = Messages.WriteFailed(store.FilePath, error.Message ?? string.Empty);
                 log.Fail(writeMessage);
                 return new SettingChange(Applied: false, Value: rollback, Message: writeMessage);

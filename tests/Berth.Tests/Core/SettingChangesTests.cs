@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using Berth.Core;
 using Berth.Core.Model;
@@ -320,8 +322,91 @@ public sealed class SettingChangesTests
 
             Assert.False(result.Applied);
             Assert.True(result.Value);
+            string expectedReason = deleteFile
+                ? "The settings file read back after saving did not hold the new value."
+                : new SettingsStore(paths).Load().Unreadable!;
+            string expectedMessage = Messages.WriteFailed(paths.SettingsFile, expectedReason);
+            Assert.Equal(new SettingChange(Applied: false, Value: true, Message: expectedMessage), result);
+            Assert.Equal([$"{Stamp} FAIL {expectedMessage}"], ReadLogLines(paths));
+        }
+    }
+
+    [Fact]
+    public void ConcurrentUpdateFollowedByReadOnlyRefusalPreservesLatestPersistedState()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store, Log log, _) = Fresh();
+        using (data)
+        {
+            var placement = new WindowPlacement(100, 100, 980, 640);
+            store.Save(new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: false, Window: placement));
+
+            var changes = new SettingChanges(store, log)
+            {
+                BeforeSave = _ =>
+                {
+                    new SettingsStore(paths).Save(
+                        new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: placement));
+                    File.SetAttributes(paths.SettingsFile, FileAttributes.ReadOnly);
+                },
+            };
+
+            SettingChange result;
+            try
+            {
+                result = changes.SetRestoreAutomatically(true);
+            }
+            finally
+            {
+                if (File.Exists(paths.SettingsFile))
+                {
+                    File.SetAttributes(paths.SettingsFile, FileAttributes.Normal);
+                }
+            }
+
+            Assert.False(result.Applied);
+            Assert.True(result.Value);
             Assert.NotNull(result.Message);
             Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
+            Assert.Equal(
+                new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: placement),
+                new SettingsStore(paths).Load().Value);
+            Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
+        }
+    }
+
+    [Fact]
+    public void MissingSettingsFileInDirectoryDenyingCreationPreservesCallerCurrentState()
+    {
+        (TestData data, BerthPaths paths, _, _, SettingChanges changes) = Fresh();
+        using (data)
+        {
+            Directory.CreateDirectory(paths.DataRoot);
+            SecurityIdentifier me = WindowsIdentity.GetCurrent().User!;
+            var denyCreate = new FileSystemAccessRule(
+                me,
+                FileSystemRights.CreateFiles | FileSystemRights.WriteData,
+                AccessControlType.Deny);
+            var folder = new DirectoryInfo(paths.DataRoot);
+            DirectorySecurity rules = folder.GetAccessControl();
+            rules.AddAccessRule(denyCreate);
+            folder.SetAccessControl(rules);
+
+            SettingChange result;
+            try
+            {
+                result = changes.SetRestoreAutomatically(false, current: true);
+            }
+            finally
+            {
+                rules.RemoveAccessRule(denyCreate);
+                folder.SetAccessControl(rules);
+            }
+
+            Assert.False(result.Applied);
+            Assert.True(result.Value);
+            Assert.NotNull(result.Message);
+            Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(paths.SettingsFile));
             Assert.Equal([$"{Stamp} FAIL {result.Message}"], ReadLogLines(paths));
         }
     }
