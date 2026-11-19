@@ -234,8 +234,26 @@ public sealed class InteropDeclarationTests
     public static TheoryData<object> CalledMethodSignatures()
     {
         var data = new TheoryData<object>();
+        foreach (MethodSpec spec in AllMethodSignatureSpecs())
+        {
+            data.Add(spec);
+        }
 
-        data.Add(new MethodSpec(
+        return data;
+    }
+
+    private static List<MethodSpec> AllMethodSignatureSpecs()
+    {
+        var list = new List<MethodSpec>();
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            0,
+            "get_Count",
+            typeof(int),
+            PreserveSig: false));
+
+        list.Add(new MethodSpec(
             typeof(IShellWindows),
             1,
             "Item",
@@ -244,7 +262,7 @@ public sealed class InteropDeclarationTests
             UnmanagedType.IDispatch,
             new ParamSpec(typeof(object), IsIn: false, IsOut: false, UnmanagedType.Struct)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IShellWindows),
             2,
             "_NewEnum",
@@ -252,7 +270,56 @@ public sealed class InteropDeclarationTests
             PreserveSig: false,
             UnmanagedType.IUnknown));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            3,
+            "Register",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(object), IsIn: false, IsOut: false, UnmanagedType.IDispatch),
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(int).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            4,
+            "RegisterPending",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: true, IsOut: false, UnmanagedType.Struct),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: true, IsOut: false, UnmanagedType.Struct),
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(int).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            5,
+            "Revoke",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            6,
+            "OnNavigate",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: true, IsOut: false, UnmanagedType.Struct)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            7,
+            "OnActivated",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.VariantBool)));
+
+        list.Add(new MethodSpec(
             typeof(IShellWindows),
             8,
             "FindWindowSW",
@@ -265,7 +332,24 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(int), IsIn: false, IsOut: false),
             new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.IDispatch)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            9,
+            "OnCreated",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(object), IsIn: false, IsOut: false, UnmanagedType.IUnknown)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellWindows),
+            10,
+            "ProcessAttachDetach",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.VariantBool)));
+
+        list.Add(new MethodSpec(
             typeof(Berth.Desktop.Interop.IServiceProvider),
             0,
             "QueryService",
@@ -275,7 +359,114 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
             new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            0,
+            "GetWindow",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            1,
+            "ContextSensitiveHelp",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            2,
+            "InsertMenusSB",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            3,
+            "SetMenuSB",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            4,
+            "RemoveMenusSB",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            5,
+            "SetStatusTextSB",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            6,
+            "EnableModelessSB",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            7,
+            "TranslateAcceleratorSB",
+            typeof(int),
+            PreserveSig: true,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(ushort), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            8,
+            "BrowseObject",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            9,
+            "GetViewStateStream",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            10,
+            "GetControlWindow",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            11,
+            "SendControlMsg",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nuint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
             typeof(IShellBrowser),
             12,
             "QueryActiveShellView",
@@ -283,7 +474,125 @@ public sealed class InteropDeclarationTests
             PreserveSig: false,
             new ParamSpec(typeof(IShellView).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            13,
+            "OnViewWindowActive",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(IShellView), IsIn: false, IsOut: false, UnmanagedType.Interface)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellBrowser),
+            14,
+            "SetToolbarItems",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            0,
+            "GetWindow",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            1,
+            "ContextSensitiveHelp",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            2,
+            "TranslateAccelerator",
+            typeof(int),
+            PreserveSig: true,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            3,
+            "EnableModeless",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            4,
+            "UIActivate",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            5,
+            "Refresh",
+            typeof(void),
+            PreserveSig: false));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            6,
+            "CreateViewWindow",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(IShellView), IsIn: false, IsOut: false, UnmanagedType.Interface),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(IShellBrowser), IsIn: false, IsOut: false, UnmanagedType.Interface),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            7,
+            "DestroyViewWindow",
+            typeof(void),
+            PreserveSig: false));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            8,
+            "GetCurrentInfo",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            9,
+            "AddPropertySheetPages",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            10,
+            "SaveViewState",
+            typeof(void),
+            PreserveSig: false));
+
+        list.Add(new MethodSpec(
+            typeof(IShellView),
+            11,
+            "SelectItem",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
             typeof(IShellView),
             12,
             "GetItemObject",
@@ -295,7 +604,23 @@ public sealed class InteropDeclarationTests
 
         foreach (Type viewType in new[] { typeof(IFolderView), typeof(IFolderView2) })
         {
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
+                viewType,
+                0,
+                "GetCurrentViewMode",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(uint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+            list.Add(new MethodSpec(
+                viewType,
+                1,
+                "SetCurrentViewMode",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+            list.Add(new MethodSpec(
                 viewType,
                 2,
                 "GetFolder",
@@ -304,7 +629,7 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
                 new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
                 viewType,
                 3,
                 "Item",
@@ -313,7 +638,7 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(int), IsIn: false, IsOut: false),
                 new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
                 viewType,
                 4,
                 "ItemCount",
@@ -322,7 +647,7 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
                 new ParamSpec(typeof(int).MakeByRefType(), IsIn: false, IsOut: true)));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
                 viewType,
                 5,
                 "Items",
@@ -332,7 +657,23 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
                 new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
+                viewType,
+                6,
+                "GetSelectionMarkedItem",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(int).MakeByRefType(), IsIn: false, IsOut: true)));
+
+            list.Add(new MethodSpec(
+                viewType,
+                7,
+                "GetFocusedItem",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(int).MakeByRefType(), IsIn: false, IsOut: true)));
+
+            list.Add(new MethodSpec(
                 viewType,
                 8,
                 "GetItemPosition",
@@ -341,14 +682,39 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
                 new ParamSpec(typeof(NativePoint).MakeByRefType(), IsIn: false, IsOut: true)));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
+                viewType,
+                9,
+                "GetSpacing",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(NativePoint).MakeByRefType(), IsIn: false, IsOut: false)));
+
+            list.Add(new MethodSpec(
+                viewType,
+                10,
+                "GetDefaultSpacing",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(NativePoint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+            list.Add(new MethodSpec(
                 viewType,
                 11,
                 "GetAutoArrange",
                 typeof(int),
                 PreserveSig: true));
 
-            data.Add(new MethodSpec(
+            list.Add(new MethodSpec(
+                viewType,
+                12,
+                "SelectItem",
+                typeof(void),
+                PreserveSig: false,
+                new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+                new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
+
+            list.Add(new MethodSpec(
                 viewType,
                 13,
                 "SelectAndPositionItems",
@@ -360,7 +726,72 @@ public sealed class InteropDeclarationTests
                 new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
         }
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            14,
+            "SetGroupBy",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(bool), IsIn: false, IsOut: false, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            15,
+            "GetGroupBy",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(bool).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Bool)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            16,
+            "SetViewProperty",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            17,
+            "GetViewProperty",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            18,
+            "SetTileViewProperties",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            19,
+            "SetExtendedTileViewProperties",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr)));
+
+        list.Add(new MethodSpec(
+            typeof(IFolderView2),
+            20,
+            "SetText",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(int), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr)));
+
+        list.Add(new MethodSpec(
             typeof(IFolderView2),
             21,
             "SetCurrentFolderFlags",
@@ -369,7 +800,7 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IFolderView2),
             22,
             "GetCurrentFolderFlags",
@@ -377,7 +808,20 @@ public sealed class InteropDeclarationTests
             PreserveSig: false,
             new ParamSpec(typeof(uint).MakeByRefType(), IsIn: false, IsOut: true)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            0,
+            "ParseDisplayName",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
             typeof(IShellFolder),
             1,
             "EnumObjects",
@@ -387,7 +831,29 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(IEnumIDList).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            2,
+            "BindToObject",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            3,
+            "BindToStorage",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
+
+        list.Add(new MethodSpec(
             typeof(IShellFolder),
             4,
             "CompareIDs",
@@ -397,7 +863,27 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            5,
+            "CreateViewObject",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(Guid).MakeByRefType(), IsIn: true, IsOut: false),
+            new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
+
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            6,
+            "GetAttributesOf",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint[]), IsIn: true, IsOut: false, UnmanagedType.LPArray, SizeParamIndex: 0),
+            new ParamSpec(typeof(uint).MakeByRefType(), IsIn: false, IsOut: false)));
+
+        list.Add(new MethodSpec(
             typeof(IShellFolder),
             7,
             "GetUIObjectOf",
@@ -410,7 +896,7 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(object).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IShellFolder),
             8,
             "GetDisplayNameOf",
@@ -420,7 +906,19 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
             new ParamSpec(typeof(StrRet).MakeByRefType(), IsIn: false, IsOut: true)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
+            typeof(IShellFolder),
+            9,
+            "SetNameOf",
+            typeof(void),
+            PreserveSig: false,
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(string), IsIn: false, IsOut: false, UnmanagedType.LPWStr),
+            new ParamSpec(typeof(uint), IsIn: false, IsOut: false),
+            new ParamSpec(typeof(nint).MakeByRefType(), IsIn: false, IsOut: true)));
+
+        list.Add(new MethodSpec(
             typeof(IEnumIDList),
             0,
             "Next",
@@ -430,7 +928,7 @@ public sealed class InteropDeclarationTests
             new ParamSpec(typeof(nint[]), IsIn: false, IsOut: true, UnmanagedType.LPArray, SizeParamIndex: 0),
             new ParamSpec(typeof(uint).MakeByRefType(), IsIn: false, IsOut: true)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IEnumIDList),
             1,
             "Skip",
@@ -438,14 +936,14 @@ public sealed class InteropDeclarationTests
             PreserveSig: true,
             new ParamSpec(typeof(uint), IsIn: false, IsOut: false)));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IEnumIDList),
             2,
             "Reset",
             typeof(void),
             PreserveSig: false));
 
-        data.Add(new MethodSpec(
+        list.Add(new MethodSpec(
             typeof(IEnumIDList),
             3,
             "Clone",
@@ -453,7 +951,36 @@ public sealed class InteropDeclarationTests
             PreserveSig: false,
             new ParamSpec(typeof(IEnumIDList).MakeByRefType(), IsIn: false, IsOut: true, UnmanagedType.Interface)));
 
-        return data;
+        return list;
+    }
+
+    [Fact]
+    public void EveryDeclaredSlotAcrossAllEightInterfacesHasExplicitSignatureSpec()
+    {
+        List<MethodSpec> specs = AllMethodSignatureSpecs();
+        Assert.Equal(91, specs.Count);
+
+        var covered = new HashSet<(Type ComType, int SlotIndex)>();
+        foreach (MethodSpec spec in specs)
+        {
+            Assert.True(covered.Add((spec.ComType, spec.SlotIndex)), $"Duplicate MethodSpec for {spec.ComType.Name}[{spec.SlotIndex}]");
+        }
+
+        Type[] comTypes = typeof(IShellWindows).Assembly.GetTypes()
+            .Where(t => t.Namespace == "Berth.Desktop.Interop" && t.IsInterface)
+            .ToArray();
+        Assert.Equal(8, comTypes.Length);
+
+        foreach (Type comType in comTypes)
+        {
+            MethodInfo[] methods = DeclaredMethods(comType);
+            for (int slot = 0; slot < methods.Length; slot++)
+            {
+                Assert.True(
+                    covered.Contains((comType, slot)),
+                    $"Missing MethodSpec for {comType.Name}[{slot}] ({methods[slot].Name})");
+            }
+        }
     }
 
     [Fact]

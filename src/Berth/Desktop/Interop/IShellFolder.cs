@@ -16,9 +16,9 @@ internal interface IShellFolder
         nint hwnd,
         nint pbc,
         [MarshalAs(UnmanagedType.LPWStr)] string pszDisplayName,
-        out uint pchEaten,
+        nint pchEaten,
         out nint ppidl,
-        ref uint pdwAttributes);
+        nint pdwAttributes);
 
     [PreserveSig]
     int EnumObjects(

@@ -28,15 +28,16 @@ internal interface IShellBrowser
 
     void EnableModelessSB([MarshalAs(UnmanagedType.Bool)] bool fEnable);
 
-    void TranslateAcceleratorSB(nint pmsg, ushort wID);
+    [PreserveSig]
+    int TranslateAcceleratorSB(nint pmsg, ushort wID);
 
     void BrowseObject(nint pidl, uint wFlags);
 
-    void GetViewStateStream(uint grfMode, out nint ppStrm);
+    void GetViewStateStream(uint grfMode, [MarshalAs(UnmanagedType.Interface)] out object? ppStrm);
 
     void GetControlWindow(uint id, out nint phwnd);
 
-    void SendControlMsg(uint id, uint uMsg, nint wParam, nint lParam, out nint pret);
+    void SendControlMsg(uint id, uint uMsg, nuint wParam, nint lParam, out nint pret);
 
     void QueryActiveShellView([MarshalAs(UnmanagedType.Interface)] out IShellView ppshv);
 
