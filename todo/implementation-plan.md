@@ -44,7 +44,7 @@ Sections: 23 | Checklist items: 133
 | [x]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
 | [x]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
 | [x]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
-| [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
+| [x]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
 | [x]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
 | [x]    | D01 T01 §20 | The waiting-lock test must see the contender blocked       | none  | 2     |
 | [x]    | D01 T01 §21 | The reverse adjacency names its owner                      | none  | 2     |
@@ -156,6 +156,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 29/87 verified sections, 2 ready to run now.
+Progress: 30/87 verified sections, 1 ready to run now.
 
-Checklist: 183/519 items completed (includes Commit items).
+Checklist: 184/519 items completed (includes Commit items).

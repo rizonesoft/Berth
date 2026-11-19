@@ -54,7 +54,7 @@ depends_on: ["dotnet-foundation"]
 | 15 | §15 | Log file with a size cap | §3 | [x] |
 | 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [x] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [x] |
-| 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
+| 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [x] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
 | 21 | §21 | The reverse adjacency names its owner | §9 | [x] |
@@ -568,9 +568,12 @@ Filed 2026-11-18 from the phase 1 gap audit: SPEC §18 says every setting change
 - [x] Add `RecordStartWithWindows(bool on, Exception? failure)`, for the caller that wrote the `Run` value (`D05 T01 §10` owns the registry): when `failure is null`, log `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.` via `log.Info(Messages.SettingChanged(Messages.StartWithWindowsSetting, on))` and return `SettingChange(Applied: true, Value: on, Message: null)`; when `failure is not null`, build `Messages.StartWithWindowsFailed(failure.Message ?? string.Empty)` (`Berth could not change the Start with Windows setting: <reason>.`), log one single-line `FAIL` line via `log.Fail(message)`, and return `SettingChange(Applied: false, Value: !on, Message: message)`. Done when: tests assert the complete `SettingChange` (`Applied`, `Value`, `Message`) and read each log line back for both `on` (`true`, `false`) on success and on failure (**Corrected 2026-11-19:** `D01 T01 §18` plan review P2 #3). Cheaper substitute: logging in the view model, so the tray and window word it differently.
 - [x] Add `Messages.RestoreAutomaticallySetting = "Restore automatically"`, `Messages.StartWithWindowsSetting = "Start with Windows"`, and `Messages.SettingChanged(string setting, bool on)` (calling `ArgumentNullException.ThrowIfNull(setting)` and throwing `ArgumentException` for any other `setting` value) returning the four exact SPEC §18 sentences, used by `SettingChanges`. Done when: `MessagesTests` compares the four strings exactly and verifies null/invalid setting names throw. Cheaper substitute: building the sentence in `SettingChanges`, outside the one class that words results.
 - [x] Add `tests/Berth.Tests/Core/SettingChangesTests.cs` (and `SettingsStore.Update` coverage in `tests/Berth.Tests/Core/SettingsStoreTests.cs`) with those cases (`TestData` + `FixedClock` + `BeforeSave`/`BeforeReplace`/`AfterSave` seams). Done when: all pass, and the read-back test fails when `SetRestoreAutomatically` skips the second load. Cheaper substitute: asserting on the returned value only.
-- [ ] Commit: `core: setting changes applied, read back and logged`
+- [x] Commit: `core: setting changes applied, read back and logged`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingChangesTests" --filter-class "*SettingsStoreTests" --filter-class "*MessagesTests"` passes, and fails when a failed save is reported as applied.
+
+> **Verified:** 2026-11-19 | §18 | f5021bf7e8682e32765c5e01ecf3b76508291683
+> **Review:** `docs/reviews/d01-t01-s18.json`
 
 ## 19. Fake contract tests all go through the seams
 

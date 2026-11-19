@@ -1,0 +1,83 @@
+{
+  "ref": "D01 T01 \u00a718",
+  "title": "Setting changes applied, read back and logged in one place",
+  "implementation_sha": "f5021bf7e8682e32765c5e01ecf3b76508291683",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 2,
+      "report": "docs/reviews/01-core/D01-T01-s18.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SettingChangesTests --filter-class *SettingsStoreTests --filter-class *MessagesTests -> total: 65, failed: 0, succeeded: 65, skipped: 0; pwsh scripts/check-all.ps1 -> 7 step(s) passed (503/503 Release tests, 0 Warning(s)); Mutant A (skip read-back) -> 3/18 failed; Mutant B (applied true on error) -> 2/18 failed; Mutant C (unrelated race reason) -> 2/25 failed; Mutant D (unrelated write reason) -> 7/25 failed"
+  ],
+  "completion": {
+    "report": "docs/reviews/01-core/D01-T01-s18.md",
+    "verdict": "reconciled",
+    "candidate": "f5021bf7e8682e32765c5e01ecf3b76508291683",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 2,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/01-core/D01-T01-s18.md",
+    "candidate": "767a050252b960da0c7d930146edf319ac00795c",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "767a050252b960da0c7d930146edf319ac00795c",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
