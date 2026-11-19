@@ -435,5 +435,17 @@ public sealed class RestoreTests
         Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lines[0], StringComparison.Ordinal);
         Assert.EndsWith(". The details are in the log.", lines[0], StringComparison.Ordinal);
         Assert.Contains("ArgumentException", lines[1], StringComparison.Ordinal);
+
+        // Origin validation runs before entering the operation lock, so a held lock returns Unexpected, not Busy.
+        int beforeLocked = rig.LogLines().Length;
+        using var holder = new MutexHolder(rig.Gate.MutexName);
+        OperationResult lockedResult = rig.Service().Restore(" ");
+        Assert.Equal(OperationKind.Failed, lockedResult.Kind);
+        Assert.Equal(FailureKind.Unexpected, lockedResult.Failure);
+        Assert.IsType<ArgumentException>(lockedResult.Error);
+        Assert.Equal(undo, File.ReadAllBytes(rig.Paths.UndoFile));
+        string[] lockedLines = LinesAfter(rig, beforeLocked);
+        Assert.StartsWith("2026-11-15T07:14:03Z FAIL Something went wrong: ", lockedLines[0], StringComparison.Ordinal);
+        Assert.EndsWith(". The details are in the log.", lockedLines[0], StringComparison.Ordinal);
     }
 }

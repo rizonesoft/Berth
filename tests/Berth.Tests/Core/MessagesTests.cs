@@ -312,6 +312,9 @@ public sealed class MessagesTests
         Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Cli(saved));
         Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Log(saved));
         Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Cli(savedMultiBreak));
+        Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Cli(OperationResult.Saved("Work\u2028Desk", 3, false)));
+        Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Log(OperationResult.Saved("Work\u2029Desk", 3, false)));
+        Assert.Equal("Saved 3 icons to \"Work Desk\".", Messages.Log(OperationResult.Saved("Work\r\n\u2028\u2029Desk", 3, false)));
         Assert.Equal("Saved 3 icons to \"Work  Desk\".", Messages.Cli(savedTwoSpaces));
         Assert.Equal(
             "Restored 1 of 3 icons from \"Work Desk\". 1 did not stay where it was saved. 1 is no longer on the desktop. (automatic, display change)",
@@ -321,6 +324,7 @@ public sealed class MessagesTests
         Assert.Equal("Deleted layout \"Work Desk\".", Messages.Log(deleted));
 
         Assert.Equal("Something went wrong: one two. The details are in the log.", Messages.Unexpected("  one\r\ntwo.. \n"));
+        Assert.Equal("Something went wrong: first second. The details are in the log.", Messages.Unexpected("first\u2028second\u2029."));
         Assert.Equal("Something went wrong: boom. The details are in the log.", Messages.Unexpected("boom . . "));
         Assert.Equal("Something went wrong: unknown error. The details are in the log.", Messages.Unexpected("  \r\n...  "));
         Assert.Equal("Berth could not write C:\\a b\\x.json: unknown error.", Messages.WriteFailed("C:\\a\r\nb\\x.json", "\t"));

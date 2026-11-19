@@ -491,7 +491,7 @@ internal static class Messages
 
     private static string CollapseLineBreaks(string value)
     {
-        if (value.IndexOfAny(['\r', '\n']) < 0)
+        if (value.IndexOfAny(['\r', '\n', '\u2028', '\u2029']) < 0)
         {
             return value;
         }
@@ -500,7 +500,7 @@ internal static class Messages
         bool inBreak = false;
         foreach (char c in value)
         {
-            if (c is '\r' or '\n')
+            if (c is '\r' or '\n' or '\u2028' or '\u2029')
             {
                 if (!inBreak)
                 {

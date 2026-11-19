@@ -448,15 +448,33 @@ public sealed class SaveTests
     }
 
     [Fact]
-    public void SavingWithControlCharactersInTheNameEscapesThemInTheLogWhileStoringTheName()
+    public void SavingWithControlCharactersOrUnicodeSeparatorsNormalizesTheLogWhileStoringTheName()
     {
         using var rig = new Rig(Three);
 
-        OperationResult result = rig.Service().Save("AB\bC");
-
-        Assert.Equal(OperationResult.Saved("AB\bC", 3, replacedEarlierSave: false), result);
+        OperationResult backspace = rig.Service().Save("AB\bC");
+        Assert.Equal(OperationResult.Saved("AB\bC", 3, replacedEarlierSave: false), backspace);
         Assert.Equal("AB\bC", rig.Stored()!.Name);
-        Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 3 icons to \"AB\\u0008C\"."], rig.LogLines());
+
+        const string ForgedLineName = "Desk\u20282026-11-19T00:00:00Z FAIL forged";
+        OperationResult lineSep = rig.Service().Save(ForgedLineName);
+        Assert.Equal(OperationResult.Saved(ForgedLineName, 3, replacedEarlierSave: true), lineSep);
+        Assert.Equal(ForgedLineName, rig.Stored()!.Name);
+
+        OperationResult paraSep = rig.Service().Save("Para\u2029Break");
+        Assert.Equal(OperationResult.Saved("Para\u2029Break", 3, replacedEarlierSave: true), paraSep);
+        Assert.Equal("Para\u2029Break", rig.Stored()!.Name);
+
+        string rawLog = System.IO.File.ReadAllText(rig.Paths.LogFile);
+        Assert.DoesNotContain('\u2028', rawLog);
+        Assert.DoesNotContain('\u2029', rawLog);
+        Assert.Equal(
+            [
+                "2026-11-15T07:14:03Z INFO Saved 3 icons to \"AB\\u0008C\".",
+                "2026-11-15T07:14:03Z INFO Saved 3 icons to \"Desk 2026-11-19T00:00:00Z FAIL forged\".",
+                "2026-11-15T07:14:03Z INFO Saved 3 icons to \"Para Break\".",
+            ],
+            rig.LogLines());
     }
 }
 
