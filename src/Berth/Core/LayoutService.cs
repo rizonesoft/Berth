@@ -717,7 +717,7 @@ internal sealed class LayoutService(
     private static string Describe(string operation, OperationResult result) =>
         $"{operation}: {result.Kind}"
         + (result.LayoutName is null ? string.Empty : $" \"{result.LayoutName}\"")
-        + (result.Kind == OperationKind.Saved ? $", {result.Total} icons" : string.Empty)
+        + (result.Kind == OperationKind.Saved ? $", {Formats.IconCount(result.Total)}" : string.Empty)
         + (result.SavedAt is null ? string.Empty : $", {result.SavedAt.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}")
         + (result.Refusal == Refusal.None ? string.Empty : $", {result.Refusal}")
         + (result.NameError == NameError.None ? string.Empty : $" ({result.NameError})")

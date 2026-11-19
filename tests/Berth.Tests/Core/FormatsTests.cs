@@ -48,6 +48,10 @@ public sealed class FormatsTests
         Assert.Equal("30 December 2025", Formats.When(new DateTimeOffset(2025, 12, 30, 14, 5, 0, TimeSpan.FromHours(2)), newYearsDay, PlusTwo));
         Assert.Equal("today, 01:00", Formats.When(new DateTimeOffset(2025, 12, 31, 23, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 1, 1, 21, 59, 0, TimeSpan.Zero), PlusTwo));
 
+        // Non-today/non-yesterday local-year vs UTC-year comparison across New Year.
+        Assert.Equal("1 January", Formats.When(new DateTimeOffset(2025, 12, 31, 23, 30, 0, TimeSpan.Zero), new DateTimeOffset(2026, 1, 3, 10, 0, 0, TimeSpan.Zero), PlusTwo));
+        Assert.Equal("31 December 2025", Formats.When(new DateTimeOffset(2026, 1, 1, 2, 30, 0, TimeSpan.Zero), new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero), MinusFive));
+
         // Single-digit days have no leading zero, and another year appends yyyy.
         Assert.Equal("5 March", Formats.When(new DateTimeOffset(2026, 3, 5, 9, 5, 0, TimeSpan.FromHours(2)), new DateTimeOffset(2026, 11, 15, 9, 0, 0, TimeSpan.FromHours(2)), PlusTwo));
         Assert.Equal("5 March 2025", Formats.When(new DateTimeOffset(2025, 3, 5, 9, 5, 0, TimeSpan.FromHours(2)), new DateTimeOffset(2026, 11, 15, 9, 0, 0, TimeSpan.FromHours(2)), PlusTwo));

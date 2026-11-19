@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Berth.Core;
 
 /// <summary>Why a layout name may not be used (SPEC §10), or <see cref="None"/>.</summary>
@@ -32,11 +34,11 @@ public static class LayoutNames
         ArgumentOutOfRangeException.ThrowIfLessThan(monitorCount, 1);
         ArgumentNullException.ThrowIfNull(taken);
         var used = new HashSet<string>(taken.Select(Trimmed), StringComparer.OrdinalIgnoreCase);
-        string name = monitorCount == 1 ? "1 monitor" : $"{monitorCount} monitors";
+        string name = Formats.MonitorCount(monitorCount);
         string candidate = name;
         for (int n = 2; used.Contains(candidate); n++)
         {
-            candidate = $"{name} ({n})";
+            candidate = string.Create(CultureInfo.InvariantCulture, $"{name} ({n})");
         }
 
         return candidate;
