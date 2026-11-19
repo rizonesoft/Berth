@@ -375,7 +375,49 @@ public sealed class SettingChangesTests
     }
 
     [Fact]
-    public void MissingSettingsFileInDirectoryDenyingCreationPreservesCallerCurrentState()
+    public void ConcurrentUpdateFollowedByExclusiveLockPreservesSnapshotReadByUpdate()
+    {
+        (TestData data, BerthPaths paths, SettingsStore store, Log log, _) = Fresh();
+        using (data)
+        {
+            var placement = new WindowPlacement(100, 100, 980, 640);
+            store.Save(new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: false, Window: placement));
+
+            FileStream? held = null;
+            var changes = new SettingChanges(store, log)
+            {
+                BeforeSave = _ => new SettingsStore(paths).Save(
+                    new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: placement)),
+                BeforeReplace = _ => held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.None),
+            };
+
+            SettingChange result;
+            try
+            {
+                result = changes.SetRestoreAutomatically(true);
+            }
+            finally
+            {
+                held?.Dispose();
+            }
+
+            Assert.Equal(new SettingChange(Applied: false, Value: true, Message: Messages.UnreadableSettings), result);
+            Assert.Equal(
+                new Settings(Settings.CurrentSchemaVersion, RestoreAutomatically: true, Window: placement),
+                new SettingsStore(paths).Load().Value);
+            Assert.Equal([$"{Stamp} FAIL {Messages.UnreadableSettings}"], ReadLogLines(paths));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, null, false)]
+    public void MissingSettingsFileInDirectoryDenyingCreationPreservesCallerCurrentState(
+        bool requestedValue,
+        bool? callerCurrent,
+        bool expectedRollback)
     {
         (TestData data, BerthPaths paths, _, _, SettingChanges changes) = Fresh();
         using (data)
@@ -394,7 +436,9 @@ public sealed class SettingChangesTests
             SettingChange result;
             try
             {
-                result = changes.SetRestoreAutomatically(false, current: true);
+                result = callerCurrent is { } current
+                    ? changes.SetRestoreAutomatically(requestedValue, current)
+                    : changes.SetRestoreAutomatically(requestedValue);
             }
             finally
             {
@@ -403,7 +447,7 @@ public sealed class SettingChangesTests
             }
 
             Assert.False(result.Applied);
-            Assert.True(result.Value);
+            Assert.Equal(expectedRollback, result.Value);
             Assert.NotNull(result.Message);
             Assert.StartsWith($"Berth could not write {paths.SettingsFile}: ", result.Message, StringComparison.Ordinal);
             Assert.False(File.Exists(paths.SettingsFile));

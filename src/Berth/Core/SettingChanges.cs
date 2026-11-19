@@ -56,14 +56,16 @@ internal sealed class SettingChanges
             BeforeSave?.Invoke(attempt);
             try
             {
-                SettingsLoad snapshot = store.Update(
+                _ = store.Update(
                     s => s with { RestoreAutomatically = on },
-                    BeforeReplace is null ? null : () => BeforeReplace(attempt));
-                if (snapshot.Exists)
-                {
-                    rollback = snapshot.Value.RestoreAutomatically;
-                }
-
+                    BeforeReplace is null ? null : () => BeforeReplace(attempt),
+                    loaded =>
+                    {
+                        if (loaded.Exists)
+                        {
+                            rollback = loaded.Value.RestoreAutomatically;
+                        }
+                    });
                 break;
             }
             catch (UnreadableSettingsException)

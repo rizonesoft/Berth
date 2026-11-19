@@ -84,8 +84,8 @@ internal sealed class SettingsStore(BerthPaths paths)
     /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
     public SettingsLoad Update(Func<Settings, Settings> change) => Update(change, beforeReplace: null);
 
-    /// <summary>As <see cref="Update(Func{Settings, Settings})"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place.</summary>
-    internal SettingsLoad Update(Func<Settings, Settings> change, Action? beforeReplace)
+    /// <summary>As <see cref="Update(Func{Settings, Settings})"/>; <paramref name="beforeReplace"/> lets a test act just before the file is put in place, and <paramref name="onSnapshot"/> observes the loaded readable snapshot before writing.</summary>
+    internal SettingsLoad Update(Func<Settings, Settings> change, Action? beforeReplace, Action<SettingsLoad>? onSnapshot = null)
     {
         ArgumentNullException.ThrowIfNull(change);
         SettingsLoad current = Load(out byte[]? read);
@@ -94,6 +94,7 @@ internal sealed class SettingsStore(BerthPaths paths)
             throw new UnreadableSettingsException(unreadable);
         }
 
+        onSnapshot?.Invoke(current);
         Settings value = change(current.Value)
             ?? throw new ArgumentException("These settings must not be null.", nameof(change));
         string? problem = Problem(value);
