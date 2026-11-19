@@ -58,7 +58,7 @@
     },
     ".agents/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "b7820acb493353988704c060b848d216c032ba8880bed97a5efbf4928db3f6fa"
+      "sha256": "9698f902a16493c760597d57e736fabdd59aacd696ff7ebcd08face4fc9b1553"
     },
     ".agents/skills/review-todo-section/SKILL.md": {
       "kit": "todo",
@@ -142,7 +142,7 @@
     },
     ".claude/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "5c97bb5b25599098046db556660a97e3ec2a96943140841f81fbf1733b45ba20"
+      "sha256": "304d500d6f37ae32bdcda1e0ebffeb9fd534acabd292ccc10f908a155376fb13"
     },
     ".claude/skills/review-todo-section/SKILL.md": {
       "kit": "todo",
@@ -242,7 +242,7 @@
     },
     ".codex/skills/process-todo-section/SKILL.md": {
       "kit": "todo",
-      "sha256": "af5f9447904b42230422061f81508fc55b63930d69817d94772b61c2835ebe4a"
+      "sha256": "39edc4bf94e43ab2bac6d29a31d759e7fa22f089411b8d03a4a910dd7a0dce33"
     },
     ".codex/skills/process-todo-section/agents/openai.yaml": {
       "kit": "todo",
@@ -435,7 +435,7 @@
         "codex"
       ],
       "host": null,
-      "sdk_commit": "2f8d6e286fec3962faeca465911e888db17f90dc"
+      "sdk_commit": "3e5176be1865cab0694d2787844c26bfba88da75"
     }
   },
   "schema_version": 1
