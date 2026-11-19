@@ -52,13 +52,14 @@ depends_on: ["dotnet-foundation"]
 | 13 | §13 | Comparison of a layout with the desktop | §8 | [x] |
 | 14 | §14 | Operation lock across processes | §3 | [x] |
 | 15 | §15 | Log file with a size cap | §3 | [x] |
-| 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [ ] |
+| 16 | §16 | One wording for every result | §9, §10, §11, §12, §17 | [x] |
 | 17 | §17 | Date, count and monitor size formats | §13 | [x] |
 | 18 | §18 | Setting changes applied, read back and logged in one place | §6, §15, §16 | [ ] |
 | 19 | §19 | Fake contract tests all go through the seams | §8 | [x] |
 | 20 | §20 | The waiting-lock test must see the contender blocked | §14 | [x] |
 | 21 | §21 | The reverse adjacency names its owner | §9 | [x] |
 | 22 | §22 | Revert and delete are worded as SPEC §10 words them | §21 | [x] |
+| 23 | §23 | Phase 1 record credits §16 changes to their pass | §16 | [ ] |
 
 ## 1. Layout, monitor and icon records
 
@@ -513,9 +514,12 @@ Every sentence of SPEC §8, §13 and §18 produced from an `OperationResult` in 
 - [x] Add `Messages.Comparison(int moved, int missing)` returning the four SPEC §8 comparison sentences with singular forms (rejecting negative counts), `Messages.Unsaved`, and `Messages.OtherArrangement(DateTimeOffset savedAt, DateTimeOffset now, TimeZoneInfo zone)`. Done when: tests cover 0/0, 3/0, 0/2, 3/2, 1/0, 0/1, 1/1, 1/2, 3/1, `Unsaved`, and `OtherArrangement` across zones and years. Cheaper substitute: one sentence with two numbers for every case.
 - [x] Switch `LayoutService.Logged` (`§15`) to `Messages.Log(result)` (removing interim `Describe` and the unused `operation` string parameter, using `Messages` failure constants in `LayoutService`, and coalescing null `error.Message` to empty string) and update interim log assertions in `SaveTests.cs`, `RestoreTests.cs`, `UndoTests.cs`, and `LayoutEditTests.cs` to literal expected lines from the temporary on-disk log (including mid-operation `DesktopUnavailable`, `DisplaysChanged`, `ReadFailed`, `WriteFailed`, `Saved`, `Restored`, `Undone`, `Renamed`, `Reverted`, `Deleted`, and `Refused`). **Corrected 2026-11-19:** broadened on-disk log assertions across all four service test classes (`plan review P2`). Done when: the save test's log line reads `2026-11-15T07:14:03Z INFO Saved 3 icons to "2 monitors".` and all core log assertions fail if `LayoutService.Logged` bypasses `Messages.Log`. Cheaper substitute: a second wording for the log.
 - [x] Add `tests/Berth.Tests/Core/MessagesTests.cs` covering every row of SPEC §8, §10 name errors, §13 operation results, §16 `(<Origin>)`, §18 (including `ReadFailed`, `FailureKind.DesktopUnavailable`, `FailureKind.DisplaysChanged`, and all helper sentences), missing-only and mixed partial undo, `"Work\r\nDesk"` single-line normalization, window-only edit logs, reason normalization, hostile `CurrentCulture`, and argument/invariant validation. Done when: all pass, and tests fail when a trailing full stop is removed from a SPEC sentence or when the two partial-restore clauses are swapped in `Messages`. Cheaper substitute: tests that assert `Contains("Restored")`.
-- [ ] Commit: `core: one wording for every result`
+- [x] Commit: `core: one wording for every result`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MessagesTests" --filter-class "*SaveTests" --filter-class "*RestoreTests" --filter-class "*UndoTests" --filter-class "*LayoutEditTests"` passes, and fails when any operation sentence differs from `design/SPEC.md` by one character or when `LayoutService.Logged` bypasses `Messages.Log`.
+
+> **Verified:** 2026-11-19 | §16 | 05978767f6ca14eb80050cf043d29c696a0474ed
+> **Review:** `docs/reviews/d01-t01-s16.json`
 
 ## 17. Date, count and monitor size formats
 
@@ -654,6 +658,23 @@ Filed 2026-11-18 from the D01 T01 §21 completion review (P3, below the pin's bl
 
 > **Verified:** 2026-11-18 | §22 | e0845e77ab252c1fd10233dfba5a607a335f18ce
 > **Review:** `docs/reviews/d01-t01-s22.json`
+
+## 23. Phase 1 record credits §16 changes to their pass
+
+Filed 2026-11-19 from the D01 T01 §16 completion review (P3, below the pin's blocking levels): `docs/phase-runs/2026-11-18-phase-1.md` line 38 attributed control-character escaping, combined whitespace/period trimming, and `U+2028`/`U+2029` separator handling to the pre-build plan review, whereas CR/LF normalization landed pre-build, control-character escaping and combined whitespace/period trimming landed in `91f9fd5` after round 1, and `U+2028`/`U+2029` handling landed in `0597876` after round 2.
+
+**Phase:** 1
+**Needs:** none
+**Surface:** no
+
+**Build order:**
+
+1. Correct the `D01 T01 §16` pre-build Decision entry in `docs/phase-runs/2026-11-18-phase-1.md` so each change is credited to the pass and commit where it landed. Done when: the pre-build Decision entry names only the pre-build CR/LF rule and the `D01 T01 §16` section summary credits `91f9fd5` (after round 1) and `0597876` (after round 2), verified against `docs/reviews/01-core/D01-T01-s16.md`.
+
+- [ ] Rewrite the `Decision 2026-11-19 (§16 ...)` line in `docs/phase-runs/2026-11-18-phase-1.md` so clause (4) describes the pre-build CR/LF single-space rule and single trailing full-stop trim from `b8f72d1`, and verify the `D01 T01 §16` summary line credits `\uXXXX` control escaping and combined whitespace/period trimming to `91f9fd5` (after round 1) and `U+2028`/`U+2029` separator normalization to `0597876` (after round 2), matching `docs/reviews/01-core/D01-T01-s16.md`. Done when: reading back `docs/phase-runs/2026-11-18-phase-1.md` shows pre-build clause (4) free of `\uXXXX` and `U+2028`/`U+2029`, both credited to `91f9fd5` and `0597876` respectively, and `python scripts/todo-graph.py validate` passes. Cheaper substitute: deleting the decision note instead of correcting its chronology.
+- [ ] Commit: `docs: credit §16 changes to their review passes in phase 1 record`
+
+**Test checkpoint:** `python scripts/todo-graph.py validate` and `python scripts/todo-graph.py plan --check` pass, and reading `docs/phase-runs/2026-11-18-phase-1.md` confirms pre-build clause (4) names only CR/LF while `91f9fd5` and `0597876` carry the round 1 and round 2 additions.
 
 ## Verification
 

@@ -23,7 +23,7 @@ Sections: 8 | Checklist items: 53
 
 ### Phase 1: Core
 
-Sections: 22 | Checklist items: 131
+Sections: 23 | Checklist items: 133
 
 | Status | Reference   | Deliverable                                                | Needs | Items |
 | ------ | ----------- | ---------------------------------------------------------- | ----- | ----- |
@@ -43,12 +43,13 @@ Sections: 22 | Checklist items: 131
 | [x]    | D01 T01 §12 | Rename, revert and delete operations                       | none  | 8     |
 | [x]    | D01 T01 §7  | Layout names: defaults and validation                      | none  | 5     |
 | [x]    | D01 T01 §17 | Date, count and monitor size formats                       | none  | 6     |
-| [ ]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
+| [x]    | D01 T01 §16 | One wording for every result                               | none  | 8     |
 | [ ]    | D01 T01 §18 | Setting changes applied, read back and logged in one place | none  | 6     |
 | [x]    | D01 T01 §19 | Fake contract tests all go through the seams               | none  | 3     |
 | [x]    | D01 T01 §20 | The waiting-lock test must see the contender blocked       | none  | 2     |
 | [x]    | D01 T01 §21 | The reverse adjacency names its owner                      | none  | 2     |
 | [x]    | D01 T01 §22 | Revert and delete are worded as SPEC §10 words them        | none  | 2     |
+| [ ]    | D01 T01 §23 | Phase 1 record credits §16 changes to their pass           | none  | 2     |
 
 ### Phase 2: Desktop access
 
@@ -155,6 +156,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 28/86 verified sections, 1 ready to run now.
+Progress: 29/87 verified sections, 2 ready to run now.
 
-Checklist: 177/517 items completed (includes Commit items).
+Checklist: 178/519 items completed (includes Commit items).
