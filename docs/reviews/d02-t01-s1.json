@@ -1,0 +1,83 @@
+{
+  "ref": "D02 T01 \u00a71",
+  "title": "Shell COM interface declarations",
+  "implementation_sha": "2884581f21e891313ab77100574e6875a46304e7",
+  "date": "2026-11-19",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s1.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "pwsh scripts/check-all.ps1 (612/612); InteropDeclarationTests + LayerRuleTests (144/144, 91/91 slots) + 8 mutants"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s1.md",
+    "verdict": "reconciled",
+    "candidate": "2884581f21e891313ab77100574e6875a46304e7",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s1.md",
+    "candidate": "fe5308c9bc5733cd200567032b3faeedc412f5d5",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "fe5308c9bc5733cd200567032b3faeedc412f5d5",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

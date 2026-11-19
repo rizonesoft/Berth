@@ -57,7 +57,7 @@ Sections: 10 | Checklist items: 48
 
 | Status | Reference   | Deliverable                                | Needs                         | Items |
 | ------ | ----------- | ------------------------------------------ | ----------------------------- | ----- |
-| [ ]    | D02 T01 §1  | Shell COM interface declarations           | none                          | 4     |
+| [x]    | D02 T01 §1  | Shell COM interface declarations           | none                          | 4     |
 | [ ]    | D02 T01 §2  | The desktop's folder view                  | windows-host, display-session | 5     |
 | [ ]    | D02 T01 §9  | STA worker that owns every shell call      | windows-host, display-session | 5     |
 | [ ]    | D02 T01 §5  | Auto arrange read and clear                | windows-host, display-session | 5     |
@@ -156,6 +156,6 @@ Sections: 3 | Checklist items: 13
 | [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors  | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published            | operator           | 4     |
 
-Progress: 31/87 verified sections, 3 ready to run now.
+Progress: 32/87 verified sections, 3 ready to run now.
 
-Checklist: 189/519 items completed (includes Commit items).
+Checklist: 190/519 items completed (includes Commit items).
