@@ -108,6 +108,8 @@ A card under the map with a 10 px square in `markerInPlace`, a sentence, and on 
 
 A partial restore reads "Restored 38 of 42 icons." followed by one or both of "2 did not stay where they were saved." and "2 are no longer on the desktop.", in that order. An icon "did not stay" when it is on the desktop but its position read back after the restore is not its saved position.
 
+A partial undo (when some snapshot icons did not stay or are no longer on the desktop) reads "Put 40 of 42 icons back." followed by one or both of "2 did not stay where they were." ("1 did not stay where it was." for one) and "2 are no longer on the desktop." ("1 is no longer on the desktop." for one), in that order, with no layout name. Clarified 2026-11-19 (D01 T01 §16): §15 counts an undo with missing icons and none out of place as done, while §8 showed only the not-placed partial undo.
+
 One icon reads "1 icon has moved", "1 saved icon is no longer on the desktop", "1 did not stay where it was saved." and "Restored 1 icon." A just-finished sentence stays until the next operation, a selection change in the layouts pane, or the next desktop read that finds a change.
 
 ## 9. Notices
@@ -168,6 +170,8 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 - `--name` on a new layout names it, and on an existing one renames it, under the rules of §10.
 - A restore where some saved icons are no longer on the desktop prints `Restored 40 of 42 icons from "Docked". 2 are no longer on the desktop.` and still exits 0.
 - A restore or undo where an icon that is on the desktop did not stay at its position prints the §8 partial sentence (with ` from "Docked"` after the count for a restore) to standard error and exits 1. An undo that ends this way keeps its snapshot, so `berth undo` can be run again.
+- An undo where some snapshot icons are no longer on the desktop and none failed to stay prints the §8 partial undo sentence (for example `Put 2 of 3 icons back. 1 is no longer on the desktop.`) to standard output and exits 0; when an icon did not stay, it prints the §8 partial undo sentence (for example `Put 1 of 3 icons back. 1 did not stay where it was. 1 is no longer on the desktop.`) to standard error and exits 1, with no layout name in either case. Clarified 2026-11-19 (D01 T01 §16).
+- Any internal line break (`\r\n`, `\r` or `\n`, or a contiguous run of them) inside a layout name, path or origin in a single-line CLI, status or log sentence is written as a single space (so `"Work\r\nDesk"` appears as `"Work Desk"`). Clarified 2026-11-19 (D01 T01 §16).
 - Results go to standard output, and refusals and errors to standard error, each as one line.
 
 | Exit code | Meaning |
@@ -249,10 +253,13 @@ Every refusal and failure has one message, used in the status line, on standard 
 | No layout for this arrangement | "This monitor arrangement has no saved layout." |
 | No previous save | "This layout has no previous save." |
 | The desktop cannot be reached | "Berth cannot reach the desktop. Explorer may be restarting." |
+| The desktop is lost while placing icons | "The desktop could not be reached while the icons were being placed. Undo puts back what was there." (for a restore), or "The desktop could not be reached while the icons were being placed." (for an undo) |
+| The displays changed mid-operation | "The displays changed before any icon was moved." (for a restore), or "The displays changed before the undo could be checked." (for an undo) |
 | Nothing to undo | "There is nothing to undo." |
 | Icons did not stay after a restore or undo | The partial sentence of §8 |
 | Another operation is running | "Berth is busy with another save or restore. Try again in a moment." |
 | A file cannot be written | "Berth could not write `<path>`: `<the system's reason>`." |
+| A folder cannot be read | "Berth could not read `<path>`: `<the system's reason>`." |
 | A file cannot be read | "The layout file `<file name>` could not be read. It was left untouched." |
 | The settings file cannot be read | "The settings file `settings.json` could not be read. It was left untouched." |
 | Auto arrange would not turn off | "Windows did not turn auto arrange off. Turn it off from the desktop: right-click, View, Auto arrange icons." |
@@ -262,7 +269,7 @@ Every refusal and failure has one message, used in the status line, on standard 
 - The log is `logs\berth.log` under the local root: one line per event, `2026-11-15T07:14:03Z INFO Saved 42 icons to "Docked".`, with the level INFO, WARN or FAIL. Every save, restore, undo, revert, rename, delete, setting change, automatic restore and failure writes a line. An unexpected error also writes the exception with its stack.
 - An unreadable `settings.json` is logged as a `WARN` line with its message when the tray app starts, Berth runs on the defaults without writing the file, and a setting change is refused with that message instead of a write failure. Added 2026-11-18 (D01 T01 §6): SPEC §14 asked for the file to be reported without saying how.
 - A setting change writes `INFO Restore automatically turned on.`, `INFO Restore automatically turned off.`, `INFO Start with Windows turned on.` or `INFO Start with Windows turned off.`, from the window or the tray alike; one that fails writes a `FAIL` line with its message from the table above. Added 2026-11-18 (D01 T01 §18): the bullet above asks for a line per setting change without giving its words.
-- Window-only layout edits log one `INFO` sentence each: `INFO Reverted "<name>" to the save from <UTC savedAt>.` (using `yyyy-MM-ddTHH:mm:ssZ`), `INFO Renamed layout to "<name>".` and `INFO Deleted layout "<name>".`. In `<the system's reason>` and `<the exception's message>`, line breaks collapse to single spaces, trailing full stops are trimmed before the sentence's own full stop so no message ends with `..`, and a blank reason reads `unknown error`. Clarified 2026-11-19 (D01 T01 §16): SPEC §18 requires those lines and embeds OS/exception strings without specifying the three sentences or punctuation normalization.
+- Window-only layout edits log one `INFO` sentence each: `INFO Reverted "<name>" to the save from <UTC savedAt>.` (using `yyyy-MM-ddTHH:mm:ssZ`), `INFO Renamed layout to "<name>".` and `INFO Deleted layout "<name>".`. Mid-operation desktop-loss, mid-operation display-change and folder-read failures use their explicit table rows above (not "Something went wrong"). In `<the system's reason>` and `<the exception's message>`, line breaks collapse to single spaces, trailing full stops are trimmed before the sentence's own full stop so no message ends with `..`, and a blank reason reads `unknown error`; internal line breaks in names, paths and origins collapse to single spaces per §13. Clarified 2026-11-19 (D01 T01 §16): SPEC §18 requires those lines and embeds OS/exception strings without specifying the three sentences, mid-operation failure rows or punctuation/newline normalization.
 - The log is capped at 1 MB: when it passes that, it is renamed `berth.log.1`, replacing the last one, and a new file starts. Corrected 2026-11-18 (D01 T01 §15): the event that would take the file past 1 MB is the first line of the new file, so neither file passes 1 MB; one event larger than 1 MB on its own is cut to fit and ends ` [cut]`.
 - An unhandled exception in the tray app is logged, shown in a message box that names the log file, and ends the process with code 1.
 - Added 2026-11-18 (D01 T01 §12): the "No previous save" row covers a revert whose layout has no previous save (such as when a fresh save replaced a deleted layout after the More menu opened), instead of saying the monitor arrangement has no saved layout.
