@@ -44,11 +44,7 @@ internal static class FirstRun
 
         try
         {
-            store.Save(Settings.Default);
-        }
-        catch (UnreadableSettingsException)
-        {
-            log.Fail(Messages.UnreadableSettings);
+            store.TrySaveIfMissing(Settings.Default);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

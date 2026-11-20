@@ -23,7 +23,8 @@ internal static class Program
         TimeProvider? clock = null,
         Func<IMonitors>? createMonitors = null,
         TimeZoneInfo? zone = null,
-        Func<bool, Settings, Action, int>? runTrayApp = null)
+        Func<bool, Settings, Action, int>? runTrayApp = null,
+        Func<SettingsStore, SettingsLoad>? loadSettings = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -54,7 +55,7 @@ internal static class Program
                 paths ??= BerthPaths.FromEnvironment(readEnv, folder);
                 log ??= new Log(paths, effectiveClock);
                 var settingsStore = new SettingsStore(paths);
-                SettingsLoad loaded = settingsStore.Load();
+                SettingsLoad loaded = (loadSettings ?? (store => store.Load()))(settingsStore);
                 if (loaded.Unreadable is not null)
                 {
                     log.Warn(Messages.UnreadableSettings);

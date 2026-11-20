@@ -126,6 +126,43 @@ internal sealed class SettingsStore(BerthPaths paths)
         WriteLoaded(current.Exists, read, value, beforeReplace);
     }
 
+    /// <summary>
+    /// Writes <paramref name="value"/> only when <c>settings.json</c> does not yet exist. If a file already exists
+    /// or appears before the move completes, that file is left untouched and the method returns <see langword="false"/>.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="value"/> breaks the SPEC §14 schema.</exception>
+    /// <exception cref="IOException">The folder or the file cannot be written.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder or the file may not be written.</exception>
+    public bool TrySaveIfMissing(Settings value) => TrySaveIfMissing(value, beforeReplace: null);
+
+    /// <summary>As <see cref="TrySaveIfMissing(Settings)"/>; <paramref name="beforeReplace"/> lets a test act just before the new file is moved into place.</summary>
+    internal bool TrySaveIfMissing(Settings value, Action? beforeReplace)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        string? problem = Problem(value);
+        if (problem is not null)
+        {
+            throw new ArgumentException($"These settings must not be saved: {problem}", nameof(value));
+        }
+
+        if (File.Exists(paths.SettingsFile))
+        {
+            return false;
+        }
+
+        BerthPaths.EnsureFolderFor(paths.SettingsFile);
+        try
+        {
+            JsonFile.WriteNew(paths.SettingsFile, value, BerthJson.Default.Settings, beforeReplace is null ? null : _ => beforeReplace());
+            return true;
+        }
+        catch (TargetAppearedException)
+        {
+            return false;
+        }
+    }
+
     private void WriteLoaded(bool exists, byte[]? read, Settings value, Action? beforeReplace)
     {
         BerthPaths.EnsureFolderFor(paths.SettingsFile);

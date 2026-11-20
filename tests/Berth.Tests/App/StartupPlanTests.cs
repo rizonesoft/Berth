@@ -120,6 +120,56 @@ public sealed class StartupPlanTests
     }
 
     [Fact]
+    public void FirstRunDoesNotOverwriteSettingsCreatedBeforeWindowOpened()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new SettingsStore(paths);
+        var custom = new Settings(
+            Settings.CurrentSchemaVersion,
+            RestoreAutomatically: true,
+            new WindowPlacement(140, 90, 960, 640));
+
+        byte[]? bytesBeforeCallback = null;
+        int code = global::Berth.Program.Run(
+            [],
+            new StringWriter(),
+            new StringWriter(),
+            getenv: k => k == "BERTH_DATA" ? data.Root : null,
+            runTrayApp: (openWindow, _, onWindowOpened) =>
+            {
+                Assert.True(openWindow);
+                // Another writer creates settings.json between startup and the window-opened callback.
+                store.Save(custom);
+                bytesBeforeCallback = File.ReadAllBytes(paths.SettingsFile);
+                onWindowOpened();
+                return 0;
+            });
+
+        Assert.Equal(0, code);
+        Assert.NotNull(bytesBeforeCallback);
+        Assert.Equal(bytesBeforeCallback, File.ReadAllBytes(paths.SettingsFile));
+        Assert.Equal(custom, store.Load().Value);
+
+        // Also verify the atomic create-only race when a file appears right before MoveNew.
+        using var raceData = new TestData();
+        BerthPaths racePaths = BerthPaths.ForRoot(raceData.Root);
+        var raceStore = new SettingsStore(racePaths);
+        byte[]? racedBytes = null;
+        bool created = raceStore.TrySaveIfMissing(
+            Settings.Default,
+            beforeReplace: () =>
+            {
+                raceStore.Save(custom);
+                racedBytes = File.ReadAllBytes(racePaths.SettingsFile);
+            });
+
+        Assert.False(created);
+        Assert.NotNull(racedBytes);
+        Assert.Equal(racedBytes, File.ReadAllBytes(racePaths.SettingsFile));
+    }
+
+    [Fact]
     public void TrayAppReceivesReadableNonDefaultSettingsWithOpenWindowFalse()
     {
         using var data = new TestData();
@@ -238,6 +288,7 @@ public sealed class StartupPlanTests
         File.WriteAllText(paths.SettingsFile, "{");
 
         int trayCalls = 0;
+        int loadSettingsCalls = 0;
         var desktop = new FakeDesktopIcons(new IconPosition("id-1", "Icon", 10, 20));
         var monitors = new FakeMonitors(OneMonitor);
         var store = new LayoutStore(paths);
@@ -277,12 +328,18 @@ public sealed class StartupPlanTests
                 {
                     trayCalls++;
                     throw new InvalidOperationException("CLI commands must never start the tray app.");
+                },
+                loadSettings: s =>
+                {
+                    loadSettingsCalls++;
+                    return s.Load();
                 });
 
             Assert.Equal(expectedExit, exitCode);
         }
 
         Assert.Equal(0, trayCalls);
+        Assert.Equal(0, loadSettingsCalls);
         if (File.Exists(paths.LogFile))
         {
             string logText = File.ReadAllText(paths.LogFile);
