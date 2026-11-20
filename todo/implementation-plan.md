@@ -94,7 +94,7 @@ Sections: 11 | Checklist items: 72
 | [ ]    | D04 T01 §3  | Crash handling                                | none                          | 5     |
 | [x]    | D04 T01 §4  | Tokens generated into resource dictionaries   | none                          | 8     |
 | [ ]    | D04 T01 §5  | WPF application object and theme              | windows-host, display-session | 6     |
-| [ ]    | D04 T01 §6  | Taskbar theme detection                       | none                          | 4     |
+| [x]    | D04 T01 §6  | Taskbar theme detection                       | none                          | 4     |
 | [ ]    | D04 T01 §7  | Tray icon and tooltip                         | windows-host, display-session | 8     |
 | [ ]    | D04 T01 §8  | Tray menu                                     | windows-host, display-session | 8     |
 | [ ]    | D04 T01 §9  | Main window frame with two panes              | windows-host, display-session | 7     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 51/88 verified sections, 3 ready to run now.
+Progress: 52/88 verified sections, 2 ready to run now.
 
 Checklist: 295/521 items completed (includes Commit items).

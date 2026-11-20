@@ -42,7 +42,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 3 | §3 | Crash handling | §1 | [ ] |
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
-| 6 | §6 | Taskbar theme detection | D00 T01 §3 | [ ] |
+| 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [ ] |
 | 9 | §9 | Main window frame with two panes | §5 | [ ] |
@@ -192,6 +192,9 @@ Whether the taskbar is light or dark, and an event when that changes (SPEC §12,
 - [x] Commit: `desktop: taskbar theme detection`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TaskbarThemeTests"` passes, and fails when `Changed` is raised without the value changing.
+
+> **Verified:** 2026-11-20 | §6 | aa84fbf637222aa8880062ad71a5a4837d7a1e28
+> **Review:** `docs/reviews/d04-t01-s6.json`
 
 ## 7. Tray icon and tooltip
 
