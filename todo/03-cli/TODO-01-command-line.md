@@ -38,7 +38,7 @@ depends_on: ["layout-core", "desktop-access"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Argument parser | D00 T01 §3 | [x] |
 | 2 | §2 | Console behaviour proven with real processes | D00 T01 §2 | [x] |
-| 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [ ] |
+| 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [x] |
 | 4 | §4 | The restore command | §3 | [ ] |
 | 5 | §5 | The undo command | §4 | [ ] |
 | 6 | §6 | The list command | §3, D01 T01 §17 | [ ] |
@@ -121,6 +121,9 @@ The foundation plan's one technical bet: a console program with a detached conso
 - [x] Commit: `cli: the save command`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SaveCommandTests" --filter-class "*SaveCommandProcessTests" --filter-class "*ConsoleBehaviourTests" --filter-class "*TestModeSwitchesTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an invalid `--name` returns exit code 3 instead of 2.
+
+> **Verified:** 2026-11-20 | §3 | fa79a12c84321591a256674b21535b1c6bb1f1d3
+> **Review:** `docs/reviews/d03-t01-s3.json`
 
 ## 4. The restore command
 

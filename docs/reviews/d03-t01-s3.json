@@ -1,0 +1,85 @@
+{
+  "ref": "D03 T01 \u00a73",
+  "title": "The save command",
+  "implementation_sha": "fa79a12c84321591a256674b21535b1c6bb1f1d3",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/03-cli/D03-T01-s3.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SaveCommandTests --filter-class *SaveCommandProcessTests --filter-class *ConsoleBehaviourTests --filter-class *TestModeSwitchesTests --filter-class *LayerRuleTests (53/53 passed, 0 skipped)"
+  ],
+  "completion": {
+    "report": "docs/reviews/03-cli/D03-T01-s3.md",
+    "verdict": "filed",
+    "candidate": "fa79a12c84321591a256674b21535b1c6bb1f1d3",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D03 T01 \u00a78"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/03-cli/D03-T01-s3.md",
+    "candidate": "4d7256594fa5e0ad0fbdcd964b36f3bd35a5bff3",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "4d7256594fa5e0ad0fbdcd964b36f3bd35a5bff3",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
