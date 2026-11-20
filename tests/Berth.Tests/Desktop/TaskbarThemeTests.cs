@@ -57,9 +57,13 @@ public sealed class TaskbarThemeTests
         Assert.True(theme.IsLight);
         Assert.Equal([true], observedInsideHandler);
 
-        // Flip back to 0 and notify case-insensitively: observes IsLight == false inside the handler.
+        // Flip back to 0 and notify case-insensitively: observes IsLight == false immediately after the lowercase call.
         testKey.SetDword(0);
         theme.OnSettingChange("immersivecolorset");
+        Assert.False(theme.IsLight);
+        Assert.Equal([true, false], observedInsideHandler);
+
+        // A second notification with the same value raises no additional event.
         theme.OnSettingChange("ImmersiveColorSet");
         Assert.False(theme.IsLight);
         Assert.Equal([true, false], observedInsideHandler);
