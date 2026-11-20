@@ -78,8 +78,9 @@ internal sealed class DesktopView : IDisposable
                     $"Explorer desktop window is unavailable (FindWindowSW returned 0x{hr:X8}).");
             }
 
-            release(shellWindowsObj);
+            object shellWindowsToRelease = shellWindowsObj;
             shellWindowsObj = null;
+            release(shellWindowsToRelease);
 
             var serviceProvider = (Desktop.Interop.IServiceProvider)dispatchObj;
             Guid serviceId = ShellConstants.SID_STopLevelBrowser;
@@ -90,16 +91,18 @@ internal sealed class DesktopView : IDisposable
                 throw new DesktopUnavailableException("Top-level shell browser service returned null.");
             }
 
-            release(dispatchObj);
+            object dispatchToRelease = dispatchObj;
             dispatchObj = null;
+            release(dispatchToRelease);
 
             var shellBrowser = (IShellBrowser)browserObj;
             shellBrowser.QueryActiveShellView(out IShellView shellView);
             shellViewObj = shellView
                 ?? throw new DesktopUnavailableException("Active shell view returned null.");
 
-            release(browserObj);
+            object browserToRelease = browserObj;
             browserObj = null;
+            release(browserToRelease);
 
             var folderView = (IFolderView)shellViewObj;
             var folderView2 = shellViewObj as IFolderView2;

@@ -124,19 +124,81 @@ public sealed class UnavailableTests
         var monitors = new FixedMonitors(SingleMonitor);
         Exception comError = Marshal.GetExceptionForHR(unchecked((int)0x800706BA))!;
 
-        // Post-acquisition COMException on ReadIcons, SetPositions, AutoArrange, TryTurnAutoArrangeOff.
-        using (var shell = new ShellDesktopIcons(
-            openView: () =>
-            {
-                var view = new ThrowingFolderView(comError);
-                return DesktopView.Open(() => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))), _ => { });
-            },
-            monitors: monitors))
+        // Post-acquisition failures across ALL SIX mapped shell exceptions on ReadIcons, SetPositions, AutoArrange, TryTurnAutoArrangeOff.
+        foreach (Exception original in AllMappedShellExceptions())
         {
-            Assert.Same(comError, Assert.Throws<DesktopUnavailableException>(() => shell.ReadIcons()).InnerException);
-            Assert.Same(comError, Assert.Throws<DesktopUnavailableException>(() => shell.SetPositions([new(@"C:\A.txt", "A", 1, 2)])).InnerException);
-            Assert.Same(comError, Assert.Throws<DesktopUnavailableException>(() => _ = shell.AutoArrange).InnerException);
-            Assert.Same(comError, Assert.Throws<DesktopUnavailableException>(() => shell.TryTurnAutoArrangeOff()).InnerException);
+            using var shell = new ShellDesktopIcons(
+                openView: () =>
+                {
+                    var view = new ThrowingFolderView(original);
+                    return DesktopView.Open(() => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))), _ => { });
+                },
+                monitors: monitors);
+
+            Assert.Same(original, Assert.Throws<DesktopUnavailableException>(() => shell.ReadIcons()).InnerException);
+            Assert.Same(original, Assert.Throws<DesktopUnavailableException>(() => shell.SetPositions([new(@"C:\A.txt", "A", 1, 2)])).InnerException);
+            Assert.Same(original, Assert.Throws<DesktopUnavailableException>(() => _ = shell.AutoArrange).InnerException);
+            Assert.Same(original, Assert.Throws<DesktopUnavailableException>(() => shell.TryTurnAutoArrangeOff()).InnerException);
+        }
+
+        // View-release failure (InvalidComObjectException) maps to DesktopUnavailableException with exact release count 1,
+        // preserves an in-flight exception when work already threw, and never double-releases intermediates in DesktopView.Open.
+        {
+            var releaseError = new InvalidComObjectException("View RCW separated on release");
+            int viewReleases = 0;
+            var view = new HealthyFolderView([(@"C:\Desktop\A.txt", "A", 10, 20)]);
+            using var releaseShell = new ShellDesktopIcons(
+                openView: () => DesktopView.Open(
+                    () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))),
+                    obj =>
+                    {
+                        if (ReferenceEquals(obj, view))
+                        {
+                            viewReleases++;
+                            throw releaseError;
+                        }
+                    }),
+                monitors: monitors);
+            Assert.Same(releaseError, Assert.Throws<DesktopUnavailableException>(() => releaseShell.ReadIcons()).InnerException);
+            Assert.Equal(1, viewReleases);
+
+            // When work throws COMException AND release throws InvalidComObjectException, original COMException is preserved.
+            int failingViewReleases = 0;
+            var failingView = new ThrowingFolderView(comError);
+            using var bothFailShell = new ShellDesktopIcons(
+                openView: () => DesktopView.Open(
+                    () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(failingView))),
+                    obj =>
+                    {
+                        if (ReferenceEquals(obj, failingView))
+                        {
+                            failingViewReleases++;
+                            throw releaseError;
+                        }
+                    }),
+                monitors: monitors);
+            Assert.Same(comError, Assert.Throws<DesktopUnavailableException>(() => bothFailShell.ReadIcons()).InnerException);
+            Assert.Equal(1, failingViewReleases);
+
+            // Intermediate release throwing in DesktopView.Open releases that object exactly once (never double-released in finally).
+            Sta.Run(() =>
+            {
+                int shellWindowsReleases = 0;
+                var sw = new StubShellWindows(new StubServiceProvider(new StubShellBrowser(new MinimalFolderView())));
+                DesktopUnavailableException openThrown = Assert.Throws<DesktopUnavailableException>(() =>
+                    DesktopView.Open(
+                        () => sw,
+                        obj =>
+                        {
+                            if (ReferenceEquals(obj, sw))
+                            {
+                                shellWindowsReleases++;
+                                throw releaseError;
+                            }
+                        }));
+                Assert.Same(releaseError, openThrown.InnerException);
+                Assert.Equal(1, shellWindowsReleases);
+            });
         }
 
         // Programming bugs (NullReferenceException and InvalidOperationException) propagate unwrapped.

@@ -517,41 +517,60 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         _worker.Run(() =>
         {
             _onMemberExecuted?.Invoke(memberName);
-            using DesktopView view = OpenViewChecked();
+            DesktopView view = OpenViewChecked();
+            T result;
             try
             {
-                return work(view);
+                result = work(view);
             }
             catch (BeforeMoveExceptionWrapper wrapper)
             {
+                DisposeViewSuppressingShellErrors(view);
                 ExceptionDispatchInfo.Capture(wrapper.Inner).Throw();
                 throw;
             }
-            catch (COMException ex)
+            catch (Exception ex) when (IsMappedShellException(ex))
+            {
+                DisposeViewSuppressingShellErrors(view);
+                throw Unavailable(ex);
+            }
+            catch
+            {
+                DisposeViewSuppressingShellErrors(view);
+                throw;
+            }
+
+            try
+            {
+                view.Dispose();
+            }
+            catch (Exception ex) when (IsMappedShellException(ex))
             {
                 throw Unavailable(ex);
             }
-            catch (InvalidCastException ex)
-            {
-                throw Unavailable(ex);
-            }
-            catch (InvalidComObjectException ex)
-            {
-                throw Unavailable(ex);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                throw Unavailable(ex);
-            }
-            catch (FileNotFoundException ex)
-            {
-                throw Unavailable(ex);
-            }
-            catch (DirectoryNotFoundException ex)
-            {
-                throw Unavailable(ex);
-            }
+
+            return result;
         });
+
+    private static void DisposeViewSuppressingShellErrors(DesktopView view)
+    {
+        try
+        {
+            view.Dispose();
+        }
+        catch (Exception ex) when (IsMappedShellException(ex))
+        {
+            // Preserve the exception already in flight.
+        }
+    }
+
+    private static bool IsMappedShellException(Exception ex) =>
+        ex is COMException
+            or InvalidCastException
+            or InvalidComObjectException
+            or UnauthorizedAccessException
+            or FileNotFoundException
+            or DirectoryNotFoundException;
 
     private DesktopView OpenViewChecked()
     {
