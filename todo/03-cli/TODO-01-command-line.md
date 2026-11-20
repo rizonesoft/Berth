@@ -153,6 +153,8 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 ## 5. The undo command
 
+> **Started:** 2026-11-20T16:27:37Z
+
 `berth undo`, the reverse of `berth restore` (SPEC §13, §15 "Undo").
 
 **Phase:** 3
@@ -161,16 +163,16 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 **Build order:**
 
-1. Implement `Undo` in `CliRunner`. Done when: a restore then an undo returns the fake desktop to its start.
-2. Cover "nothing to undo". Done when: it returns 3 with the SPEC message.
+1. Implement `Undo` in `CliRunner` and route `CliCommand.Undo` in `Program.Run`. **Corrected 2026-11-20:** included `Program.Run` routing and an entry-point test via `Composition.ForTest` so `berth undo` does not exit 2. Done when: a restore then an undo returns the fake desktop to its pre-restore positions and `Program.Run(["undo"], ...)` exits 0.
+2. Cover partial missing-only undo, placement failures (with `SnapIds` and preserved snapshot bytes), and all four refusals (`NothingToUndo`, `AutoArrange`, `DesktopUnavailable`, `Busy`). Done when: each compares exact literal contents of both streams (including newline) and the SPEC exit code.
 
-- [ ] Implement `Undo`: call `LayoutService.Undo()`, write `Put 3 icons back.` (through `Messages.Cli`) and return 0 for `Undone`. Done when: a unit test runs `restore` then `undo` through `CliRunner` and the fake desktop equals its starting positions. Cheaper substitute: an undo that only deletes `undo.json`.
-- [ ] Return 1 with `Put 2 of 3 icons back. 1 did not stay where it was.` on standard error when the undo is `Failed` with `NotPlaced` above 0, leaving `undo.json` for another try (SPEC §13). Done when: a unit test with `SnapBy` 1 compares the line and code and finds the file still present. Cheaper substitute: none needed.
-- [ ] Return 3 with "There is nothing to undo." when the result is `NothingToUndo`, and 3 with the matching message for auto arrange, an unreachable desktop and `Busy`. Done when: unit tests cover a fresh data folder and a second undo in a row. Cheaper substitute: exit 0 with no output.
-- [ ] Add `tests/Berth.Tests/Cli/UndoCommandTests.cs`. Done when: all pass, and the second-undo test fails when `undo.json` is not deleted after an undo. Cheaper substitute: testing undo only through the window later.
-- [ ] Commit: `cli: the undo command`
+- [x] Implement `Undo` in `CliRunner` and route `CliCommand.Undo` in `Program.Run`: call `LayoutService.Undo()`, write `Messages.Cli(result)` to `output` and return 0 for `Undone` (full `Put 3 icons back.` or missing-only partial `Put 2 of 3 icons back. 1 is no longer on the desktop.`), deleting `undo.json`. **Corrected 2026-11-20:** added `Program.Run(["undo"], ...)` test, missing-only partial undo test, and exact literal both-stream assertions (with `Environment.NewLine`). Done when: unit tests run `restore` then `undo` through `CliRunner` and `Program.Run` and the fake desktop equals its exact pre-restore positions with `undo.json` deleted. Cheaper substitute: an undo that only deletes `undo.json`.
+- [x] Return 1 with `Put 2 of 3 icons back. 1 did not stay where it was.` (and combined `Put 1 of 3 icons back. 1 did not stay where it was. 1 is no longer on the desktop.`) on standard error and empty stdout when the undo is `Failed` with `NotPlaced` above 0, preserving the exact `undo.json` bytes for another try (SPEC §13; remaining core failure edges are covered by `tests/Berth.Tests/Core/UndoTests.cs`). **Corrected 2026-11-20:** targeted one icon with `SnapIds`, added combined missing + not-placed case, and verified exact preserved snapshot bytes. Done when: unit tests compare exact literal contents of both streams, exit 1, and identical `undo.json` bytes. Cheaper substitute: none needed.
+- [x] Return 3 with exact literal SPEC §18 stderr (plus `Environment.NewLine`) and empty stdout for `NothingToUndo` (fresh data folder and second undo in a row), `AutoArrange` (with valid snapshot seeded), `DesktopUnavailable` (before placement), and `Busy`. **Corrected 2026-11-20:** required explicit CLI unit tests for all four refusals with exact both-stream assertions. Done when: all four refusal tests pass. Cheaper substitute: exit 0 with no output.
+- [x] Add `tests/Berth.Tests/Cli/UndoCommandTests.cs`. Done when: all pass, and the second-undo test fails when `undo.json` is not deleted after an undo. Cheaper substitute: testing undo only through the window later.
+- [x] Commit: `cli: the undo command`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*UndoCommandTests"` passes, and fails when a second `undo` in a row succeeds.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UndoCommandTests" --filter-class "*RestoreCommandTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when a second `undo` in a row succeeds.
 
 ## 6. The list command
 

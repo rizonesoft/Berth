@@ -38,6 +38,7 @@ internal sealed class CliRunner
         {
             CliCommand.Save => WriteOperationResult(_service.Save(args.Name)),
             CliCommand.Restore => WriteOperationResult(_service.Restore()),
+            CliCommand.Undo => WriteOperationResult(_service.Undo()),
             _ => CliExit.Usage,
         };
     }
