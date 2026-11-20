@@ -223,7 +223,7 @@ internal sealed class TrayMenu : IDisposable
 
                 Action? drainCallback = CompleteInFlightWork();
                 tcs.TrySetResult();
-                drainCallback?.Invoke();
+                DispatchDrainOnUiThread(drainCallback);
             }
 
             try
@@ -450,7 +450,7 @@ internal sealed class TrayMenu : IDisposable
                 }
 
                 Action? drainCallback = CompleteInFlightWork();
-                drainCallback?.Invoke();
+                DispatchDrainOnUiThread(drainCallback);
             }
 
             try
@@ -497,6 +497,25 @@ internal sealed class TrayMenu : IDisposable
         }
 
         drainCallback?.Invoke();
+    }
+
+    private void DispatchDrainOnUiThread(Action? drainCallback)
+    {
+        if (drainCallback is null)
+        {
+            return;
+        }
+
+        // Never run the drain callback on a worker thread: if the dispatcher is already shutting down,
+        // UI-thread teardown after app.Run() owns tray disposal.
+        try
+        {
+            _marshal(drainCallback, static () => { });
+        }
+        catch (Exception)
+        {
+            // Dispatcher unavailable; UI-thread teardown owns disposal.
+        }
     }
 
     private Action? CompleteInFlightWork()

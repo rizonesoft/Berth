@@ -195,19 +195,34 @@ public sealed class TrayMenuTests(AppFixture appFixture)
     {
         using var data = new TestData();
         CancellationToken ct = TestContext.Current.CancellationToken;
+        int uiThreadId = appFixture.Invoke(() => Environment.CurrentManagedThreadId);
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
         var clock = new FixedClock(FixedNow);
         var log = new Log(paths, clock);
         var monitors = new FakeMonitors(PrimaryMonitor);
-        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 200));
+        var innerDesktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 200));
+        var desktop = new ThreadRecordingDesktop(innerDesktop);
         var store = new LayoutStore(paths);
         var settingsStore = new SettingsStore(paths);
         var gate = OperationLock.ForApp(paths);
         var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
 
+        using var saveEntered = new ManualResetEventSlim(false);
+        using var saveRelease = new ManualResetEventSlim(false);
+        desktop.BeforeRead = () =>
+        {
+            saveEntered.Set();
+            if (!saveRelease.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Held Save gate was never released.");
+            }
+        };
+
         using var abortEntered = new ManualResetEventSlim(false);
         using var abortRelease = new ManualResetEventSlim(false);
+        int marshalCalls = 0;
         int idleCount = 0;
+        int idleThreadId = 0;
         var idleRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         TrayMenu menu = appFixture.Invoke(() => new TrayMenu(
@@ -217,47 +232,66 @@ public sealed class TrayMenuTests(AppFixture appFixture)
             desktop,
             settingsStore,
             log,
-            (_, onAborted) =>
+            (action, onAborted) =>
             {
-                abortEntered.Set();
-                if (!abortRelease.Wait(TimeSpan.FromSeconds(5)))
+                // First marshal is the opening refresh: simulate an aborted dispatch firing onAborted twice on a worker thread.
+                if (Interlocked.Increment(ref marshalCalls) == 1)
                 {
-                    throw new TimeoutException("Abort gate was never released.");
+                    abortEntered.Set();
+                    if (!abortRelease.Wait(TimeSpan.FromSeconds(5)))
+                    {
+                        throw new TimeoutException("Abort gate was never released.");
+                    }
+
+                    onAborted();
+                    onAborted();
+                    return;
                 }
 
-                // Invoke onAborted twice to simulate racing Aborted event + Status check and prove exactly-once settlement.
-                onAborted();
-                onAborted();
+                // Subsequent marshals (the held Save completion) run normally on the UI thread.
+                appFixture.Invoke(action);
             }));
 
         try
         {
+            // Hold two operations in flight: (1) an opening refresh that aborts twice, and (2) a Save waiting on saveRelease.
             Task refreshTask = appFixture.Invoke(() =>
             {
                 menu.RefreshState();
+                menu.SaveItem.PerformClick();
                 return menu.LastRefreshTask;
             });
 
             Assert.True(abortEntered.Wait(TimeSpan.FromSeconds(5), ct));
+            Assert.True(saveEntered.Wait(TimeSpan.FromSeconds(5), ct));
+
             appFixture.Invoke(() =>
             {
                 menu.BeginDrain(() =>
                 {
                     Interlocked.Increment(ref idleCount);
+                    idleThreadId = Environment.CurrentManagedThreadId;
                     idleRan.TrySetResult();
                 });
             });
 
-            Assert.False(idleRan.Task.IsCompleted);
+            // Deliver BOTH abort notifications for the opening refresh; the Save is still in flight so drain MUST wait.
             abortRelease.Set();
-
             await refreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            Assert.True(menu.HasInFlightOperations);
+            Assert.False(idleRan.Task.IsCompleted);
+
+            // Now release the Save; drain completes on the UI thread exactly once.
+            saveRelease.Set();
             await idleRan.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.False(menu.HasInFlightOperations);
             Assert.Equal(1, Volatile.Read(ref idleCount));
+            Assert.Equal(uiThreadId, idleThreadId);
         }
         finally
         {
+            saveRelease.Set();
+            abortRelease.Set();
             appFixture.Invoke(menu.Dispose);
         }
     }
@@ -580,6 +614,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
         public int LastSetThreadId { get; private set; }
         public int LastAutoArrangeThreadId { get; private set; }
         public Action? BeforeAutoArrange { get; set; }
+        public Action? BeforeRead { get; set; }
 
         public bool AutoArrange
         {
@@ -594,6 +629,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
         public IReadOnlyList<IconPosition> ReadIcons()
         {
             LastReadThreadId = Environment.CurrentManagedThreadId;
+            BeforeRead?.Invoke();
             return inner.ReadIcons();
         }
 

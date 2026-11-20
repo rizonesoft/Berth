@@ -172,9 +172,9 @@ internal static class TrayApp
             trayMenu.ExitRequested += () =>
                 trayMenu.BeginDrain(() =>
                 {
-                    trayIcon.Dispose();
                     if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
                     {
+                        trayIcon.Dispose();
                         app.Shutdown(0);
                     }
                 });
