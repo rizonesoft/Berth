@@ -23,7 +23,7 @@ public sealed partial class NoHexColourTests
     [GeneratedRegex(@"(?<![0-9A-Fa-f#])#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{3})(?![0-9A-Fa-f])", RegexOptions.CultureInvariant)]
     private static partial Regex HexColourRegex();
 
-    [GeneratedRegex(@"\bColor\.From(?:Argb|Rgb|ScRgb)\s*\(", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bColor\s*\.\s*From(?:Argb|Rgb|ScRgb)\s*\(", RegexOptions.CultureInvariant)]
     private static partial Regex ColorFromCallRegex();
 
     [Fact]
@@ -92,7 +92,16 @@ public sealed partial class NoHexColourTests
                 Path.Combine(tempDir, "Window", "BadArgb.cs"),
                 """
                 using System.Windows.Media;
-                class BadArgb { static Color C => Color.FromArgb(255, 1, 2, 3); }
+                class BadArgb { static Color C => Color
+                    .FromArgb(255, 1, 2, 3); }
+                """);
+
+            // Bad C# call inside string interpolation must also be detected.
+            File.WriteAllText(
+                Path.Combine(tempDir, "Window", "BadInterpolated.cs"),
+                """
+                using System.Windows.Media;
+                class BadInterpolated { static string S => $"c={Color.FromRgb(1, 2, 3)}"; }
                 """);
 
             // C# comments mentioning Color.FromRgb or hex literals must not trigger a violation.
@@ -105,11 +114,12 @@ public sealed partial class NoHexColourTests
                 """);
 
             List<string> violations = FindViolations(tempDir);
-            Assert.Equal(4, violations.Count);
+            Assert.Equal(5, violations.Count);
             Assert.Contains(violations, v => v.Contains("Extra.xaml", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("MultilineBad.xaml", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("BadRgb.cs", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("BadArgb.cs", StringComparison.Ordinal));
+            Assert.Contains(violations, v => v.Contains("BadInterpolated.cs", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("Tokens.Light.xaml", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("Commented.xaml", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("CommentOnly.cs", StringComparison.Ordinal));
@@ -215,6 +225,100 @@ public sealed partial class NoHexColourTests
                 }
 
                 i = Math.Min(i + 2, text.Length);
+                continue;
+            }
+
+            // Interpolated string $"...", $@"...", @$"..."
+            if ((c == '$' && i + 1 < text.Length && text[i + 1] == '"')
+                || (c == '$' && i + 2 < text.Length && text[i + 1] == '@' && text[i + 2] == '"')
+                || (c == '@' && i + 2 < text.Length && text[i + 1] == '$' && text[i + 2] == '"'))
+            {
+                bool isVerbatim = (c == '@' || text[i + 1] == '@');
+                int startLine = line;
+                i += isVerbatim ? 3 : 2;
+                var literalChunk = new StringBuilder();
+                while (i < text.Length)
+                {
+                    if (text[i] == '\n')
+                    {
+                        line++;
+                        codeBuilder.Append('\n');
+                        literalChunk.Append('\n');
+                        i++;
+                        continue;
+                    }
+
+                    if (!isVerbatim && text[i] == '\\' && i + 1 < text.Length)
+                    {
+                        literalChunk.Append(text[i]);
+                        literalChunk.Append(text[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+
+                    if (isVerbatim && text[i] == '"' && i + 1 < text.Length && text[i + 1] == '"')
+                    {
+                        literalChunk.Append('"');
+                        i += 2;
+                        continue;
+                    }
+
+                    if (text[i] == '"')
+                    {
+                        i++;
+                        break;
+                    }
+
+                    if (text[i] == '{')
+                    {
+                        if (i + 1 < text.Length && text[i + 1] == '{')
+                        {
+                            literalChunk.Append('{');
+                            i += 2;
+                            continue;
+                        }
+
+                        // Interpolation expression hole: emit its C# code into codeBuilder!
+                        CheckLiteralForHex(rel, startLine, literalChunk.ToString(), violations);
+                        literalChunk.Clear();
+                        i++;
+                        int depth = 1;
+                        codeBuilder.Append(' ');
+                        while (i < text.Length && depth > 0)
+                        {
+                            if (text[i] == '\n')
+                            {
+                                line++;
+                            }
+
+                            if (text[i] == '{')
+                            {
+                                depth++;
+                            }
+                            else if (text[i] == '}')
+                            {
+                                depth--;
+                                if (depth == 0)
+                                {
+                                    i++;
+                                    break;
+                                }
+                            }
+
+                            codeBuilder.Append(text[i]);
+                            i++;
+                        }
+
+                        codeBuilder.Append(' ');
+                        startLine = line;
+                        continue;
+                    }
+
+                    literalChunk.Append(text[i]);
+                    i++;
+                }
+
+                CheckLiteralForHex(rel, startLine, literalChunk.ToString(), violations);
                 continue;
             }
 
@@ -334,13 +438,11 @@ public sealed partial class NoHexColourTests
             i++;
         }
 
-        string[] codeLines = codeBuilder.ToString().Split('\n');
-        for (int idx = 0; idx < codeLines.Length; idx++)
+        string strippedCode = codeBuilder.ToString();
+        foreach (Match match in ColorFromCallRegex().Matches(strippedCode))
         {
-            if (ColorFromCallRegex().IsMatch(codeLines[idx]))
-            {
-                violations.Add($"{rel}:{idx + 1}: Color.From* call");
-            }
+            int callLine = 1 + strippedCode.AsSpan(0, match.Index).Count('\n');
+            violations.Add($"{rel}:{callLine}: Color.From* call");
         }
     }
 

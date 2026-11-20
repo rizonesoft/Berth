@@ -30,7 +30,7 @@ public sealed partial class TokenKeysTests
         "Tokens.Shared.xaml",
     ];
 
-    [GeneratedRegex(@"\{(?:StaticResource|DynamicResource)\s+(?:ResourceKey=)?(Berth\.[A-Za-z0-9_.]+)\s*\}", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\{(?:StaticResource|DynamicResource)\s+(?:ResourceKey\s*=\s*)?(Berth\.[A-Za-z0-9_.]+)\s*\}", RegexOptions.CultureInvariant)]
     private static partial Regex MarkupResourceRefRegex();
 
     [Fact]
@@ -152,17 +152,42 @@ public sealed partial class TokenKeysTests
 
             var border = new Border();
             border.Resources.MergedDictionaries.Add(hc);
-            border.SetResourceReference(Border.BackgroundProperty, "Berth.MapBackground");
-            border.SetResourceReference(Border.BorderBrushProperty, "Berth.MarkerSelected");
-
             border.Resources[WpfSystemColors.WindowColorKey] = Colors.Magenta;
+            border.Resources[WpfSystemColors.WindowTextColorKey] = Colors.DarkBlue;
             border.Resources[WpfSystemColors.HighlightColorKey] = Colors.Cyan;
+            border.Resources[WpfSystemColors.GrayTextColorKey] = Colors.Gold;
 
-            var bg = Assert.IsType<SolidColorBrush>(border.Background);
-            var fg = Assert.IsType<SolidColorBrush>(border.BorderBrush);
-            Assert.Equal(Colors.Magenta, bg.Color);
-            Assert.Equal(Colors.Cyan, fg.Color);
+            (string Key, WpfColor Expected)[] expectedRoles =
+            [
+                ("Berth.MapBackground", Colors.Magenta),
+                ("Berth.MapGrid", Colors.Gold),
+                ("Berth.MapBorder", Colors.DarkBlue),
+                ("Berth.MonitorFill", Colors.Magenta),
+                ("Berth.MonitorStroke", Colors.DarkBlue),
+                ("Berth.MarkerInPlace", Colors.DarkBlue),
+                ("Berth.MarkerMoved", Colors.DarkBlue),
+                ("Berth.MarkerMissing", Colors.DarkBlue),
+                ("Berth.MarkerNeutral", Colors.DarkBlue),
+                ("Berth.MarkerSelected", Colors.Cyan),
+                ("Berth.ActiveBadgeFill", Colors.DarkBlue),
+                ("Berth.ActiveBadgeText", Colors.Magenta),
+                ("Berth.TextSecondary", Colors.DarkBlue),
+                ("Berth.NoticeWarningFill", Colors.Magenta),
+                ("Berth.NoticeWarningBorder", Colors.DarkBlue),
+                ("Berth.NoticeErrorFill", Colors.Magenta),
+                ("Berth.NoticeErrorBorder", Colors.DarkBlue),
+            ];
 
+            Assert.Equal(17, expectedRoles.Length);
+            foreach ((string key, WpfColor expectedColor) in expectedRoles)
+            {
+                border.SetResourceReference(Border.BackgroundProperty, key);
+                var brush = Assert.IsType<SolidColorBrush>(border.Background);
+                Assert.Equal(expectedColor, brush.Color);
+            }
+
+            // Confirm live updates when a system colour resource changes.
+            border.SetResourceReference(Border.BackgroundProperty, "Berth.MapBackground");
             border.Resources[WpfSystemColors.WindowColorKey] = Colors.Lime;
             Assert.Equal(Colors.Lime, ((SolidColorBrush)border.Background).Color);
         });
@@ -191,7 +216,8 @@ public sealed partial class TokenKeysTests
                 <UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
                     <!-- <Border Background="{DynamicResource Berth.CommentedOutKey}" /> -->
                     <Border Background="{DynamicResource Berth.NoSuchKey}"
-                            BorderBrush="{StaticResource Berth.MarkerInPlace}">
+                            BorderBrush="{StaticResource ResourceKey = Berth.SpacedMissing}"
+                            Foreground="{StaticResource Berth.MarkerInPlace}">
                         <Border.Tag>
                             <DynamicResource ResourceKey='Berth.SingleQuotedMissing' />
                         </Border.Tag>
@@ -200,8 +226,9 @@ public sealed partial class TokenKeysTests
                 """);
 
             List<string> missing = FindMissingKeys(tempDir, knownKeys);
-            Assert.Equal(2, missing.Count);
+            Assert.Equal(3, missing.Count);
             Assert.Contains(missing, m => m.Contains("Berth.NoSuchKey", StringComparison.Ordinal));
+            Assert.Contains(missing, m => m.Contains("Berth.SpacedMissing", StringComparison.Ordinal));
             Assert.Contains(missing, m => m.Contains("Berth.SingleQuotedMissing", StringComparison.Ordinal));
             Assert.DoesNotContain(missing, m => m.Contains("Berth.CommentedOutKey", StringComparison.Ordinal));
         }
