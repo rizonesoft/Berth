@@ -41,7 +41,7 @@ depends_on: ["layout-core"]
 | 1 | §1 | Shell COM interface declarations | D00 T01 §2 | [x] |
 | 2 | §2 | The desktop's folder view | §1 | [x] |
 | 3 | §9 | STA worker that owns every shell call | §2 | [x] |
-| 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [ ] |
+| 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [x] |
 | 5 | §4 | Setting icon positions | §3 | [ ] |
 | 6 | §5 | Auto arrange read and clear | §9 | [x] |
 | 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
@@ -121,9 +121,12 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 - [x] Add `DesktopCoordinates` in `src/Berth/Desktop/DesktopCoordinates.cs` with `ToDesktop(int viewX, int viewY, IReadOnlyList<MonitorInfo> monitors)` and its exact inverse `ToView(int desktopX, int desktopY, IReadOnlyList<MonitorInfo> monitors)`, converting between the folder view's coordinates (origin at `(min(m.X), min(m.Y))`, measured 2026-11-20 on this Windows 11 multi-monitor host: `VirtualScreen=(-5760,0) 9600x2160`, `ItemCount=128`, `ViewPos X=[5780..9476] Y=[2..1926]` -> `Desktop X=[20..3716]` inside primary `[0..3840)`) and physical pixels of the virtual desktop (SPEC §15 "Positions"), recording that measurement and date in the file's header comment. `ReadIcons` returns desktop coordinates. Done when: unit tests cover primary-only, negative `X`, negative `Y`, both negative `X` and `Y`, null/empty monitor rejection, independent expected `ToDesktop`/`ToView` literal values, round-trip `ToView(ToDesktop(p)) == p`, and public `ReadIcons` exact signed coordinates (including an off-screen point) on a nonzero monitor origin. Cheaper substitute: storing view coordinates and converting only when drawing, so Core's monitor numbering and off-screen checks disagree with the map.
 - [x] When two items report the same parsing name ignoring case, keep the first and write one `WARN` log line naming it (`Log.Warn` via the required `Log` parameter / internal `Deduplicate(IReadOnlyList<IconPosition>, Action<string>?)`). Done when: unit tests over both `Deduplicate` and public `ShellDesktopIcons(monitors, log).ReadIcons()` with a real `Log` on a temp `BerthPaths.ForRoot` and a 3-item fixture (two distinct parsing names sharing one display name plus one case-variant duplicate of the first parsing name) assert all 3 items visited, 2 icons returned with the first duplicate's fields preserved, and 1 `WARN` line written to `logs\berth.log` naming the duplicate parsing name. Cheaper substitute: returning duplicates, which `LayoutStore` refuses to load back (`D01 T01 §5`).
 - [x] Add `tests/Berth.Tests/Desktop/ReadIconsTests.cs` covering: exact signed per-item coordinates (including off-screen) through public `ReadIcons`; 3-item duplicate-display-name + duplicate-parsing-name + `Log.Warn` integration; empty enumeration; Recycle Bin `::{...}` parsing-name preservation; two-read freshness across an icon move; real native `StrRetToStrW` across >260-char Unicode `WSTR`, `OFFSET`, `CSTR`, and mid-loop failure; `GetFolder`-succeeds/`Items`-fails cleanup; `FileNotFoundException` during `GetDisplayNameOf` -> `DesktopUnavailableException`; negative `Next` HRESULT -> `DesktopUnavailableException`; `S_FALSE` with `fetched == 1`; 200-read controlled-fixture memory leak check; and `DesktopCoordinates` unit tests. **Corrected 2026-11-20:** aligned all tests with `AGENTS.md` (zero reads of owner icons; live probe read-back owned by `D02 T01 §7`). Done when: all pass with `0` skipped on the build machine, and fail when enumeration stops one item early, when `DesktopCoordinates` omits the origin offset, when display names are used for deduplication, or when `GetFolder` leaks on `Items` failure. Cheaper substitute: asserting only that the list is not null.
-- [ ] Commit: `desktop: reading every icon's identity and position`
+- [x] Commit: `desktop: reading every icon's identity and position`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ReadIconsTests" --filter-class "*StaWorkerTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when the enumeration loop drops the last item, when `DesktopCoordinates` omits the virtual-screen origin offset, when display names are used as `Id`, or when duplicate parsing names are not deduplicated and logged.
+
+> **Verified:** 2026-11-20 | §3 | 6e12dda58a674ca2c172d6086f0b4196d2185ab3
+> **Review:** `docs/reviews/d02-t01-s3.json`
 
 ## 4. Setting icon positions
 
