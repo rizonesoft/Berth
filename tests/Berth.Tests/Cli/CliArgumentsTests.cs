@@ -48,6 +48,9 @@ public sealed class CliArgumentsTests
         // Explicitly supplied empty values are preserved as "" (not null) so §10 name validation produces "Enter a name.".
         Assert.Equal(new CliArguments(CliCommand.Save, "", null), CliArguments.Parse(["save", "--name", ""]));
         Assert.Equal(new CliArguments(CliCommand.Save, "", null), CliArguments.Parse(["save", "--name="]));
+
+        // An option-looking token immediately after --name is consumed verbatim as the layout name.
+        Assert.Equal(new CliArguments(CliCommand.Save, "--name", null), CliArguments.Parse(["save", "--name", "--name"]));
     }
 
     [Theory]
