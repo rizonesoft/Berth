@@ -2,6 +2,7 @@ using System.IO;
 using Berth.App;
 using Berth.Cli;
 using Berth.Core;
+using Berth.Desktop;
 
 namespace Berth;
 
@@ -18,7 +19,9 @@ internal static class Program
         Func<string, string?>? getenv = null,
         Func<Environment.SpecialFolder, string>? folder = null,
         Func<BerthPaths, Log, Composition>? createComposition = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        Func<IMonitors>? createMonitors = null,
+        TimeZoneInfo? zone = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -51,6 +54,20 @@ internal static class Program
             {
                 output.WriteLine("Berth " + AppInfo.Version);
                 exitCode = CliExit.Done;
+            }
+            else if (parsed.Command == CliCommand.List)
+            {
+                paths ??= BerthPaths.FromEnvironment(readEnv, folder);
+                log ??= new Log(paths, effectiveClock);
+                IMonitors monitors = createMonitors is not null ? createMonitors() : new SystemMonitors();
+                exitCode = CliRunner.RunList(
+                    new LayoutStore(paths),
+                    paths,
+                    monitors,
+                    log,
+                    output,
+                    error,
+                    zone ?? TimeZoneInfo.Local);
             }
             else if (parsed.Command is CliCommand.Save or CliCommand.Restore or CliCommand.Undo)
             {

@@ -183,6 +183,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 | 3 | Refused: auto arrange on, no layout, nothing to undo, desktop unreachable, busy, or unreadable layout |
 
 - Clarified 2026-11-20 (D03 T01 §4): exit code 3 also covers `Busy` (another operation is running) and `UnreadableLayout` (a layout file cannot be read), matching §18.
+- Clarified 2026-11-20 (D03 T01 §6): `berth list` reports each unreadable layout file on standard error while still listing readable layouts (or `No layouts saved yet.` when none are readable) and exiting 0; operations that require an unreadable layout are refused with exit code 3.
 
 - The executable is a console program whose manifest sets the console allocation policy to detached, so starting it from the Start menu, a shortcut or the `Run` key opens no console window, while a command typed in a terminal prints there and the terminal waits for it. Only recent Windows 11 builds honour that policy: Berth's stated minimum is Windows 11 version 24H2, shown on build 26300 (`10.0.26300.0`), 2026-11-20 (`D03 T01 §2`).
 

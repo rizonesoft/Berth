@@ -179,6 +179,8 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 ## 6. The list command
 
+> **Started:** 2026-11-20T16:37:56Z
+
 `berth list` prints one aligned line per layout (SPEC §13).
 
 **Phase:** 3
@@ -187,17 +189,17 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 **Build order:**
 
-1. Implement `List` in `CliRunner`. Done when: the SPEC §13 example line is produced for its data.
-2. Cover the empty and unreadable cases. Done when: both print what SPEC says.
+1. Implement `CliRunner.RunList` and route `CliCommand.List` in `Program.Run` through read-only dependencies (`LayoutStore`, `BerthPaths`, `IMonitors`, `Log`, `TimeZoneInfo`) without constructing `ShellDesktopIcons` or `OperationLock`. **Corrected 2026-11-20:** added read-only `Program.Run(["list"], ...)` route and test with a throwing mutation-composition factory. Done when: the SPEC §13 example line is produced for its data and `Program.Run(["list"], ...)` exits 0.
+2. Cover alignment with sanitized single-line names, total ordering, monitor-read fallback, empty folder, corrupt-only and mixed corrupt/readable layouts, and folder-read failure (`Messages.ReadFailed`, exit 1). Done when: all unit tests pass in Release.
 
-- [ ] Implement `List`: load with `LayoutStore.LoadAll`, order the active layout first then by name, and write per layout `* ` or two spaces, the name padded to the longest name, two spaces, `Formats.MonitorCount`, two spaces, `Formats.IconCount`, two spaces, `Formats.ListDate`. Done when: a unit test with the SPEC example's data gets `* Docked  2 monitors  42 icons  2026-11-15 09:14` aligned with a second, longer-named layout. Cheaper substitute: tab characters, which do not align in every terminal.
-- [ ] Mark the active layout by comparing each key with `ArrangementKey.From(monitors.Read())`; when the monitors cannot be read, mark none and still list. Done when: unit tests cover an active layout, none active, and unreadable monitors. Cheaper substitute: failing the whole list because the desktop is unreachable.
-- [ ] Print `No layouts saved yet.` and return 0 when there are none. Done when: a unit test on an empty data folder compares the line. Cheaper substitute: printing nothing.
-- [ ] For each unreadable file write the SPEC §18 "could not be read" message to `error`, still list the readable ones, and return 0. Done when: a unit test with one good and one corrupt file gets one line on each stream. Cheaper substitute: hiding corrupt files from the one command a user would run to look for them.
-- [ ] Add `tests/Berth.Tests/Cli/ListCommandTests.cs`. Done when: all pass, and the alignment test fails when padding is removed. Cheaper substitute: asserting the name appears somewhere in the output.
-- [ ] Commit: `cli: the list command`
+- [x] Implement `List` (`CliRunner.RunList` and `CliRunner.Run` + read-only `Program.Run` dispatch): load with `LayoutStore.LoadAll`, catch `IOException`/`UnauthorizedAccessException` as SPEC §18 `Messages.ReadFailed` (logged `FAIL`, stderr, exit 1), sanitize each name with `Messages.SingleLine` before measuring `maxNameWidth`, order active first then `OrdinalIgnoreCase` name, `Ordinal` name, `Ordinal` key, and write `* ` or two spaces, padded display name, two spaces, `Formats.MonitorCount`, two spaces, `Formats.IconCount`, two spaces, `Formats.ListDate(savedAt, zone)`. **Corrected 2026-11-20:** sanitized names before width calculation, specified total ordering, split single-layout SPEC example from unequal-width + control-character alignment fixture using a fixed non-UTC zone, and added folder-read failure handling. Done when: unit tests get `* Docked  2 monitors  42 icons  2026-11-15 09:14` and exact aligned multi-row output. Cheaper substitute: tab characters, which do not align in every terminal.
+- [x] Mark the active layout by reading `monitors.Read()` once and comparing with `ArrangementKey.From`; when `DesktopUnavailableException` is thrown, mark none and still list. Done when: three-layout unit tests cover matching active (alphabetically last), no match, and throwing monitor reader. Cheaper substitute: failing the whole list because the desktop is unreachable.
+- [x] Print `No layouts saved yet.` and return 0 when there are no readable layouts (both empty folder and corrupt-only folder after reporting every corrupt file to `error`). **Corrected 2026-11-20:** covered corrupt-only folder with two corrupt files (bytes intact) and clarified SPEC §13. Done when: both tests compare exact stdout and stderr lines and exit 0. Cheaper substitute: printing nothing.
+- [x] For each unreadable file write `Messages.UnreadableLayout(file.FileName)` to `error`, still list the readable ones, and return 0. Done when: a unit test with one good and one corrupt file gets exact lines on both streams and leaves corrupt bytes untouched. Cheaper substitute: hiding corrupt files from the one command a user would run to look for them.
+- [x] Add `tests/Berth.Tests/Cli/ListCommandTests.cs`. Done when: all pass, and the alignment test fails when padding is removed. Cheaper substitute: asserting the name appears somewhere in the output.
+- [x] Commit: `cli: the list command`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ListCommandTests"` passes, and fails when name padding is removed.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ListCommandTests" --filter-class "*UndoCommandTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when name padding is removed.
 
 ## 7. Help, version and usage errors
 
