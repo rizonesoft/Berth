@@ -11,7 +11,7 @@ depends_on: ["layout-core"]
 
 > **Goal:** Berth reads every desktop icon's identity and position, sets positions, reads and clears auto arrange, and reads the monitors, through the documented shell interfaces, proven on the real desktop with an icon the test itself creates.
 
-> **Current state:** Measured 2026-11-20. `D01 T01 §8` declares `IDesktopIcons` and `IMonitors` and their fakes. `D02 T01 §1` (shell COM declarations in `src/Berth/Desktop/Interop/`), `D02 T01 §2` (`DesktopView` in `src/Berth/Desktop/DesktopView.cs`, `[StaFact]` in `tests/Berth.Tests/Sta.cs`), `D02 T01 §9` (`StaWorker` in `src/Berth/Desktop/StaWorker.cs` and `ShellDesktopIcons` in `src/Berth/Desktop/ShellDesktopIcons.cs`), `D02 T01 §5` (`AutoArrange` and `TryTurnAutoArrangeOff`), `D02 T01 §6` (`SystemMonitors` in `src/Berth/Desktop/SystemMonitors.cs`), and `D02 T01 §3` (`DesktopCoordinates` and `ShellDesktopIcons.ReadIcons`) are stamped. `D02 T01 §4` (`ShellDesktopIcons.SetPositions` and `SVSI_NOSTATECHANGE`) is implemented and pending verification and stamping. `ScopedDesktopIcons` (`§10`) is not implemented yet. The interface chain is written in `docs/plans/2026-11-15-berth-foundation.md` under "How icon positions are read and written".
+> **Current state:** Measured 2026-11-20. `D01 T01 §8` declares `IDesktopIcons` and `IMonitors` and their fakes. `D02 T01 §1` (shell COM declarations in `src/Berth/Desktop/Interop/`), `D02 T01 §2` (`DesktopView` in `src/Berth/Desktop/DesktopView.cs`, `[StaFact]` in `tests/Berth.Tests/Sta.cs`), `D02 T01 §9` (`StaWorker` in `src/Berth/Desktop/StaWorker.cs` and `ShellDesktopIcons` in `src/Berth/Desktop/ShellDesktopIcons.cs`), `D02 T01 §5` (`AutoArrange` and `TryTurnAutoArrangeOff`), `D02 T01 §6` (`SystemMonitors` in `src/Berth/Desktop/SystemMonitors.cs`), `D02 T01 §3` (`DesktopCoordinates` and `ShellDesktopIcons.ReadIcons`), and `D02 T01 §4` (`ShellDesktopIcons.SetPositions` and `IDesktopIcons.SetPositions(icons, beforeMove)`) are stamped. `ScopedDesktopIcons` (`§10`), `ProbeIconTests` (`§7`), and `UnavailableTests` (`§8`) are not implemented yet. The interface chain is written in `docs/plans/2026-11-15-berth-foundation.md` under "How icon positions are read and written".
 
 ## Inputs
 
@@ -280,6 +280,8 @@ The shell's folder view must be used from a single-threaded apartment, and the w
 
 ## 10. Desktop scoped to icons with a name prefix
 
+> **Started:** 2026-11-20T12:36Z
+
 A wrapper that lets Berth see and move only icons whose display name starts with a prefix. It is how every real-desktop test keeps to its own probe icon, in process and through the built executable (SPEC §14 "Test mode").
 
 **Phase:** 2
@@ -288,14 +290,14 @@ A wrapper that lets Berth see and move only icons whose display name starts with
 
 **Build order:**
 
-1. Add `ScopedDesktopIcons` in `src/Berth/Desktop/ScopedDesktopIcons.cs`. Done when: reads and writes are limited to the prefix.
-2. Test it over a fake. Done when: an icon outside the scope is never read or passed on.
+1. Add `ScopedDesktopIcons` in `src/Berth/Desktop/ScopedDesktopIcons.cs`. Done when: reads and writes (both `SetPositions` overloads) are limited to icons whose live display name starts with `prefix` (ordinal, ignoring case), and `TryTurnAutoArrangeOff` returns `false` without touching `inner`.
+2. Test it over a fake in `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs`. Done when: an icon outside the scope (including a spoofed display name or a removed icon) is never read or passed on, and all tests pass in Release.
 
-- [ ] Add `ScopedDesktopIcons(IDesktopIcons inner, string prefix)` implementing `IDesktopIcons`: `ReadIcons` returns only the icons whose `Name` starts with `prefix` (ordinal, ignoring case); `SetPositions` passes on only the positions whose `Id` belongs to an icon in scope at that moment; `AutoArrange` passes through; `TryTurnAutoArrangeOff` returns `false` without calling `inner`. An empty prefix is refused with `ArgumentException`. Done when: unit tests over `FakeDesktopIcons` with three icons, one in scope, show one icon read, an out-of-scope `Id` never reaching the fake's `SetPositions`, and auto arrange never changed. Cheaper substitute: filtering in each test, which the built executable cannot use.
-- [ ] Add `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs`. Done when: all pass, and the write test fails when `SetPositions` forwards every position. Cheaper substitute: none needed.
+- [ ] Add `ScopedDesktopIcons(IDesktopIcons inner, string prefix)` (`src/Berth/Desktop/ScopedDesktopIcons.cs`) implementing `IDesktopIcons`: refuse null `inner` (`ArgumentNullException`) and null/empty/whitespace `prefix` (`ArgumentException`); `ReadIcons` returns only the icons from `inner.ReadIcons()` whose `Name` starts with `prefix` (`StringComparison.OrdinalIgnoreCase`, never substring match); both `SetPositions(IReadOnlyList<IconPosition> icons)` and `SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove)` validate non-null arguments, read live in-scope `Id`s from `inner.ReadIcons()`, filter `icons` to those whose `Id` matches an in-scope icon ignoring case (never trusting the requested item's `Name`), and forward the filtered list (and `beforeMove` when supplied) to `inner`; `AutoArrange` passes through to `inner.AutoArrange`; `TryTurnAutoArrangeOff` returns `false` without calling `inner`. **Corrected 2026-11-20:** included mandatory two-argument `SetPositions(icons, beforeMove)` (`D02 T01 §4`), null/whitespace argument guards, live-moment `Id` check (rejecting spoofed display names or disappeared icons), and `OrdinalIgnoreCase` `StartsWith` vs substring check. Done when: unit tests over `FakeDesktopIcons` with three icons (one in scope, one with prefix in the middle, one unrelated) show one icon read, out-of-scope/spoofed/disappeared `Id`s never reaching `inner.SetPositions`, `beforeMove` forwarded on the 2-arg overload, `AutoArrange` passed through, and `TryTurnAutoArrangeOff` returning `false` without touching `inner`. Cheaper substitute: filtering in each test, which the built executable cannot use.
+- [ ] Add `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs`. Done when: all pass with `0` skipped in Release, and the write test fails when `SetPositions` forwards an out-of-scope position or trusts the requested item's `Name` instead of the live in-scope `Id`. Cheaper substitute: none needed.
 - [ ] Commit: `desktop: desktop scoped to icons with a name prefix`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ScopedDesktopIconsTests"` passes, and fails when an out-of-scope position is forwarded to the inner desktop.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ScopedDesktopIconsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an out-of-scope position is forwarded to the inner desktop or when `TryTurnAutoArrangeOff` calls `inner`.
 
 ## Verification
 
