@@ -75,6 +75,18 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     public IReadOnlyList<IconPosition> ReadIcons() =>
         RunMemberWithView(nameof(ReadIcons), ReadIconsFromView);
 
+    internal IReadOnlyList<IconPosition> ReadIconsFrom(
+        DesktopView desktop,
+        Action<nint>? freeCoTaskMem = null,
+        Action<object>? releaseComObject = null)
+    {
+        ArgumentNullException.ThrowIfNull(desktop);
+        return _worker.Run(() => ReadIconsFromView(
+            desktop,
+            freeCoTaskMem ?? _freeCoTaskMem,
+            releaseComObject ?? _releaseComObject));
+    }
+
     public void SetPositions(IReadOnlyList<IconPosition> icons)
     {
         ArgumentNullException.ThrowIfNull(icons);
@@ -131,7 +143,13 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
     public void Dispose() => _worker.Dispose();
 
-    private IReadOnlyList<IconPosition> ReadIconsFromView(DesktopView desktop)
+    private IReadOnlyList<IconPosition> ReadIconsFromView(DesktopView desktop) =>
+        ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject);
+
+    private IReadOnlyList<IconPosition> ReadIconsFromView(
+        DesktopView desktop,
+        Action<nint> freeCoTaskMem,
+        Action<object> releaseComObject)
     {
         IReadOnlyList<MonitorInfo> monitors = _monitors.Read();
         object? folderObj = null;
@@ -186,14 +204,14 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 {
                     desktop.View.GetItemPosition(pidl, out NativePoint viewPoint);
                     folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
-                    string id = DecodeStrRet(ref parsingRet, pidl);
+                    string id = DecodeStrRet(ref parsingRet, pidl, freeCoTaskMem);
                     if (string.IsNullOrEmpty(id))
                     {
                         throw new DesktopUnavailableException("Desktop icon returned an empty parsing name.");
                     }
 
                     folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_NORMAL, out StrRet displayRet);
-                    string name = DecodeStrRet(ref displayRet, pidl);
+                    string name = DecodeStrRet(ref displayRet, pidl, freeCoTaskMem);
                     if (string.IsNullOrEmpty(name))
                     {
                         name = id;
@@ -204,7 +222,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 }
                 finally
                 {
-                    _freeCoTaskMem(pidl);
+                    freeCoTaskMem(pidl);
                 }
             }
 
@@ -214,17 +232,17 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         {
             if (enumObj is not null)
             {
-                _releaseComObject(enumObj);
+                releaseComObject(enumObj);
             }
 
             if (folderObj is not null)
             {
-                _releaseComObject(folderObj);
+                releaseComObject(folderObj);
             }
         }
     }
 
-    private string DecodeStrRet(ref StrRet strRet, nint pidl)
+    private static string DecodeStrRet(ref StrRet strRet, nint pidl, Action<nint> freeCoTaskMem)
     {
         // Per Microsoft's StrRetToStrW contract, strRet is consumed by the call (including freeing STRRET_WSTR
         // pOleStr internally) and must not be freed by the caller afterwards; only ppsz is caller-owned.
@@ -245,7 +263,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         {
             if (ppsz != nint.Zero)
             {
-                _freeCoTaskMem(ppsz);
+                freeCoTaskMem(ppsz);
             }
         }
     }

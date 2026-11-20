@@ -105,8 +105,13 @@ public sealed class ReadIconsTests
                 new FixtureItem(dupPath, "Notes (dup)", new NativePoint { X = 900, Y = 900 }),
             ]);
 
-            using var icons = fixture.CreateDesktopIcons(monitors, log.Warn);
-            IReadOnlyList<IconPosition> result = icons.ReadIcons();
+            // Construct via the public (IMonitors, Log) constructor so disconnecting Log.Warn forwarding fails this test.
+            using var icons = new ShellDesktopIcons(monitors, log);
+            IReadOnlyList<IconPosition> result = icons.RunOnWorker(() =>
+            {
+                using DesktopView desktop = fixture.OpenDesktopView();
+                return icons.ReadIconsFrom(desktop, fixture.FreeCoTaskMem, fixture.RecordComRelease);
+            });
 
             Assert.Equal(3, fixture.AllocationEvents);
             Assert.Equal(2, result.Count);
@@ -418,36 +423,40 @@ public sealed class ReadIconsTests
 
         public ShellDesktopIcons CreateDesktopIcons(IMonitors monitors, Action<string>? warn = null) =>
             new(
-                openView: () =>
-                {
-                    var view = new FakeFolderView(this);
-                    TrackComObject(view);
-                    return DesktopView.Open(
-                        () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))),
-                        RecordComRelease);
-                },
+                openView: OpenDesktopView,
                 monitors: monitors,
                 warn: warn,
-                freeCoTaskMem: ptr =>
-                {
-                    _onFreeSpy?.Invoke(ptr);
-                    if (ptr == _sentinelOnZeroOrError && _sentinelOnZeroOrError != nint.Zero)
-                    {
-                        return;
-                    }
-
-                    if (_activePidls.Remove(ptr))
-                    {
-                        FreeEvents++;
-                    }
-                    else
-                    {
-                        OutputStringsFreed++;
-                    }
-
-                    Marshal.FreeCoTaskMem(ptr);
-                },
+                freeCoTaskMem: FreeCoTaskMem,
                 releaseComObject: RecordComRelease);
+
+        public DesktopView OpenDesktopView()
+        {
+            var view = new FakeFolderView(this);
+            TrackComObject(view);
+            return DesktopView.Open(
+                () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))),
+                RecordComRelease);
+        }
+
+        public void FreeCoTaskMem(nint ptr)
+        {
+            _onFreeSpy?.Invoke(ptr);
+            if (ptr == _sentinelOnZeroOrError && _sentinelOnZeroOrError != nint.Zero)
+            {
+                return;
+            }
+
+            if (_activePidls.Remove(ptr))
+            {
+                FreeEvents++;
+            }
+            else
+            {
+                OutputStringsFreed++;
+            }
+
+            Marshal.FreeCoTaskMem(ptr);
+        }
 
         public void AssertAllResourcesReleased(int expectedOutputStringsFreed)
         {
@@ -463,7 +472,7 @@ public sealed class ReadIconsTests
 
         private void TrackComObject(object comObj) => _comReleaseCounts[comObj] = 0;
 
-        private void RecordComRelease(object comObj)
+        public void RecordComRelease(object comObj)
         {
             if (_comReleaseCounts.TryGetValue(comObj, out int count))
             {
