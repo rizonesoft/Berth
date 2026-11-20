@@ -70,12 +70,12 @@ Sections: 10 | Checklist items: 48
 
 ### Phase 3: Command line
 
-Sections: 8 | Checklist items: 44
+Sections: 8 | Checklist items: 43
 
 | Status | Reference  | Deliverable                                  | Needs                         | Items |
 | ------ | ---------- | -------------------------------------------- | ----------------------------- | ----- |
 | [x]    | D03 T01 §1 | Argument parser                              | none                          | 5     |
-| [ ]    | D03 T01 §2 | Console behaviour proven with real processes | windows-host, display-session | 7     |
+| [ ]    | D03 T01 §2 | Console behaviour proven with real processes | windows-host, display-session | 6     |
 | [ ]    | D03 T01 §3 | The save command                             | windows-host, display-session | 6     |
 | [ ]    | D03 T01 §4 | The restore command                          | none                          | 5     |
 | [ ]    | D03 T01 §5 | The undo command                             | none                          | 5     |
@@ -159,4 +159,4 @@ Sections: 4 | Checklist items: 16
 
 Progress: 42/88 verified sections, 2 ready to run now.
 
-Checklist: 239/522 items completed (includes Commit items).
+Checklist: 239/521 items completed (includes Commit items).
