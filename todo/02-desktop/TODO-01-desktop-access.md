@@ -238,6 +238,8 @@ The one test that proves reading and writing against Windows itself, touching on
 
 ## 8. One exception for an unreachable desktop
 
+> **Started:** 2026-11-20T13:43Z
+
 Explorer restarting, a locked session or a COM failure all surface as `DesktopUnavailableException` (SPEC §9 second notice, §18).
 
 **Phase:** 2
@@ -246,15 +248,15 @@ Explorer restarting, a locked session or a COM failure all surface as `DesktopUn
 
 **Build order:**
 
-1. Map failures in `DesktopView` and `ShellDesktopIcons`. Done when: no `COMException` or `InvalidCastException` leaves the `Desktop` namespace.
-2. Test the mapping with a failing wrapper. Done when: each member throws the one exception.
+1. Harden `RunMemberWithView` in `src/Berth/Desktop/ShellDesktopIcons.cs` (alongside `DesktopView.Open`) so `COMException`, `InvalidCastException`, `InvalidComObjectException`, `UnauthorizedAccessException`, `FileNotFoundException`, `DirectoryNotFoundException`, and a null view from `_openView()` or any shell call become `DesktopUnavailableException` preserving the original `InnerException`, while programming bugs (`NullReferenceException`, `InvalidOperationException`) and caller `beforeMove` exceptions pass through unwrapped. Done when: no shell COM/cast/null-view failure leaves `Berth.Desktop`.
+2. Add `tests/Berth.Tests/Desktop/UnavailableTests.cs` exercising every `IDesktopIcons` member (`ReadIcons`, both `SetPositions` overloads including scoped prefix variants, `AutoArrange`, `TryTurnAutoArrangeOff`) plus `DesktopView.Open` across failing view factories, mid-call shell failures, null views, non-shell bug pass-through, and transient-failure recovery. Done when: all pass with `0` skipped in Release.
 
-- [ ] Wrap the body of `DesktopView.Open`, `ReadIcons`, `SetPositions`, `AutoArrange` and `TryTurnAutoArrangeOff` so that `COMException`, `InvalidCastException`, `InvalidComObjectException` and a null view become `DesktopUnavailableException` with the original as inner exception. Done when: a unit test injecting a view factory that throws `COMException` sees `DesktopUnavailableException` from each member. Cheaper substitute: `catch (Exception)`, which would also hide bugs such as a null reference in Berth's own code.
-- [ ] Open a fresh `DesktopView` for every operation instead of caching one. Done when: a unit test with a factory that fails once and then succeeds shows the second `ReadIcons` succeeding. Cheaper substitute: caching the view, which is dead after Explorer restarts.
-- [ ] Add `tests/Berth.Tests/Desktop/UnavailableTests.cs`. Done when: all pass, and one fails when `ReadIcons` lets `COMException` through. Cheaper substitute: restarting Explorer in a test.
+- [ ] Wrap `_openView()` (including null-view check) and the shell body inside `ShellDesktopIcons.RunMemberWithView` alongside `DesktopView.Open` so `COMException`, `InvalidCastException`, `InvalidComObjectException`, `UnauthorizedAccessException`, `FileNotFoundException`, `DirectoryNotFoundException`, and a null view become `DesktopUnavailableException` with the original exception preserved as `InnerException`, without catching unrelated programming bugs (`NullReferenceException`, `InvalidOperationException`) and without wrapping exceptions thrown by the caller's `beforeMove` callback. **Corrected 2026-11-20:** fact-checking `ShellDesktopIcons.cs:519` showed `_openView()` sat outside the `try/catch` and lacked a null-view check, and `beforeMove` sat inside the catch block. Done when: unit tests injecting failing factories (`COMException`, `InvalidCastException`, `InvalidComObjectException`, `UnauthorizedAccessException`, and `null` view) and mid-call shell exceptions observe `DesktopUnavailableException` (with `InnerException` preserved) from `DesktopView.Open`, `ReadIcons`, both `SetPositions` overloads, `AutoArrange`, and `TryTurnAutoArrangeOff`, while a `NullReferenceException` from a buggy stub and an `UnauthorizedAccessException` from `beforeMove` propagate unwrapped. Cheaper substitute: `catch (Exception)`, which would hide bugs such as a null reference in Berth's own code or misclassify `beforeMove` storage errors.
+- [ ] Verify a fresh `DesktopView` is opened and disposed for every operation instead of cached: a factory that throws `COMException` on call 1 and returns a healthy view on call 2 succeeds on the second `ReadIcons`, `SetPositions`, `AutoArrange`, and `TryTurnAutoArrangeOff` calls (and opens distinct views across consecutive succeeding calls, releasing each on the STA worker). Done when: `UnavailableTests` proves transient-failure recovery and fresh per-call acquisition across members. Cheaper substitute: caching the view, which is dead after Explorer restarts.
+- [ ] Add `tests/Berth.Tests/Desktop/UnavailableTests.cs` covering all cases above. Done when: all pass with `0` skipped in Release, and fail when `ReadIcons` or any other member lets `COMException`/`InvalidCastException`/`InvalidComObjectException` or a null view escape, or when a cached view fails to recover after a transient error. Cheaper substitute: restarting Explorer in a test.
 - [ ] Commit: `desktop: one exception for an unreachable desktop`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*UnavailableTests"` passes, and fails when `ReadIcons` lets a `COMException` escape.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UnavailableTests" --filter-class "*DesktopViewTests" --filter-class "*ReadIconsTests" --filter-class "*SetPositionsTests" --filter-class "*AutoArrangeTests" --filter-class "*LayerRuleTests"` passes with `0` skipped (excluding opt-in `OptInRoundTripTurnsAutoArrangeOff` or running `--filter-class "*UnavailableTests" --filter-class "*DesktopViewTests" --filter-class "*LayerRuleTests"` with `0` skipped), and fails when any `ShellDesktopIcons` member or `DesktopView.Open` lets `COMException`/`InvalidCastException`/`InvalidComObjectException` or a null view escape.
 
 ## 9. STA worker that owns every shell call
 
