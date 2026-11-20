@@ -183,9 +183,14 @@ internal sealed class BerthProcess : IDisposable
         }
 
         elapsed.Stop();
-        string stdout = _stdoutTask.Wait(StreamDrainTimeout) ? _stdoutTask.Result : string.Empty;
-        string stderr = _stderrTask.Wait(StreamDrainTimeout) ? _stderrTask.Result : string.Empty;
-        return new BerthProcessResult(_process.ExitCode, stdout, stderr, elapsed.Elapsed);
+        if (!Task.WhenAll(_stdoutTask, _stderrTask).Wait(StreamDrainTimeout))
+        {
+            StopTree();
+            throw new TimeoutException(
+                $"Process {_process.Id} exited, but stdout/stderr did not finish draining within {StreamDrainTimeout.TotalSeconds:F1}s.");
+        }
+
+        return new BerthProcessResult(_process.ExitCode, _stdoutTask.Result, _stderrTask.Result, elapsed.Elapsed);
     }
 
     public string ReadFirstStdoutLine(TimeSpan timeout)

@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
 using Berth.Cli;
 using Berth.Core;
+using Microsoft.Win32.SafeHandles;
 
 namespace Berth.Tests.Cli;
 
@@ -142,15 +144,18 @@ public sealed partial class ConsoleBehaviourTests
 
         // 5) Tree-kill on timeout AND on early Dispose: parent spawns descendant, both die within deadline.
         (string helperExe, string[] helperArgs) = HelperInvocation("spawn-descendant");
-        int descendantPidOnTimeout = -1;
-        using (var timeoutParent = StartRawHelperForPid(helperExe, helperArgs, out descendantPidOnTimeout))
+        using (var timeoutParent = StartRawHelperForPid(helperExe, helperArgs, out int descendantPidOnTimeout))
         {
             Assert.True(descendantPidOnTimeout > 0);
             Assert.True(IsProcessAlive(descendantPidOnTimeout));
             Assert.Throws<TimeoutException>(() => timeoutParent.WaitForExit(TimeSpan.FromMilliseconds(200)));
-        }
 
-        Assert.True(WaitForProcessExit(descendantPidOnTimeout, TimeSpan.FromSeconds(5)), $"Descendant PID {descendantPidOnTimeout} survived timeout tree-kill.");
+            // Assert BEFORE leaving the using block so Dispose cannot mask a broken timeout tree-kill.
+            Assert.True(timeoutParent.HasExited, "Timed-out parent process was still alive before Dispose.");
+            Assert.True(
+                WaitForProcessExit(descendantPidOnTimeout, TimeSpan.FromSeconds(5)),
+                $"Descendant PID {descendantPidOnTimeout} survived timeout tree-kill before Dispose.");
+        }
 
         int descendantPidOnDispose = -1;
         using (var disposeParent = StartRawHelperForPid(helperExe, helperArgs, out descendantPidOnDispose))
@@ -163,55 +168,54 @@ public sealed partial class ConsoleBehaviourTests
     }
 
     [Fact]
-    public void CmdExeWaitsForBerthUntilHoldCompletesWhileNonWaitingControlDoesNot()
+    public void InteractiveTerminalInheritsConsolePrintsVersionWaitsForHoldAndCapturesLiveExitCode()
     {
+        Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
+
         using var data = new TestData();
         string berthExe = BerthProcess.FindBerthExe();
-        string reportFile = Path.Combine(data.Root, "wait-report.txt");
-        string outFile = Path.Combine(data.Root, "wait-out.txt");
-        string markerFile = Path.Combine(data.Root, "wait-marker.txt");
+        string reportFile = Path.Combine(data.Root, "pty-report.txt");
+        string markerFile = Path.Combine(data.Root, "pty-marker.txt");
+        string nonzeroMarker = Path.Combine(data.Root, "pty-nonzero.txt");
 
-        // Positive proof: cmd.exe runs berth.exe with 1500 ms hold, then writes ERRORLEVEL to markerFile.
-        // No redirected stdout/stderr pipes so pipe-draining cannot artificially delay exit.
-        var info = new ProcessStartInfo
+        // Positive proof: drive a real interactive cmd.exe (/q /v:on) inside a hidden Windows ConPTY pseudoconsole.
+        // berth.exe inherits that terminal (console=1), prints "Berth 0.1.0" directly to the terminal, holds 1500 ms
+        // blocking the next command, and delayed !ERRORLEVEL! captures both 0 and nonzero (2) exit codes.
+        using (var pty = InteractiveCmdSession.Start(
+            data.Root,
+            new Dictionary<string, string>
+            {
+                ["BERTH_TEST_REPORT"] = reportFile,
+                ["BERTH_TEST_HOLD_MS"] = "1500",
+            }))
         {
-            FileName = "cmd.exe",
-            Arguments = $"/c \"\"{berthExe}\" --version > \"{outFile}\" & echo %ERRORLEVEL% > \"{markerFile}\"\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        StripBerthEnv(info);
-        info.Environment["BERTH_DATA"] = data.Root;
-        info.Environment["BERTH_TEST_REPORT"] = reportFile;
-        info.Environment["BERTH_TEST_HOLD_MS"] = "1500";
+            pty.SendLine($"\"{berthExe}\" --version & echo EXIT=!ERRORLEVEL!> \"{markerFile}\"");
 
-        using Process cmd = Process.Start(info) ?? throw new InvalidOperationException("Failed to start cmd.exe.");
-        try
-        {
-            // Wait for BERTH_TEST_REPORT to appear (written BEFORE the 1500 ms hold).
-            Assert.True(WaitForFile(reportFile, TimeSpan.FromSeconds(10)), "Berth did not write BERTH_TEST_REPORT.");
+            // Wait for BERTH_TEST_REPORT (written BEFORE the 1500 ms hold) to witness Berth alive inside its hold.
+            Assert.True(WaitForFile(reportFile, TimeSpan.FromSeconds(10)), "Berth did not write BERTH_TEST_REPORT in interactive terminal.");
             var afterReport = Stopwatch.StartNew();
+            Assert.Equal("console=1", File.ReadAllText(reportFile).Trim());
 
-            // While Berth is inside its 1500 ms hold, cmd.exe must NOT have created markerFile yet.
+            // While Berth is inside its 1500 ms hold, cmd.exe must NOT have reached the marker command yet.
             Thread.Sleep(250);
-            Assert.False(File.Exists(markerFile), "cmd.exe continued to the next command while berth.exe was still held.");
-            Assert.False(cmd.HasExited, "cmd.exe exited before berth.exe finished its hold.");
+            Assert.False(File.Exists(markerFile), "Interactive cmd.exe continued before berth.exe finished its hold.");
 
-            Assert.True(cmd.WaitForExit(15_000), "cmd.exe did not exit within 15s.");
+            Assert.True(WaitForFile(markerFile, TimeSpan.FromSeconds(10)), "Interactive cmd.exe did not write exit marker after Berth exited.");
             afterReport.Stop();
+            Assert.True(afterReport.Elapsed >= TimeSpan.FromMilliseconds(1400), $"Interactive cmd.exe returned too quickly after report: {afterReport.Elapsed}.");
+            Assert.Equal("EXIT=0", File.ReadAllText(markerFile).Trim());
 
-            Assert.Equal(0, cmd.ExitCode);
-            Assert.True(afterReport.Elapsed >= TimeSpan.FromMilliseconds(1300), $"cmd.exe returned too quickly after report: {afterReport.Elapsed}.");
-            Assert.True(File.Exists(markerFile));
-            Assert.Equal("0", File.ReadAllText(markerFile).Trim());
-            Assert.Equal("Berth " + AppInfo.Version, File.ReadAllText(outFile).Trim());
-        }
-        finally
-        {
-            HelperProcess.Stop(cmd, TimeSpan.FromSeconds(10), kill: true);
+            // Verify !ERRORLEVEL! genuinely captures a nonzero exit code from berth.exe (unknown arg -> exit 2).
+            pty.SendLine($"set BERTH_TEST_HOLD_MS=0 & \"{berthExe}\" --unknown & echo EXIT=!ERRORLEVEL!> \"{nonzeroMarker}\"");
+            Assert.True(WaitForFile(nonzeroMarker, TimeSpan.FromSeconds(10)), "Interactive cmd.exe did not write nonzero marker.");
+            Assert.Equal("EXIT=2", File.ReadAllText(nonzeroMarker).Trim());
+
+            string terminalOutput = pty.ExitAndReadAll(TimeSpan.FromSeconds(10));
+            Assert.Contains("Berth " + AppInfo.Version, terminalOutput, StringComparison.Ordinal);
         }
 
-        // Negative control: a deliberately non-waiting launch (`start "" /b`) writes markerFile BEFORE the hold ends.
+        // Negative control: a deliberately non-waiting launch (`start "" /b`) writes markerFile BEFORE the hold ends,
+        // while still proving berth.exe actually started (wrote nonWaitReport) and waiting for it to exit cleanly.
         string nonWaitReport = Path.Combine(data.Root, "nowait-report.txt");
         string nonWaitMarker = Path.Combine(data.Root, "nowait-marker.txt");
         var nonWaitInfo = new ProcessStartInfo
@@ -226,14 +230,18 @@ public sealed partial class ConsoleBehaviourTests
         nonWaitInfo.Environment["BERTH_TEST_REPORT"] = nonWaitReport;
         nonWaitInfo.Environment["BERTH_TEST_HOLD_MS"] = "1500";
 
+        var nonWaitWatch = Stopwatch.StartNew();
         using Process nonWaitCmd = Process.Start(nonWaitInfo) ?? throw new InvalidOperationException("Failed to start non-waiting cmd.exe.");
         try
         {
-            var nonWaitWatch = Stopwatch.StartNew();
             Assert.True(nonWaitCmd.WaitForExit(10_000));
             nonWaitWatch.Stop();
             Assert.True(File.Exists(nonWaitMarker), "Non-waiting control did not write marker.");
             Assert.True(nonWaitWatch.Elapsed < TimeSpan.FromMilliseconds(1200), $"Non-waiting control unexpectedly waited {nonWaitWatch.Elapsed}.");
+
+            // Confirm berth.exe actually launched and let its 1500 ms hold finish cleanly before TestData cleanup.
+            Assert.True(WaitForFile(nonWaitReport, TimeSpan.FromSeconds(5)), "Non-waiting control did not actually launch berth.exe.");
+            Thread.Sleep(1700);
         }
         finally
         {
@@ -318,26 +326,28 @@ public sealed partial class ConsoleBehaviourTests
         }
 
         Process raw = Process.Start(info) ?? throw new InvalidOperationException("Failed to start spawn-descendant helper.");
-        string? line = null;
-        Task<string?> readTask = raw.StandardOutput.ReadLineAsync();
-        if (!readTask.Wait(TimeSpan.FromSeconds(10)))
+        try
+        {
+            Task<string?> readTask = raw.StandardOutput.ReadLineAsync();
+            if (!readTask.Wait(TimeSpan.FromSeconds(10)))
+            {
+                throw new TimeoutException("spawn-descendant helper did not report child-pid.");
+            }
+
+            string? line = readTask.Result;
+            Assert.NotNull(line);
+            Assert.StartsWith("child-pid=", line, StringComparison.Ordinal);
+            childPid = int.Parse(line["child-pid=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+
+            return BerthProcess.FromStartedForTest(raw);
+        }
+        catch
         {
             HelperProcess.Stop(raw, TimeSpan.FromSeconds(5), kill: true);
             raw.Dispose();
-            throw new TimeoutException("spawn-descendant helper did not report child-pid.");
+            throw;
         }
-
-        line = readTask.Result;
-        Assert.NotNull(line);
-        Assert.StartsWith("child-pid=", line, StringComparison.Ordinal);
-        childPid = int.Parse(line["child-pid=".Length..], System.Globalization.CultureInfo.InvariantCulture);
-
-        // Wrap raw process in a tiny disposal adapter using BerthProcess via reflection-free helper? No, just wrap directly:
-        return WrapExistingForTest(raw);
     }
-
-    private static BerthProcess WrapExistingForTest(Process raw) =>
-        BerthProcess.FromStartedForTest(raw);
 
     private static bool IsProcessAlive(int pid)
     {
@@ -399,6 +409,11 @@ public sealed partial class ConsoleBehaviourTests
         {
             File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: true);
         }
+
+        foreach (string subDir in Directory.GetDirectories(sourceDir))
+        {
+            CopyDirectory(subDir, Path.Combine(destDir, Path.GetFileName(subDir)));
+        }
     }
 
     private static string FindWindowsSdkMtExe()
@@ -436,7 +451,7 @@ public sealed partial class ConsoleBehaviourTests
             Task<string> stdout = tool.StandardOutput.ReadToEndAsync();
             Task<string> stderr = tool.StandardError.ReadToEndAsync();
             Assert.True(tool.WaitForExit(15_000), $"Tool '{exe}' timed out.");
-            _ = Task.WhenAll(stdout, stderr).Wait(TimeSpan.FromSeconds(5));
+            Assert.True(Task.WhenAll(stdout, stderr).Wait(TimeSpan.FromSeconds(5)), $"Tool '{exe}' stdout/stderr did not finish draining within 5s.");
             Assert.True(
                 tool.ExitCode == 0,
                 $"Tool '{exe} {arguments}' failed (exit {tool.ExitCode}): {stderr.Result} {stdout.Result}");
@@ -557,10 +572,249 @@ public sealed partial class ConsoleBehaviourTests
             : arg;
 
     private const uint StartfUseShowWindow = 0x00000001u;
+    private const uint StartfUseStdHandles = 0x00000100u;
     private const ushort SwHide = 0;
     private const uint DetachedProcess = 0x00000008u;
     private const uint CreateUnicodeEnvironment = 0x00000400u;
+    private const uint ExtendedStartupinfoPresent = 0x00080000u;
     private const uint WaitObject0 = 0x00000000u;
+    private static readonly nint ProcThreadAttributePseudoConsole = new(0x00020016);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Coord
+    {
+        public short X;
+        public short Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInfoExW
+    {
+        public StartupInfoW StartupInfo;
+        public nint lpAttributeList;
+    }
+
+    /// <summary>
+    /// Hosts a real interactive <c>cmd.exe /q /v:on</c> inside a hidden Windows ConPTY pseudoconsole so tests can
+    /// prove terminal inheritance, terminal output, prompt blocking, and delayed <c>!ERRORLEVEL!</c> capture without
+    /// opening a visible window on screen.
+    /// </summary>
+    private sealed class InteractiveCmdSession : IDisposable
+    {
+        private nint _hpc;
+        private readonly nint _hProcess;
+        private readonly nint _hThread;
+        private readonly int _pid;
+        private readonly FileStream _inputStream;
+        private readonly StreamWriter _writer;
+        private readonly FileStream _outputStream;
+        private readonly Task<string> _outputTask;
+        private bool _disposed;
+
+        private InteractiveCmdSession(
+            nint hpc,
+            nint hProcess,
+            nint hThread,
+            int pid,
+            SafeFileHandle writeToPty,
+            SafeFileHandle readFromPty)
+        {
+            _hpc = hpc;
+            _hProcess = hProcess;
+            _hThread = hThread;
+            _pid = pid;
+            _inputStream = new FileStream(writeToPty, FileAccess.Write, bufferSize: 4096, isAsync: false);
+            _writer = new StreamWriter(_inputStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true };
+            _outputStream = new FileStream(readFromPty, FileAccess.Read, bufferSize: 4096, isAsync: false);
+            _outputTask = Task.Run(() =>
+            {
+                using var reader = new StreamReader(_outputStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+                return reader.ReadToEnd();
+            });
+        }
+
+        public static InteractiveCmdSession Start(string dataRoot, IReadOnlyDictionary<string, string> extraEnv)
+        {
+            Assert.True(NativeMethods.CreatePipe(out SafeFileHandle ptyInputRead, out SafeFileHandle ptyInputWrite, nint.Zero, 0));
+            Assert.True(NativeMethods.CreatePipe(out SafeFileHandle ptyOutputRead, out SafeFileHandle ptyOutputWrite, nint.Zero, 0));
+
+            nint hpc = nint.Zero;
+            nint attrList = nint.Zero;
+            bool attrListInitialized = false;
+            nint envBlock = nint.Zero;
+
+            try
+            {
+                var size = new Coord { X = 120, Y = 30 };
+                int hr = NativeMethods.CreatePseudoConsole(size, ptyInputRead.DangerousGetHandle(), ptyOutputWrite.DangerousGetHandle(), 0, out hpc);
+                Assert.True(hr == 0 && hpc != nint.Zero, $"CreatePseudoConsole failed with HRESULT 0x{hr:X8}.");
+
+                // Close the ConPTY-side ends now that ConPTY duplicated them.
+                ptyInputRead.Dispose();
+                ptyOutputWrite.Dispose();
+
+                nint attrSize = nint.Zero;
+                _ = NativeMethods.InitializeProcThreadAttributeList(nint.Zero, 1, 0, ref attrSize);
+                attrList = Marshal.AllocHGlobal(attrSize);
+                Assert.True(NativeMethods.InitializeProcThreadAttributeList(attrList, 1, 0, ref attrSize));
+                attrListInitialized = true;
+
+                Assert.True(NativeMethods.UpdateProcThreadAttribute(
+                    attrList,
+                    0,
+                    ProcThreadAttributePseudoConsole,
+                    hpc,
+                    (nint)nint.Size,
+                    nint.Zero,
+                    nint.Zero));
+
+                envBlock = BuildEnvironmentBlock(dataRoot, extraEnv);
+                var siEx = new StartupInfoExW
+                {
+                    StartupInfo = new StartupInfoW
+                    {
+                        cb = Marshal.SizeOf<StartupInfoExW>(),
+                        dwFlags = StartfUseStdHandles,
+                    },
+                    lpAttributeList = attrList,
+                };
+
+                string cmdExe = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+                bool ok = NativeMethods.CreateProcessWEx(
+                    cmdExe,
+                    $"\"{cmdExe}\" /q /v:on",
+                    nint.Zero,
+                    nint.Zero,
+                    bInheritHandles: false,
+                    dwCreationFlags: ExtendedStartupinfoPresent | CreateUnicodeEnvironment,
+                    lpEnvironment: envBlock,
+                    lpCurrentDirectory: dataRoot,
+                    in siEx,
+                    out ProcessInformation pi);
+
+                Assert.True(ok, $"CreateProcessWEx for ConPTY cmd.exe failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+
+                var session = new InteractiveCmdSession(hpc, pi.hProcess, pi.hThread, (int)pi.dwProcessId, ptyInputWrite, ptyOutputRead);
+                hpc = nint.Zero;
+                ptyInputWrite = null!;
+                ptyOutputRead = null!;
+                return session;
+            }
+            catch
+            {
+                ptyInputRead?.Dispose();
+                ptyInputWrite?.Dispose();
+                ptyOutputRead?.Dispose();
+                ptyOutputWrite?.Dispose();
+                if (hpc != nint.Zero)
+                {
+                    NativeMethods.ClosePseudoConsole(hpc);
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (attrListInitialized)
+                {
+                    NativeMethods.DeleteProcThreadAttributeList(attrList);
+                }
+
+                if (attrList != nint.Zero)
+                {
+                    Marshal.FreeHGlobal(attrList);
+                }
+
+                if (envBlock != nint.Zero)
+                {
+                    Marshal.FreeHGlobal(envBlock);
+                }
+            }
+        }
+
+        public void SendLine(string command)
+        {
+            _writer.Write(command + "\r\n");
+            _writer.Flush();
+        }
+
+        public string ExitAndReadAll(TimeSpan timeout)
+        {
+            SendLine("exit");
+            uint wait = NativeMethods.WaitForSingleObject(_hProcess, (uint)timeout.TotalMilliseconds);
+            Assert.True(wait == WaitObject0, "Interactive cmd.exe did not exit cleanly after 'exit'.");
+
+            // Closing the pseudoconsole once closes the output pipe so ReadToEnd completes deterministically.
+            ClosePtyOnce();
+            Assert.True(_outputTask.Wait(TimeSpan.FromSeconds(5)), "ConPTY output stream did not finish draining.");
+            return _outputTask.Result;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            KillTreeById(_pid);
+            ClosePtyOnce();
+
+            _writer.Dispose();
+            _inputStream.Dispose();
+            _outputStream.Dispose();
+            if (_hThread != nint.Zero)
+            {
+                _ = NativeMethods.CloseHandle(_hThread);
+            }
+
+            if (_hProcess != nint.Zero)
+            {
+                _ = NativeMethods.CloseHandle(_hProcess);
+            }
+        }
+
+        private void ClosePtyOnce()
+        {
+            nint hpc = Interlocked.Exchange(ref _hpc, nint.Zero);
+            if (hpc != nint.Zero)
+            {
+                NativeMethods.ClosePseudoConsole(hpc);
+            }
+        }
+
+        private static nint BuildEnvironmentBlock(string dataRoot, IReadOnlyDictionary<string, string> extraEnv)
+        {
+            var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+            {
+                string key = (string)entry.Key;
+                if (!key.StartsWith("BERTH_", StringComparison.OrdinalIgnoreCase))
+                {
+                    env[key] = (string?)entry.Value ?? string.Empty;
+                }
+            }
+
+            env["BERTH_DATA"] = dataRoot;
+            foreach ((string k, string v) in extraEnv)
+            {
+                env[k] = v;
+            }
+
+            var sb = new StringBuilder();
+            foreach ((string k, string v) in env)
+            {
+                sb.Append(k).Append('=').Append(v).Append('\0');
+            }
+
+            sb.Append('\0');
+            byte[] bytes = Encoding.Unicode.GetBytes(sb.ToString());
+            nint block = Marshal.AllocHGlobal(bytes.Length);
+            Marshal.Copy(bytes, 0, block, bytes.Length);
+            return block;
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct StartupInfoW
@@ -620,5 +874,60 @@ public sealed partial class ConsoleBehaviourTests
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool CloseHandle(nint hObject);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool CreatePipe(
+            out SafeFileHandle hReadPipe,
+            out SafeFileHandle hWritePipe,
+            nint lpPipeAttributes,
+            uint nSize);
+
+        [LibraryImport("kernel32.dll")]
+        internal static partial int CreatePseudoConsole(
+            Coord size,
+            nint hInput,
+            nint hOutput,
+            uint dwFlags,
+            out nint phPC);
+
+        [LibraryImport("kernel32.dll")]
+        internal static partial void ClosePseudoConsole(nint hPC);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool InitializeProcThreadAttributeList(
+            nint lpAttributeList,
+            uint dwAttributeCount,
+            uint dwFlags,
+            ref nint lpSize);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool UpdateProcThreadAttribute(
+            nint lpAttributeList,
+            uint dwFlags,
+            nint attribute,
+            nint lpValue,
+            nint cbSize,
+            nint lpPreviousValue,
+            nint lpReturnSize);
+
+        [LibraryImport("kernel32.dll")]
+        internal static partial void DeleteProcThreadAttributeList(nint lpAttributeList);
+
+        [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool CreateProcessWEx(
+            string? lpApplicationName,
+            string lpCommandLine,
+            nint lpProcessAttributes,
+            nint lpThreadAttributes,
+            [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+            uint dwCreationFlags,
+            nint lpEnvironment,
+            string? lpCurrentDirectory,
+            in StartupInfoExW lpStartupInfo,
+            out ProcessInformation lpProcessInformation);
     }
 }
