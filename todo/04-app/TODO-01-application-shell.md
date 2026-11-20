@@ -43,7 +43,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [x] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
-| 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
+| 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [x] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [ ] |
 | 9 | §9 | Main window frame with two panes | §5 | [ ] |
 | 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [ ] |
@@ -240,6 +240,9 @@ The icon in the notification area: the right variant for the taskbar, a tooltip,
 - [x] Commit: `app: tray icon and tooltip`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TrayIconTests"` passes, and fails when the dark and light icon variants are swapped.
+
+> **Verified:** 2026-11-20 | §7 | 810711af6e17bc3aad46478ebd8761a046292d5a
+> **Review:** `docs/reviews/d04-t01-s7.json`
 
 ## 8. Tray menu
 

@@ -1,0 +1,86 @@
+{
+  "ref": "D04 T01 \u00a77",
+  "title": "Tray icon and tooltip",
+  "implementation_sha": "810711af6e17bc3aad46478ebd8761a046292d5a",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/04-app/D04-T01-s7.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *TrayTextTests --filter-class *TrayIconTests --filter-class *BerthApplicationTests --filter-class *StartupPlanProcessTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/04-app/D04-T01-s7.md",
+    "verdict": "reconciled",
+    "candidate": "810711af6e17bc3aad46478ebd8761a046292d5a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/04-app/D04-T01-s7.md",
+    "candidate": "4abf4a41a6b9d5869a73138975b192995084f5af",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "4abf4a41a6b9d5869a73138975b192995084f5af",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
