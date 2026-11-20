@@ -78,7 +78,7 @@ Sections: 8 | Checklist items: 43
 | [x]    | D03 T01 §2 | Console behaviour proven with real processes | windows-host, display-session | 6     |
 | [x]    | D03 T01 §3 | The save command                             | windows-host, display-session | 6     |
 | [x]    | D03 T01 §4 | The restore command                          | none                          | 5     |
-| [ ]    | D03 T01 §5 | The undo command                             | none                          | 5     |
+| [x]    | D03 T01 §5 | The undo command                             | none                          | 5     |
 | [ ]    | D03 T01 §6 | The list command                             | none                          | 6     |
 | [ ]    | D03 T01 §7 | Help, version and usage errors               | none                          | 5     |
 | [ ]    | D03 T01 §8 | Process tests of every command and exit code | windows-host, display-session | 5     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 45/88 verified sections, 3 ready to run now.
+Progress: 46/88 verified sections, 2 ready to run now.
 
 Checklist: 261/521 items completed (includes Commit items).

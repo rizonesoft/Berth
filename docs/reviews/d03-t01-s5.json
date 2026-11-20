@@ -1,0 +1,83 @@
+{
+  "ref": "D03 T01 \u00a75",
+  "title": "The undo command",
+  "implementation_sha": "ba34c8ba6697aa8a6b11746b33c5af4e0804f851",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/03-cli/D03-T01-s5.md",
+      "verdict": "clean"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *UndoCommandTests --filter-class *RestoreCommandTests --filter-class *LayerRuleTests (49/49 passed, 0 skipped)"
+  ],
+  "completion": {
+    "report": "docs/reviews/03-cli/D03-T01-s5.md",
+    "verdict": "complete",
+    "candidate": "ba34c8ba6697aa8a6b11746b33c5af4e0804f851",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/03-cli/D03-T01-s5.md",
+    "candidate": "bb1072770c037000c37dab4fd0877f16c2b5f2e5",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "bb1072770c037000c37dab4fd0877f16c2b5f2e5",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

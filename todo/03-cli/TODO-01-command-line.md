@@ -40,7 +40,7 @@ depends_on: ["layout-core", "desktop-access"]
 | 2 | §2 | Console behaviour proven with real processes | D00 T01 §2 | [x] |
 | 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [x] |
 | 4 | §4 | The restore command | §3 | [x] |
-| 5 | §5 | The undo command | §4 | [ ] |
+| 5 | §5 | The undo command | §4 | [x] |
 | 6 | §6 | The list command | §3, D01 T01 §17 | [ ] |
 | 7 | §7 | Help, version and usage errors | §3 | [ ] |
 | 8 | §8 | Process tests of every command and exit code | §2, §5, §6, §7 | [ ] |
@@ -173,6 +173,9 @@ The foundation plan's one technical bet: a console program with a detached conso
 - [x] Commit: `cli: the undo command`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UndoCommandTests" --filter-class "*RestoreCommandTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when a second `undo` in a row succeeds.
+
+> **Verified:** 2026-11-20 | §5 | ba34c8ba6697aa8a6b11746b33c5af4e0804f851
+> **Review:** `docs/reviews/d03-t01-s5.json`
 
 ## 6. The list command
 
