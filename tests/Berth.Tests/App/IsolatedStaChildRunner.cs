@@ -22,6 +22,10 @@ internal static class IsolatedStaChildRunner
     public const string DispatcherCrashScenario = "tray-dispatcher-crash";
     public const string PrimaryStartupTrayScenario = "tray-primary-startup";
     public const string MenuSaveAndExitDrainScenario = "tray-menu-save-and-exit-drain";
+    public const string WindowHideReopenAndMenuExitScenario = "window-hide-reopen-menu-exit";
+    public const string TrayAppWiringFirstRunScenario = "tray-wiring-first-run";
+    public const string TrayAppWiringTrayOnlyScenario = "tray-wiring-tray-only";
+    public const string RenderMainWindowFrameScenario = "render-main-window-frame";
 
     public static int RunMain(string[] args)
     {
@@ -171,6 +175,14 @@ internal static class IsolatedStaChildRunner
             PrimaryStartupTrayScenario => RunPrimaryStartupTrayScenario(paths, log, instanceName),
 
             MenuSaveAndExitDrainScenario => RunMenuSaveAndExitDrainScenario(paths, log, instanceName),
+
+            WindowHideReopenAndMenuExitScenario => RunWindowHideReopenAndMenuExitScenario(paths, log, instanceName),
+
+            TrayAppWiringFirstRunScenario => RunTrayAppWiringScenario(paths, log, instanceName, openWindow: true),
+
+            TrayAppWiringTrayOnlyScenario => RunTrayAppWiringScenario(paths, log, instanceName, openWindow: false),
+
+            RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -398,6 +410,263 @@ internal static class IsolatedStaChildRunner
             ((IDesktopIcons)_inner).SetPositions(icons, beforeMove);
 
         public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)_inner).TryTurnAutoArrangeOff();
+    }
+
+    private static int RunWindowHideReopenAndMenuExitScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        Berth.Window.MainWindow? capturedWindow = null;
+        TrayMenu? capturedMenu = null;
+        bool visibleAfterFirstOpen = false;
+        bool visibleAfterClose = true;
+        bool visibleAfterMenuReopen = false;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: true,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            createMainWindow: () =>
+            {
+                capturedWindow = new Berth.Window.MainWindow();
+                return capturedWindow;
+            },
+            onAppStartup: app =>
+            {
+                if (capturedWindow is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                visibleAfterFirstOpen = capturedWindow.IsVisible;
+                capturedWindow.Close();
+                visibleAfterClose = capturedWindow.IsVisible;
+
+                capturedMenu.OpenItem.PerformClick();
+                visibleAfterMenuReopen = capturedWindow.IsVisible;
+
+                capturedMenu.ExitItem.PerformClick();
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"visibleAfterFirstOpen={visibleAfterFirstOpen}",
+                $"visibleAfterClose={visibleAfterClose}",
+                $"visibleAfterMenuReopen={visibleAfterMenuReopen}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunTrayAppWiringScenario(BerthPaths paths, Log log, string instanceName, bool openWindow)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        int uiThreadId = Environment.CurrentManagedThreadId;
+        int createCount = 0;
+        int bringToFrontCount = 0;
+        int onWindowOpenedCount = 0;
+        bool allOnUiThread = true;
+        List<string> trace = [];
+        TrayIcon? capturedIcon = null;
+        TrayMenu? capturedMenu = null;
+        int createsAtStartup = -1;
+        int callbacksAtStartup = -1;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: openWindow,
+            Settings.Default,
+            onWindowOpened: () =>
+            {
+                onWindowOpenedCount++;
+                trace.Add("onWindowOpened");
+                if (Environment.CurrentManagedThreadId != uiThreadId)
+                {
+                    allOnUiThread = false;
+                }
+            },
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon => capturedIcon = icon,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            createMainWindow: () =>
+            {
+                createCount++;
+                trace.Add("create");
+                if (Environment.CurrentManagedThreadId != uiThreadId)
+                {
+                    allOnUiThread = false;
+                }
+
+                return new RecordingMainWindow(
+                    () =>
+                    {
+                        bringToFrontCount++;
+                        trace.Add("bringToFront");
+                        if (Environment.CurrentManagedThreadId != uiThreadId)
+                        {
+                            allOnUiThread = false;
+                        }
+                    });
+            },
+            onAppStartup: app =>
+            {
+                createsAtStartup = createCount;
+                callbacksAtStartup = onWindowOpenedCount;
+
+                if (capturedIcon is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                // Raise TrayIcon left-click (production NotifyIcon MouseClick handler).
+                typeof(System.Windows.Forms.NotifyIcon)
+                    .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
+
+                // Raise TrayMenu Open Berth click.
+                capturedMenu.OpenItem.PerformClick();
+
+                // Trigger a real second-instance pipe activation from a background worker thread so SingleInstance.Activated
+                // runs off the STA thread and must marshal onto app.Dispatcher.
+                _ = Task.Run(() =>
+                {
+                    using var second = new SingleInstance(instanceName);
+                    bool claimed = second.TryClaim();
+                    if (!claimed)
+                    {
+                        _ = second.RunSecondary();
+                    }
+
+                    // Wait briefly for the marshalled activation to run on the UI thread, then click Exit.
+                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        int expected = openWindow ? 4 : 3;
+                        if (Volatile.Read(ref bringToFrontCount) >= expected)
+                        {
+                            break;
+                        }
+
+                        Thread.Sleep(20);
+                    }
+
+                    app.Dispatcher.BeginInvoke(() => capturedMenu.ExitItem.PerformClick());
+                });
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"createsAtStartup={createsAtStartup}",
+                $"callbacksAtStartup={callbacksAtStartup}",
+                $"createCount={createCount}",
+                $"bringToFrontCount={bringToFrontCount}",
+                $"onWindowOpenedCount={onWindowOpenedCount}",
+                $"allOnUiThread={allOnUiThread}",
+                $"trace={string.Join(",", trace)}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunRenderMainWindowFrameScenario()
+    {
+        string outPng = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var app = new BerthApplication();
+        app.InitializeTheme();
+        app.Startup += (_, _) =>
+        {
+            var window = new Berth.Window.MainWindow
+            {
+                WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+                Left = -20000,
+                Top = -20000,
+                ShowActivated = false,
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                int width = Math.Max(1, (int)Math.Round(window.RootGrid.ActualWidth));
+                int height = Math.Max(1, (int)Math.Round(window.RootGrid.ActualHeight));
+                var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                    width,
+                    height,
+                    96,
+                    96,
+                    System.Windows.Media.PixelFormats.Pbgra32);
+                rtb.Render(window.RootGrid);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+                using FileStream fs = File.Create(outPng);
+                encoder.Save(fs);
+            }
+            finally
+            {
+                window.AllowClose = true;
+                window.Close();
+                app.Shutdown(0);
+            }
+        };
+        return app.Run();
+    }
+
+    private sealed class RecordingMainWindow(Action onBringToFront) : Berth.Window.IMainWindow
+    {
+        public void BringToFront() => onBringToFront();
+
+        public void CloseForShutdown()
+        {
+        }
     }
 
     private sealed class FixedChildClock(DateTimeOffset utcNow) : TimeProvider

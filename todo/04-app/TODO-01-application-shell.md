@@ -304,6 +304,8 @@ The window's frame: title, icon, sizes, the 250 px layouts pane, the divider and
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MainWindowFrameTests"` passes, and fails when closing the window no longer hides it.
 
+> **Started:** 2026-11-20
+
 ## 10. Window placement that persists
 
 The window remembers its size and position and never opens off screen (SPEC §4, §14).

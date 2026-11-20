@@ -1,0 +1,33 @@
+<Window x:Class="Berth.Window.MainWindow"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Berth"
+        Icon="pack://application:,,,/berth;component/Assets/berth.ico"
+        Width="{DynamicResource Berth.WindowDefaultWidth}"
+        Height="{DynamicResource Berth.WindowDefaultHeight}"
+        MinWidth="{DynamicResource Berth.WindowMinWidth}"
+        MinHeight="{DynamicResource Berth.WindowMinHeight}">
+    <Grid x:Name="RootGrid">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="LayoutsColumn" Width="Auto" />
+            <ColumnDefinition x:Name="DividerColumn" Width="Auto" />
+            <ColumnDefinition x:Name="DetailColumn" Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <ContentControl x:Name="LayoutsHost"
+                        Grid.Column="0"
+                        Width="{DynamicResource Berth.LayoutsPaneWidth}"
+                        Focusable="False" />
+
+        <Border x:Name="PaneDivider"
+                Grid.Column="1"
+                Width="{DynamicResource Berth.Divider}"
+                Background="{DynamicResource DividerStrokeColorDefaultBrush}"
+                IsHitTestVisible="False" />
+
+        <ContentControl x:Name="DetailHost"
+                        Grid.Column="2"
+                        Focusable="False" />
+    </Grid>
+</Window>

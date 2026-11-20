@@ -220,6 +220,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
 
         using var abortEntered = new ManualResetEventSlim(false);
         using var abortRelease = new ManualResetEventSlim(false);
+        using var bothAbortsDelivered = new ManualResetEventSlim(false);
         int marshalCalls = 0;
         int idleCount = 0;
         int idleThreadId = 0;
@@ -245,6 +246,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
 
                     onAborted();
                     onAborted();
+                    bothAbortsDelivered.Set();
                     return;
                 }
 
@@ -275,8 +277,10 @@ public sealed class TrayMenuTests(AppFixture appFixture)
                 });
             });
 
-            // Deliver BOTH abort notifications for the opening refresh; the Save is still in flight so drain MUST wait.
+            // Deliver BOTH abort notifications for the opening refresh and wait until both have returned;
+            // the Save is still in flight so drain MUST wait.
             abortRelease.Set();
+            Assert.True(bothAbortsDelivered.Wait(TimeSpan.FromSeconds(5), ct));
             await refreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.True(menu.HasInFlightOperations);
             Assert.False(idleRan.Task.IsCompleted);
@@ -291,6 +295,87 @@ public sealed class TrayMenuTests(AppFixture appFixture)
         finally
         {
             saveRelease.Set();
+            abortRelease.Set();
+            appFixture.Invoke(menu.Dispose);
+        }
+    }
+
+    [Fact]
+    public async Task AbortedLastOperationMarshalsDrainCallbackToUiThread()
+    {
+        using var data = new TestData();
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        int uiThreadId = appFixture.Invoke(() => Environment.CurrentManagedThreadId);
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var clock = new FixedClock(FixedNow);
+        var log = new Log(paths, clock);
+        var monitors = new FakeMonitors(PrimaryMonitor);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 200));
+        var store = new LayoutStore(paths);
+        var settingsStore = new SettingsStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+
+        using var abortEntered = new ManualResetEventSlim(false);
+        using var abortRelease = new ManualResetEventSlim(false);
+        int marshalCalls = 0;
+        int idleThreadId = 0;
+        var idleRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        TrayMenu menu = appFixture.Invoke(() => new TrayMenu(
+            service,
+            store,
+            monitors,
+            desktop,
+            settingsStore,
+            log,
+            (action, onAborted) =>
+            {
+                if (Interlocked.Increment(ref marshalCalls) == 1)
+                {
+                    abortEntered.Set();
+                    if (!abortRelease.Wait(TimeSpan.FromSeconds(5)))
+                    {
+                        throw new TimeoutException("Abort gate was never released.");
+                    }
+
+                    // Abort the last operation from the worker thread while the UI dispatcher is still available.
+                    onAborted();
+                    return;
+                }
+
+                // Drain callback marshal must run on the UI dispatcher.
+                appFixture.Invoke(action);
+            }));
+
+        try
+        {
+            Task refreshTask = appFixture.Invoke(() =>
+            {
+                menu.RefreshState();
+                return menu.LastRefreshTask;
+            });
+
+            Assert.True(abortEntered.Wait(TimeSpan.FromSeconds(5), ct));
+            appFixture.Invoke(() =>
+            {
+                menu.BeginDrain(() =>
+                {
+                    idleThreadId = Environment.CurrentManagedThreadId;
+                    idleRan.TrySetResult();
+                });
+            });
+
+            Assert.False(idleRan.Task.IsCompleted);
+            abortRelease.Set();
+
+            await refreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            await idleRan.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            Assert.False(menu.HasInFlightOperations);
+            Assert.Equal(uiThreadId, idleThreadId);
+        }
+        finally
+        {
             abortRelease.Set();
             appFixture.Invoke(menu.Dispose);
         }

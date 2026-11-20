@@ -4,6 +4,7 @@ using Berth.Cli;
 using Berth.Core;
 using Berth.Core.Model;
 using Berth.Desktop;
+using Berth.Window;
 using Microsoft.Win32;
 
 namespace Berth.App;
@@ -61,15 +62,13 @@ internal static class TrayApp
         Action<int>? exitProcess = null,
         Func<string, string?>? getenv = null,
         Composition? composition = null,
-        Action<TrayMenu>? onTrayMenuCreated = null)
+        Action<TrayMenu>? onTrayMenuCreated = null,
+        Func<IMainWindow>? createMainWindow = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(showCrashMessage);
-
-        _ = openWindow;
-        _ = onWindowOpened;
 
         using SingleInstance instance = createInstance();
         if (!instance.TryClaim())
@@ -164,6 +163,29 @@ internal static class TrayApp
                 effectiveComposition.Log,
                 MarshalToUi);
 
+            Func<IMainWindow> effectiveCreateMainWindow = createMainWindow ?? (() => new MainWindow());
+            IMainWindow? mainWindow = null;
+            bool firstWindowOpenedNotified = false;
+
+            void OpenMainWindow()
+            {
+                if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+                {
+                    return;
+                }
+
+                mainWindow ??= effectiveCreateMainWindow();
+                mainWindow.BringToFront();
+                if (!firstWindowOpenedNotified)
+                {
+                    firstWindowOpenedNotified = true;
+                    onWindowOpened?.Invoke();
+                }
+            }
+
+            trayIcon.OpenRequested += OpenMainWindow;
+            trayMenu.OpenRequested += OpenMainWindow;
+
             trayMenu.OperationFinished += _ =>
             {
                 trayIcon.TrySetTooltip(trayMenu.LastObservedActiveLayout, effectiveClock.GetUtcNow(), effectiveZone);
@@ -174,6 +196,7 @@ internal static class TrayApp
                 {
                     if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
                     {
+                        mainWindow?.CloseForShutdown();
                         trayIcon.Dispose();
                         app.Shutdown(0);
                     }
@@ -186,19 +209,36 @@ internal static class TrayApp
             void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) =>
                 HandleUserPreferenceChanged(effectiveTheme, e.Category);
 
+            void OnInstanceActivated() => MarshalToUi(OpenMainWindow, onAborted: null);
+
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             try
             {
                 // Reconcile immediately after subscribing so any theme flip between initial read and subscribe is never missed.
                 effectiveTheme.OnSettingChange("ImmersiveColorSet");
 
-                if (onAppStartup is not null)
+                app.Startup += (_, _) =>
                 {
-                    app.Startup += (_, _) => onAppStartup(app);
-                }
+                    if (openWindow)
+                    {
+                        OpenMainWindow();
+                    }
+
+                    onAppStartup?.Invoke(app);
+                };
 
                 app.InitializeTheme();
-                return app.Run();
+                // Subscribe after theme initialization so any replayed pending activation creates the window on the STA
+                // dispatcher with all theme tokens already loaded.
+                instance.Activated += OnInstanceActivated;
+                try
+                {
+                    return app.Run();
+                }
+                finally
+                {
+                    instance.Activated -= OnInstanceActivated;
+                }
             }
             finally
             {

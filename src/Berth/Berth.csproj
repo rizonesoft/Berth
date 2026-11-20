@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="..\..\assets\icon\berth.ico" Link="Assets\berth.ico" />
     <EmbeddedResource Include="..\..\assets\icon\berth-tray-dark.ico" LogicalName="Berth.Assets.berth-tray-dark.ico" />
     <EmbeddedResource Include="..\..\assets\icon\berth-tray-light.ico" LogicalName="Berth.Assets.berth-tray-light.ico" />
   </ItemGroup>
