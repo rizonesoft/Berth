@@ -80,14 +80,15 @@ public sealed partial class NoHexColourTests
                 </Border>
                 """);
 
-            // Bad C# Color.FromRgb and Color.FromArgb calls.
+            // Bad C# Color.FromRgb with block comment directly between tokens (must not join tokens).
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "BadRgb.cs"),
                 """
                 using System.Windows.Media;
-                class BadRgb { static Color C => Color.FromRgb(1, 2, 3); }
+                class BadRgb { static Color C() { return/**/Color.FromRgb(1, 2, 3); } }
                 """);
 
+            // Multiline Color.FromArgb call.
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "BadArgb.cs"),
                 """
@@ -96,12 +97,12 @@ public sealed partial class NoHexColourTests
                     .FromArgb(255, 1, 2, 3); }
                 """);
 
-            // Bad C# call inside string interpolation, including after a commented closing brace.
+            // Bad C# call inside nested string interpolation after a commented closing brace.
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "BadInterpolated.cs"),
                 """
                 using System.Windows.Media;
-                class BadInterpolated { static string S => $"c={/* } */ Color.FromRgb(1, 2, 3)}"; }
+                class BadInterpolated { static string S => $"outer={/* } */ $"inner={Color.FromRgb(1, 2, 3)}"}"; }
                 """);
 
             // C# comments mentioning Color.FromRgb or hex literals (including inside interpolation holes) must not trigger a violation.
@@ -181,11 +182,29 @@ public sealed partial class NoHexColourTests
 
     private static void ScanCSharp(string rel, string text, List<string> violations)
     {
-        // Lex C# into non-comment code (for Color.From* calls) and string literals (for hex colour literals),
-        // skipping // and /* */ comments while tracking line numbers.
         var codeBuilder = new StringBuilder(text.Length);
-        int line = 1;
         int i = 0;
+        int line = 1;
+        ScanCSharpSegment(rel, text, ref i, ref line, codeBuilder, violations, stopAtCloseBrace: false);
+
+        string strippedCode = codeBuilder.ToString();
+        foreach (Match match in ColorFromCallRegex().Matches(strippedCode))
+        {
+            int callLine = 1 + strippedCode.AsSpan(0, match.Index).Count('\n');
+            violations.Add($"{rel}:{callLine}: Color.From* call");
+        }
+    }
+
+    private static void ScanCSharpSegment(
+        string rel,
+        string text,
+        ref int i,
+        ref int line,
+        StringBuilder codeBuilder,
+        List<string> violations,
+        bool stopAtCloseBrace)
+    {
+        int braceDepth = 0;
         while (i < text.Length)
         {
             char c = text[i];
@@ -197,7 +216,25 @@ public sealed partial class NoHexColourTests
                 continue;
             }
 
-            // Line comment
+            if (stopAtCloseBrace)
+            {
+                if (c == '{')
+                {
+                    braceDepth++;
+                }
+                else if (c == '}')
+                {
+                    if (braceDepth == 0)
+                    {
+                        i++;
+                        return;
+                    }
+
+                    braceDepth--;
+                }
+            }
+
+            // Line comment: replace with space (newline handled next iteration)
             if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
             {
                 i += 2;
@@ -206,12 +243,14 @@ public sealed partial class NoHexColourTests
                     i++;
                 }
 
+                codeBuilder.Append(' ');
                 continue;
             }
 
-            // Block comment
+            // Block comment: emit a separating space (and preserve newlines) so adjacent tokens never merge.
             if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
             {
+                codeBuilder.Append(' ');
                 i += 2;
                 while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/'))
                 {
@@ -233,7 +272,7 @@ public sealed partial class NoHexColourTests
                 || (c == '$' && i + 2 < text.Length && text[i + 1] == '@' && text[i + 2] == '"')
                 || (c == '@' && i + 2 < text.Length && text[i + 1] == '$' && text[i + 2] == '"'))
             {
-                bool isVerbatim = (c == '@' || text[i + 1] == '@');
+                bool isVerbatim = c == '@' || text[i + 1] == '@';
                 int startLine = line;
                 i += isVerbatim ? 3 : 2;
                 var literalChunk = new StringBuilder();
@@ -278,116 +317,11 @@ public sealed partial class NoHexColourTests
                             continue;
                         }
 
-                        // Interpolation expression hole: emit its non-comment C# code into codeBuilder!
                         CheckLiteralForHex(rel, startLine, literalChunk.ToString(), violations);
                         literalChunk.Clear();
                         i++;
-                        int depth = 1;
                         codeBuilder.Append(' ');
-                        while (i < text.Length && depth > 0)
-                        {
-                            char hc = text[i];
-                            if (hc == '\n')
-                            {
-                                line++;
-                                codeBuilder.Append('\n');
-                                i++;
-                                continue;
-                            }
-
-                            if (hc == '/' && i + 1 < text.Length && text[i + 1] == '/')
-                            {
-                                i += 2;
-                                while (i < text.Length && text[i] != '\n')
-                                {
-                                    i++;
-                                }
-
-                                continue;
-                            }
-
-                            if (hc == '/' && i + 1 < text.Length && text[i + 1] == '*')
-                            {
-                                i += 2;
-                                while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/'))
-                                {
-                                    if (text[i] == '\n')
-                                    {
-                                        line++;
-                                        codeBuilder.Append('\n');
-                                    }
-
-                                    i++;
-                                }
-
-                                i = Math.Min(i + 2, text.Length);
-                                continue;
-                            }
-
-                            if (hc == '"')
-                            {
-                                int nestedLine = line;
-                                i++;
-                                int nestedStart = i;
-                                while (i < text.Length && text[i] != '"')
-                                {
-                                    if (text[i] == '\\' && i + 1 < text.Length)
-                                    {
-                                        i += 2;
-                                        continue;
-                                    }
-
-                                    if (text[i] == '\n')
-                                    {
-                                        line++;
-                                    }
-
-                                    i++;
-                                }
-
-                                CheckLiteralForHex(rel, nestedLine, text[nestedStart..i], violations);
-                                codeBuilder.Append("\"\"");
-                                i = Math.Min(i + 1, text.Length);
-                                continue;
-                            }
-
-                            if (hc == '\'')
-                            {
-                                i++;
-                                while (i < text.Length && text[i] != '\'')
-                                {
-                                    if (text[i] == '\\' && i + 1 < text.Length)
-                                    {
-                                        i += 2;
-                                        continue;
-                                    }
-
-                                    i++;
-                                }
-
-                                codeBuilder.Append("''");
-                                i = Math.Min(i + 1, text.Length);
-                                continue;
-                            }
-
-                            if (hc == '{')
-                            {
-                                depth++;
-                            }
-                            else if (hc == '}')
-                            {
-                                depth--;
-                                if (depth == 0)
-                                {
-                                    i++;
-                                    break;
-                                }
-                            }
-
-                            codeBuilder.Append(hc);
-                            i++;
-                        }
-
+                        ScanCSharpSegment(rel, text, ref i, ref line, codeBuilder, violations, stopAtCloseBrace: true);
                         codeBuilder.Append(' ');
                         startLine = line;
                         continue;
@@ -412,6 +346,7 @@ public sealed partial class NoHexColourTests
                     if (text[i] == '\n')
                     {
                         line++;
+                        codeBuilder.Append('\n');
                     }
                     else if (text[i] == '"')
                     {
@@ -460,6 +395,7 @@ public sealed partial class NoHexColourTests
                         if (ch == '\n')
                         {
                             line++;
+                            codeBuilder.Append('\n');
                         }
                     }
 
@@ -482,6 +418,7 @@ public sealed partial class NoHexColourTests
                     if (text[i] == '\n')
                     {
                         line++;
+                        codeBuilder.Append('\n');
                     }
 
                     i++;
@@ -515,13 +452,6 @@ public sealed partial class NoHexColourTests
 
             codeBuilder.Append(c);
             i++;
-        }
-
-        string strippedCode = codeBuilder.ToString();
-        foreach (Match match in ColorFromCallRegex().Matches(strippedCode))
-        {
-            int callLine = 1 + strippedCode.AsSpan(0, match.Index).Count('\n');
-            violations.Add($"{rel}:{callLine}: Color.From* call");
         }
     }
 
