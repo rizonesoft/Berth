@@ -41,7 +41,7 @@ depends_on: ["layout-core", "desktop-access"]
 | 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [x] |
 | 4 | §4 | The restore command | §3 | [x] |
 | 5 | §5 | The undo command | §4 | [x] |
-| 6 | §6 | The list command | §3, D01 T01 §17 | [ ] |
+| 6 | §6 | The list command | §3, D01 T01 §17 | [x] |
 | 7 | §7 | Help, version and usage errors | §3 | [ ] |
 | 8 | §8 | Process tests of every command and exit code | §2, §5, §6, §7 | [ ] |
 
@@ -200,6 +200,9 @@ The foundation plan's one technical bet: a console program with a detached conso
 - [x] Commit: `cli: the list command`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ListCommandTests" --filter-class "*UndoCommandTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when name padding is removed.
+
+> **Verified:** 2026-11-20 | §6 | 76cfe6e426c444bc6667be911c431508911c6a73
+> **Review:** `docs/reviews/d03-t01-s6.json`
 
 ## 7. Help, version and usage errors
 

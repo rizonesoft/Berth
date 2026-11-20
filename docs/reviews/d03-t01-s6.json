@@ -1,0 +1,83 @@
+{
+  "ref": "D03 T01 \u00a76",
+  "title": "The list command",
+  "implementation_sha": "76cfe6e426c444bc6667be911c431508911c6a73",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/03-cli/D03-T01-s6.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *ListCommandTests --filter-class *UndoCommandTests --filter-class *LayerRuleTests (51/51 passed, 0 skipped)"
+  ],
+  "completion": {
+    "report": "docs/reviews/03-cli/D03-T01-s6.md",
+    "verdict": "reconciled",
+    "candidate": "76cfe6e426c444bc6667be911c431508911c6a73",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/03-cli/D03-T01-s6.md",
+    "candidate": "d05f8135e5f65f0886f19a4b0b48a169c5b94fd2",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "d05f8135e5f65f0886f19a4b0b48a169c5b94fd2",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
