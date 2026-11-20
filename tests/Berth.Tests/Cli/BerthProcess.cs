@@ -169,6 +169,11 @@ internal sealed class BerthProcess : IDisposable
             }
         }
 
+        if (!info.Environment.Keys.Any(k => string.Equals(k, "BERTH_INSTANCE", StringComparison.OrdinalIgnoreCase)))
+        {
+            info.Environment["BERTH_INSTANCE"] = "test-" + Guid.NewGuid().ToString("N");
+        }
+
         Process process = Process.Start(info) ?? throw new InvalidOperationException($"Failed to start '{exePath}'.");
         return new BerthProcess(process);
     }
