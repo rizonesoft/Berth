@@ -53,7 +53,7 @@ Sections: 23 | Checklist items: 133
 
 ### Phase 2: Desktop access
 
-Sections: 10 | Checklist items: 47
+Sections: 10 | Checklist items: 48
 
 | Status | Reference   | Deliverable                                | Needs                         | Items |
 | ------ | ----------- | ------------------------------------------ | ----------------------------- | ----- |
@@ -66,7 +66,7 @@ Sections: 10 | Checklist items: 47
 | [x]    | D02 T01 §4  | Setting icon positions                     | windows-host, display-session | 6     |
 | [x]    | D02 T01 §10 | Desktop scoped to icons with a name prefix | none                          | 3     |
 | [x]    | D02 T01 §7  | Real-desktop round trip on a probe icon    | windows-host, display-session | 4     |
-| [ ]    | D02 T01 §8  | One exception for an unreachable desktop   | none                          | 4     |
+| [ ]    | D02 T01 §8  | One exception for an unreachable desktop   | none                          | 5     |
 
 ### Phase 3: Command line
 
@@ -159,4 +159,4 @@ Sections: 4 | Checklist items: 16
 
 Progress: 40/88 verified sections, 1 ready to run now.
 
-Checklist: 229/521 items completed (includes Commit items).
+Checklist: 229/522 items completed (includes Commit items).
