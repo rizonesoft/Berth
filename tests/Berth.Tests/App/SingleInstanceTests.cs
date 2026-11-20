@@ -69,27 +69,90 @@ public sealed class SingleInstanceTests
     }
 
     [Fact]
-    public void FailedPipeBindReleasesMutexSoReplacementCanClaim()
+    public void BerthProcessReplacesMissingOrBlankInstanceOverrideAndPreservesExplicitName()
+    {
+        var missing = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        Berth.Tests.Cli.BerthProcess.ApplyInstanceIsolation(missing);
+        Assert.StartsWith("test-", missing["BERTH_INSTANCE"], StringComparison.Ordinal);
+
+        var empty = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase) { ["BERTH_INSTANCE"] = string.Empty };
+        Berth.Tests.Cli.BerthProcess.ApplyInstanceIsolation(empty);
+        Assert.StartsWith("test-", empty["BERTH_INSTANCE"], StringComparison.Ordinal);
+
+        var whitespace = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase) { ["berth_instance"] = "   \t  " };
+        Berth.Tests.Cli.BerthProcess.ApplyInstanceIsolation(whitespace);
+        Assert.StartsWith("test-", whitespace["BERTH_INSTANCE"], StringComparison.Ordinal);
+
+        var paired = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase) { ["BERTH_INSTANCE"] = "paired-test-id" };
+        Berth.Tests.Cli.BerthProcess.ApplyInstanceIsolation(paired);
+        Assert.Equal("paired-test-id", paired["BERTH_INSTANCE"]);
+    }
+
+    [Fact]
+    public void FailedPipeBindReleasesMutexImmediatelyBeforeDisposalSoReplacementCanClaim()
     {
         string name = UniqueName();
         int sessionId = Process.GetCurrentProcess().SessionId;
         string pipeName = $"Berth.App.{name}.{sessionId}";
 
-        // Reserve the single-instance pipe endpoint with maxNumberOfServerInstances: 1 before TryClaim.
-        using (var occupied = new NamedPipeServerStream(
-            pipeName,
-            PipeDirection.In,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous))
+        var failed = new SingleInstance(name, sessionId: sessionId);
+        try
         {
-            using var failed = new SingleInstance(name, sessionId: sessionId);
-            Assert.Throws<IOException>(() => failed.TryClaim());
-        }
+            // Reserve the single-instance pipe endpoint with maxNumberOfServerInstances: 1 before TryClaim.
+            using (var occupied = new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.In,
+                maxNumberOfServerInstances: 1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous))
+            {
+                Assert.Throws<IOException>(() => failed.TryClaim());
+            }
 
-        // After releasing the reserved pipe, a replacement must be able to claim the mutex and listen cleanly.
-        using var replacement = new SingleInstance(name, sessionId: sessionId);
+            // Keep 'failed' alive (NOT yet disposed) while the replacement claims both mutex and pipe.
+            using var replacement = new SingleInstance(name, sessionId: sessionId);
+            Assert.True(replacement.TryClaim());
+        }
+        finally
+        {
+            failed.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentDisposeDuringClaimStartupLeavesNameAndPipeAvailableToReplacement()
+    {
+        string name = UniqueName();
+        var instance = new SingleInstance(name);
+        using var disposeStarted = new ManualResetEventSlim(false);
+        Task? disposeTask = null;
+
+        bool claimed = instance.TryClaim(beforePipeBind: () =>
+        {
+            // Launch Dispose() while TryClaim() holds _lifecycleLock after acquiring the mutex and before binding the pipe.
+            disposeTask = Task.Run(() =>
+            {
+                disposeStarted.Set();
+                instance.Dispose();
+            });
+            Assert.True(disposeStarted.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+            // Give the concurrent Dispose() call a brief moment to block on _lifecycleLock.
+            Thread.Sleep(30);
+        });
+
+        Assert.True(claimed);
+        Assert.NotNull(disposeTask);
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+        // After serialized Dispose() finishes, a replacement must claim both mutex and pipe and receive activations.
+        using var replacement = new SingleInstance(name);
         Assert.True(replacement.TryClaim());
+        using var activated = new ManualResetEventSlim(false);
+        replacement.Activated += () => activated.Set();
+
+        using var caller = new SingleInstance(name);
+        Assert.True(caller.SignalFirst());
+        Assert.True(activated.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
     }
 
     [Fact]

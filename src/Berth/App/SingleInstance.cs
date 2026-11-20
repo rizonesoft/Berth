@@ -145,7 +145,9 @@ internal sealed class SingleInstance : IDisposable
     /// thread never recursively re-acquire it and <see cref="Dispose"/> always releases it on its owning thread.
     /// Serialized with <see cref="Dispose"/> so a claim never outlives disposal.
     /// </summary>
-    public bool TryClaim()
+    public bool TryClaim() => TryClaim(beforePipeBind: null);
+
+    internal bool TryClaim(Action? beforePipeBind)
     {
         lock (_lifecycleLock)
         {
@@ -222,6 +224,8 @@ internal sealed class SingleInstance : IDisposable
                 releaseMutex.Dispose();
                 return false;
             }
+
+            beforePipeBind?.Invoke();
 
             // Bind the initial pipe server synchronously BEFORE reporting a successful claim so a bind failure
             // immediately releases mutex ownership instead of leaving a dead primary holding the mutex.
