@@ -42,7 +42,7 @@ depends_on: ["layout-core"]
 | 2 | §2 | The desktop's folder view | §1 | [x] |
 | 3 | §9 | STA worker that owns every shell call | §2 | [x] |
 | 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [x] |
-| 5 | §4 | Setting icon positions | §3 | [ ] |
+| 5 | §4 | Setting icon positions | §3 | [x] |
 | 6 | §5 | Auto arrange read and clear | §9 | [x] |
 | 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
 | 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [ ] |
@@ -149,9 +149,12 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 - [x] Ignore, without error, an `IconPosition` whose `Id` is not on the desktop (and make zero `SelectAndPositionItems` calls when `icons` is empty or has zero matches). Done when: controlled-fixture unit tests pass an unknown `Id` alongside matched icons and also pass only unknown `Id`s / an empty list, asserting success and exact `SelectAndPositionItems` call counts (`0` when unmatched/empty, `1` when matched; `D02 T01 §7` proves `ScopedDesktopIcons` + the live probe move). Cheaper substitute: throwing, which would fail every restore with a deleted file.
 - [x] Free every item identifier list and `StrRetToStrW` output string with `Marshal.FreeCoTaskMem` in `finally` (keeping every PIDL live while `SelectAndPositionItems` runs), and release `IShellFolder` and `IEnumIDList` with `Marshal.ReleaseComObject` in `finally`, on both success and failure (including `Items` failure, `Next` negative HRESULT with sentinel slot, `GetDisplayNameOf` `FileNotFoundException`/`COMException`, and `SelectAndPositionItems` throwing `COMException` wrapped in `DesktopUnavailableException` preserving `InnerException`). **Corrected 2026-11-20:** added live-during-call PIDL ownership check, exact COM release (`== 1` per object), `StrRetToStrW` output string free count, sentinel non-free on `Next` failure, and `DesktopUnavailableException` wrapping assertions. Done when: unit tests in `tests/Berth.Tests/Desktop/SetPositionsTests.cs` assert every submitted PIDL is live inside `SelectAndPositionItems`, `FreeEvents == AllocationEvents`, exact `OutputStringsFreed`, and per-object COM release count `== 1` across every success and failure path. Cheaper substitute: leaking per restore or freeing PIDLs before `SelectAndPositionItems`.
 - [x] Do not call `SetPositions` (directly or through `LayoutService.Restore`/`Undo`) against a real-desktop `ShellDesktopIcons` in this section: the only real write is §7's, on its own probe icon. Done when: `git grep -n -E "new ShellDesktopIcons|SetPositions" tests/` shows no real-desktop write anywhere in `tests/` until `ProbeIconTests.cs` lands in `D02 T01 §7`. Cheaper substitute: an "identity write" of every icon's current position, which reverses any move the owner makes between the read and the write (`AGENTS.md`).
-- [ ] Commit: `desktop: setting icon positions`
+- [x] Commit: `desktop: setting icon positions`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SetPositionsTests" --filter-class "*StaWorkerTests" --filter-class "*InteropDeclarationTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an unknown `Id` throws, when `dwFlags` is not `SVSI_POSITIONITEM | SVSI_NOSTATECHANGE`, when `DesktopCoordinates.ToView` is omitted, when `SelectAndPositionItems` is called per icon instead of once, when a PIDL is freed before `SelectAndPositionItems` or leaked on failure, or when an empty request skips opening the view; the real-desktop proof is §7's `ProbeIconTests`.
+
+> **Verified:** 2026-11-20 | §4 | 82e396ba2beed5cea04c7379ec740c47f1a4db29
+> **Review:** `docs/reviews/d02-t01-s4.json`
 
 ## 5. Auto arrange read and clear
 

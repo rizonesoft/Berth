@@ -1,0 +1,84 @@
+{
+  "ref": "D02 T01 \u00a74",
+  "title": "Setting icon positions",
+  "implementation_sha": "82e396ba2beed5cea04c7379ec740c47f1a4db29",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s4.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SetPositionsTests --filter-class *StaWorkerTests --filter-class *InteropDeclarationTests --filter-class *LayerRuleTests --filter-class *FakeDesktopIconsTests -> Passed! total: 179, failed: 0, succeeded: 179, skipped: 0",
+    "CI build.yml + plan.yml at 82e396ba2bee -> green (https://github.com/rizonesoft/Berth/actions/runs/44735938043, https://github.com/rizonesoft/Berth/actions/runs/44735937925)"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s4.md",
+    "verdict": "reconciled",
+    "candidate": "82e396ba2beed5cea04c7379ec740c47f1a4db29",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s4.md",
+    "candidate": "8f0bf374e6d0bdcb0febf9857b7e640624cb666b",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "8f0bf374e6d0bdcb0febf9857b7e640624cb666b",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 7,
+  "pass_cap": 33
+}

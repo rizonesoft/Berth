@@ -63,7 +63,7 @@ Sections: 10 | Checklist items: 48
 | [x]    | D02 T01 §5  | Auto arrange read and clear                | windows-host, display-session | 5     |
 | [x]    | D02 T01 §6  | Monitor bounds, scale and primary          | windows-host, display-session | 5     |
 | [x]    | D02 T01 §3  | Reading every icon's identity and position | windows-host, display-session | 6     |
-| [ ]    | D02 T01 §4  | Setting icon positions                     | windows-host, display-session | 6     |
+| [x]    | D02 T01 §4  | Setting icon positions                     | windows-host, display-session | 6     |
 | [ ]    | D02 T01 §10 | Desktop scoped to icons with a name prefix | none                          | 3     |
 | [ ]    | D02 T01 §7  | Real-desktop round trip on a probe icon    | windows-host, display-session | 5     |
 | [ ]    | D02 T01 §8  | One exception for an unreachable desktop   | none                          | 4     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 37/88 verified sections, 2 ready to run now.
+Progress: 38/88 verified sections, 2 ready to run now.
 
-Checklist: 221/522 items completed (includes Commit items).
+Checklist: 222/522 items completed (includes Commit items).
