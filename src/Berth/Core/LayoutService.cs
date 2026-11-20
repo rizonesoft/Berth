@@ -230,9 +230,12 @@ internal sealed class LayoutService(
             return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
         }
 
-        if (!StillThe(key))
+        switch (CheckArrangement(key))
         {
-            return null;
+            case ArrangementCheck.Unavailable:
+                return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
+            case ArrangementCheck.Changed:
+                return null;
         }
 
         if (FindOutOfRangePosition(layout.Icons, icons, arrangement) is { } outOfRange)
@@ -267,25 +270,34 @@ internal sealed class LayoutService(
             }
 
             // A change after the snapshot was taken: nothing has moved; stop rather than place another arrangement's icons.
-            if (!StillThe(key))
+            switch (CheckArrangement(key))
             {
-                return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
+                case ArrangementCheck.Unavailable:
+                    return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
+                case ArrangementCheck.Changed:
+                    return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
             }
 
+            bool placementStarted = false;
             try
             {
                 desktop.SetPositions(wanted, () =>
                 {
-                    if (!StillThe(key))
+                    switch (CheckArrangement(key))
                     {
-                        abortResult = OperationResult.Failed(
-                            FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
-                        throw new AbortBeforeMoveException();
+                        case ArrangementCheck.Unavailable:
+                            abortResult = OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
+                            throw new AbortBeforeMoveException();
+                        case ArrangementCheck.Changed:
+                            abortResult = OperationResult.Failed(
+                                FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
+                            throw new AbortBeforeMoveException();
                     }
 
                     try
                     {
                         File.Move(staged, paths.UndoFile, overwrite: true);
+                        placementStarted = true;
                     }
                     catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                     {
@@ -305,7 +317,12 @@ internal sealed class LayoutService(
             }
             catch (DesktopUnavailableException)
             {
-                // Some icons may have moved and none can be counted: the snapshot stays if committed, so undo still works.
+                if (!placementStarted)
+                {
+                    return OperationResult.Refused(Refusal.DesktopUnavailable, layout.Name);
+                }
+
+                // Some icons may have moved and none can be counted: the snapshot stays, so undo still works.
                 return OperationResult.Failed(
                     FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringRestore, layout.Name);
             }
@@ -375,17 +392,21 @@ internal sealed class LayoutService(
 
         IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
         IconPosition[] wanted = [.. snapshot.Icons.Where(saved => live.ContainsKey(saved.Id))];
-        if (!StillThe(key))
+        switch (CheckArrangement(key))
         {
-            return null;
+            case ArrangementCheck.Unavailable:
+                return OperationResult.Refused(Refusal.DesktopUnavailable);
+            case ArrangementCheck.Changed:
+                return null;
         }
 
         IReadOnlyList<MonitorInfo> beforeReadBack;
         IReadOnlyList<IconPosition> after;
         IReadOnlyList<MonitorInfo> afterReadBack;
+        bool placementStarted = false;
         try
         {
-            desktop.SetPositions(wanted);
+            desktop.SetPositions(wanted, () => placementStarted = true);
             beforeReadBack = monitors.Read();
             if (ArrangementKey.From(beforeReadBack) != key)
             {
@@ -398,6 +419,11 @@ internal sealed class LayoutService(
         }
         catch (DesktopUnavailableException)
         {
+            if (!placementStarted)
+            {
+                return OperationResult.Refused(Refusal.DesktopUnavailable);
+            }
+
             return OperationResult.Failed(
                 FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringUndo);
         }
@@ -735,16 +761,24 @@ internal sealed class LayoutService(
         return null;
     }
 
-    private bool StillThe(string key)
+    private enum ArrangementCheck
+    {
+        Same,
+        Changed,
+        Unavailable,
+    }
+
+    private ArrangementCheck CheckArrangement(string key)
     {
         try
         {
-            return ArrangementKey.From(monitors.Read()) == key;
+            return ArrangementKey.From(monitors.Read()) == key
+                ? ArrangementCheck.Same
+                : ArrangementCheck.Changed;
         }
         catch (DesktopUnavailableException)
         {
-            // Unreachable now: the next capture says so as a refusal.
-            return false;
+            return ArrangementCheck.Unavailable;
         }
     }
 

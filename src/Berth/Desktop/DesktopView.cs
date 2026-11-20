@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using Berth.Core;
 using Berth.Desktop.Interop;
@@ -120,6 +121,14 @@ internal sealed class DesktopView : IDisposable
             throw Unavailable(ex);
         }
         catch (UnauthorizedAccessException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (FileNotFoundException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (DirectoryNotFoundException ex)
         {
             throw Unavailable(ex);
         }

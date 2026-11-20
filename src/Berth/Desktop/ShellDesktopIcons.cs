@@ -2,6 +2,7 @@
 // StrRetToStrW: https://learn.microsoft.com/en-us/windows/win32/api/shlwapi/nf-shlwapi-strrettostrw
 
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Berth.Core;
 using Berth.Core.Model;
@@ -166,7 +167,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         ArgumentNullException.ThrowIfNull(work);
         return _worker.Run(() =>
         {
-            using DesktopView view = _openView();
+            using DesktopView view = OpenViewChecked();
             return work(view);
         });
     }
@@ -181,7 +182,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     {
         if (icons.Count == 0)
         {
-            beforeMove?.Invoke();
+            InvokeBeforeMove(beforeMove);
             return;
         }
 
@@ -288,7 +289,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 matchedPoints.Add(new NativePoint { X = viewX, Y = viewY });
             }
 
-            beforeMove?.Invoke();
+            InvokeBeforeMove(beforeMove);
 
             if (matchedPidls.Count > 0)
             {
@@ -516,10 +517,15 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         _worker.Run(() =>
         {
             _onMemberExecuted?.Invoke(memberName);
-            using DesktopView view = _openView();
+            using DesktopView view = OpenViewChecked();
             try
             {
                 return work(view);
+            }
+            catch (BeforeMoveExceptionWrapper wrapper)
+            {
+                ExceptionDispatchInfo.Capture(wrapper.Inner).Throw();
+                throw;
             }
             catch (COMException ex)
             {
@@ -546,6 +552,61 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 throw Unavailable(ex);
             }
         });
+
+    private DesktopView OpenViewChecked()
+    {
+        try
+        {
+            DesktopView? view = _openView();
+            return view ?? throw new DesktopUnavailableException("The Windows desktop folder view factory returned null.");
+        }
+        catch (COMException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (InvalidCastException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (InvalidComObjectException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (FileNotFoundException ex)
+        {
+            throw Unavailable(ex);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            throw Unavailable(ex);
+        }
+    }
+
+    private static void InvokeBeforeMove(Action? beforeMove)
+    {
+        if (beforeMove is null)
+        {
+            return;
+        }
+
+        try
+        {
+            beforeMove();
+        }
+        catch (Exception ex)
+        {
+            throw new BeforeMoveExceptionWrapper(ex);
+        }
+    }
+
+    private sealed class BeforeMoveExceptionWrapper(Exception inner) : Exception
+    {
+        public Exception Inner { get; } = inner;
+    }
 
     private static DesktopUnavailableException Unavailable(Exception inner) =>
         new("The Windows desktop folder view could not be reached.", inner);
