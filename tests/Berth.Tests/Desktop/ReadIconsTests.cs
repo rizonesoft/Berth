@@ -83,11 +83,11 @@ public sealed class ReadIconsTests
         Assert.Equal((1996, 242), DesktopCoordinates.ToView(76, 2, monitors.Read()));
         Assert.Equal((120, 40), DesktopCoordinates.ToView(-1800, -200, monitors.Read()));
         Assert.Equal((9000, 4000), DesktopCoordinates.ToView(7080, 3760, monitors.Read()));
-        fixture.AssertAllResourcesReleased();
+        fixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 6);
     }
 
     [Fact]
-    public void ReadIconsDistinguishesSameDisplayNameDeduplicatesParsingNameIgnoringCaseAndLogsWarn()
+    public void ReadIconsDistinguishesSameDisplayNameDeduplicatesParsingNameIgnoringCaseAndSanitizesLogWarn()
     {
         string tempRoot = Path.Combine(Path.GetTempPath(), "Berth.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -96,27 +96,31 @@ public sealed class ReadIconsTests
             BerthPaths paths = BerthPaths.ForRoot(tempRoot);
             var log = new Log(paths, TimeProvider.System);
             var monitors = new FixedMonitors([new(0, 0, 2560, 1440, 100, Primary: true)]);
+            const string firstPath = "C:\\Users\\Public\\Desktop\\Notes\u2028\b.txt";
+            const string dupPath = "c:\\users\\public\\desktop\\notes\u2028\b.txt";
             var fixture = new ShellFixture(
             [
-                new FixtureItem(@"C:\Users\Public\Desktop\Notes.txt", "Notes", new NativePoint { X = 100, Y = 200 }),
+                new FixtureItem(firstPath, "Notes", new NativePoint { X = 100, Y = 200 }),
                 new FixtureItem(@"C:\Users\Owner\Desktop\Notes.txt", "Notes", new NativePoint { X = 300, Y = 400 }),
-                new FixtureItem(@"c:\users\public\desktop\notes.txt", "Notes (dup)", new NativePoint { X = 900, Y = 900 }),
+                new FixtureItem(dupPath, "Notes (dup)", new NativePoint { X = 900, Y = 900 }),
             ]);
 
             using var icons = fixture.CreateDesktopIcons(monitors, log.Warn);
             IReadOnlyList<IconPosition> result = icons.ReadIcons();
 
-            Assert.Equal(3, fixture.AllocatedPidls.Count);
+            Assert.Equal(3, fixture.AllocationEvents);
             Assert.Equal(2, result.Count);
-            Assert.Equal(new IconPosition(@"C:\Users\Public\Desktop\Notes.txt", "Notes", 100, 200), result[0]);
+            Assert.Equal(new IconPosition(firstPath, "Notes", 100, 200), result[0]);
             Assert.Equal(new IconPosition(@"C:\Users\Owner\Desktop\Notes.txt", "Notes", 300, 400), result[1]);
-            fixture.AssertAllResourcesReleased();
+            fixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 6);
 
             string logText = File.ReadAllText(paths.LogFile);
+            Assert.DoesNotContain("\u2028", logText, StringComparison.Ordinal);
+            Assert.DoesNotContain("\b", logText, StringComparison.Ordinal);
             string[] warnLines = logText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
             Assert.Single(warnLines);
             Assert.Contains(" WARN ", warnLines[0], StringComparison.Ordinal);
-            Assert.Contains(@"c:\users\public\desktop\notes.txt", warnLines[0], StringComparison.Ordinal);
+            Assert.Contains(@"c:\users\public\desktop\notes \u0008.txt", warnLines[0], StringComparison.Ordinal);
         }
         finally
         {
@@ -125,13 +129,13 @@ public sealed class ReadIconsTests
     }
 
     [Fact]
-    public void DeduplicateKeepsFirstAndWritesOneWarning()
+    public void DeduplicateKeepsFirstAndWritesOneSanitizedWarning()
     {
         var warnings = new List<string>();
         IconPosition[] items =
         [
-            new(@"C:\Desktop\Alpha.lnk", "Alpha", 10, 20),
-            new(@"c:\desktop\alpha.lnk", "Alpha Second", 99, 99),
+            new("C:\\Desktop\\Alpha\u2028.lnk", "Alpha", 10, 20),
+            new("c:\\desktop\\alpha\u2028.lnk", "Alpha Second", 99, 99),
         ];
 
         IReadOnlyList<IconPosition> deduped = ShellDesktopIcons.Deduplicate(items, warnings.Add);
@@ -139,11 +143,11 @@ public sealed class ReadIconsTests
         Assert.Single(deduped);
         Assert.Equal(items[0], deduped[0]);
         Assert.Single(warnings);
-        Assert.Contains(@"c:\desktop\alpha.lnk", warnings[0], StringComparison.Ordinal);
+        Assert.Contains(@"c:\desktop\alpha .lnk", warnings[0], StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ReadIconsHandlesEmptyEnumerationAndSFalseWithFetchedOne()
+    public void ReadIconsHandlesEmptyEnumerationAndContinuesPastSFalseWithFetchedOne()
     {
         var monitors = new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)]);
         var emptyFixture = new ShellFixture([]);
@@ -152,19 +156,57 @@ public sealed class ReadIconsTests
             Assert.Empty(emptyIcons.ReadIcons());
         }
 
-        emptyFixture.AssertAllResourcesReleased();
+        emptyFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 0);
 
-        var singleSFalseFixture = new ShellFixture(
-            [new FixtureItem(@"C:\Desktop\Last.txt", "Last", new NativePoint { X = 40, Y = 80 })],
-            returnSFalseOnLastItem: true);
-        using (ShellDesktopIcons icons = singleSFalseFixture.CreateDesktopIcons(monitors))
+        var twoItemSFalseOnFirstFixture = new ShellFixture(
+            [
+                new FixtureItem(@"C:\Desktop\First.txt", "First", new NativePoint { X = 40, Y = 80 }),
+                new FixtureItem(@"C:\Desktop\Second.txt", "Second", new NativePoint { X = 120, Y = 160 }),
+            ],
+            returnSFalseOnFirstItem: true);
+        using (ShellDesktopIcons icons = twoItemSFalseOnFirstFixture.CreateDesktopIcons(monitors))
         {
             IReadOnlyList<IconPosition> result = icons.ReadIcons();
-            Assert.Single(result);
-            Assert.Equal(new IconPosition(@"C:\Desktop\Last.txt", "Last", 40, 80), result[0]);
+            Assert.Equal(2, result.Count);
+            Assert.Equal(new IconPosition(@"C:\Desktop\First.txt", "First", 40, 80), result[0]);
+            Assert.Equal(new IconPosition(@"C:\Desktop\Second.txt", "Second", 120, 160), result[1]);
         }
 
-        singleSFalseFixture.AssertAllResourcesReleased();
+        twoItemSFalseOnFirstFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 4);
+    }
+
+    [Fact]
+    public void ReadIconsDoesNotFreeSentinelSlotWhenNextFailsOrReturnsZeroFetched()
+    {
+        var monitors = new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)]);
+        nint sentinel = new(0x123456);
+        var freedPointers = new List<nint>();
+
+        var zeroFetchedFixture = new ShellFixture(
+            [],
+            sentinelOnZeroOrError: sentinel,
+            onFreeSpy: freedPointers.Add);
+        using (ShellDesktopIcons icons = zeroFetchedFixture.CreateDesktopIcons(monitors))
+        {
+            Assert.Empty(icons.ReadIcons());
+        }
+
+        Assert.DoesNotContain(sentinel, freedPointers);
+        zeroFetchedFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 0);
+
+        freedPointers.Clear();
+        var errorFixture = new ShellFixture(
+            [],
+            nextErrorHrAfterItems: unchecked((int)0x80004005),
+            sentinelOnZeroOrError: sentinel,
+            onFreeSpy: freedPointers.Add);
+        using (ShellDesktopIcons icons = errorFixture.CreateDesktopIcons(monitors))
+        {
+            Assert.Throws<DesktopUnavailableException>(() => icons.ReadIcons());
+        }
+
+        Assert.DoesNotContain(sentinel, freedPointers);
+        errorFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 0);
     }
 
     [Fact]
@@ -187,7 +229,7 @@ public sealed class ReadIconsTests
         Assert.Equal("Long Unicode", result[0].Name);
         Assert.Equal(@"C:\Desktop\OffsetItem.txt", result[1].Id);
         Assert.Equal("Offset Display", result[1].Name);
-        fixture.AssertAllResourcesReleased();
+        fixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 4);
     }
 
     [Fact]
@@ -204,7 +246,7 @@ public sealed class ReadIconsTests
         item.ViewPosition = new NativePoint { X = 240, Y = 300 };
         IReadOnlyList<IconPosition> second = icons.ReadIcons();
         Assert.Equal(new IconPosition(@"C:\Desktop\Movable.txt", "Movable", -1680, 300), second[0]);
-        fixture.AssertAllResourcesReleased();
+        fixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 4);
     }
 
     [Fact]
@@ -212,7 +254,7 @@ public sealed class ReadIconsTests
     {
         var monitors = new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)]);
 
-        // GetFolder succeeds, Items throws COMException -> folder and view still released.
+        // GetFolder succeeds, Items throws COMException -> folder and view still released exactly once.
         Exception itemsError = Marshal.GetExceptionForHR(unchecked((int)0x800706BA))!;
         var itemsFailFixture = new ShellFixture([], itemsError: itemsError);
         using (ShellDesktopIcons icons = itemsFailFixture.CreateDesktopIcons(monitors))
@@ -221,7 +263,22 @@ public sealed class ReadIconsTests
             Assert.Same(itemsError, thrown.InnerException);
         }
 
-        itemsFailFixture.AssertAllResourcesReleased();
+        itemsFailFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 0);
+
+        // GetItemPosition throws COMException on second item -> PIDLs, strings, and COM objects all released once.
+        Exception positionError = Marshal.GetExceptionForHR(unchecked((int)0x800706BA))!;
+        var positionFailFixture = new ShellFixture(
+        [
+            new FixtureItem(@"C:\Desktop\First.txt", "First", new NativePoint { X = 10, Y = 10 }),
+            new FixtureItem(@"C:\Desktop\PosFail.txt", "PosFail", new NativePoint { X = 20, Y = 20 }, PositionError: positionError),
+        ]);
+        using (ShellDesktopIcons icons = positionFailFixture.CreateDesktopIcons(monitors))
+        {
+            DesktopUnavailableException thrown = Assert.Throws<DesktopUnavailableException>(() => icons.ReadIcons());
+            Assert.Same(positionError, thrown.InnerException);
+        }
+
+        positionFailFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
 
         // Item disappears during GetDisplayNameOf on second item -> FileNotFoundException wrapped, all PIDLs/COM freed.
         var disappearedError = new FileNotFoundException("Icon deleted mid-read");
@@ -236,7 +293,7 @@ public sealed class ReadIconsTests
             Assert.Same(disappearedError, thrown.InnerException);
         }
 
-        disappearFixture.AssertAllResourcesReleased();
+        disappearFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
 
         // Native StrRetToStrW failure on second item after first succeeded -> DesktopUnavailableException, no leak.
         var badStrRetFixture = new ShellFixture(
@@ -249,7 +306,7 @@ public sealed class ReadIconsTests
             Assert.Throws<DesktopUnavailableException>(() => icons.ReadIcons());
         }
 
-        badStrRetFixture.AssertAllResourcesReleased();
+        badStrRetFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
 
         // Negative Next HRESULT -> DesktopUnavailableException, no partial list.
         var nextFailFixture = new ShellFixture(
@@ -260,7 +317,7 @@ public sealed class ReadIconsTests
             Assert.Throws<DesktopUnavailableException>(() => icons.ReadIcons());
         }
 
-        nextFailFixture.AssertAllResourcesReleased();
+        nextFailFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
     }
 
     [Fact]
@@ -273,7 +330,6 @@ public sealed class ReadIconsTests
         var fixture = new ShellFixture(items);
         using var icons = fixture.CreateDesktopIcons(monitors);
 
-        // Warm up JIT and allocations before sampling baseline.
         Assert.Equal(40, icons.ReadIcons().Count);
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -294,7 +350,7 @@ public sealed class ReadIconsTests
         Assert.True(
             deltaBytes <= 5L * 1024 * 1024,
             $"Expected private memory growth <= 5 MB across 200 reads, observed {deltaBytes} bytes.");
-        fixture.AssertAllResourcesReleased();
+        fixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 201 * 40 * 2);
     }
 
     [Fact]
@@ -328,7 +384,8 @@ public sealed class ReadIconsTests
         NativePoint viewPosition,
         uint ParsingKind = StrRetWstr,
         uint DisplayKind = StrRetWstr,
-        Exception? DisplayNameError = null)
+        Exception? DisplayNameError = null,
+        Exception? PositionError = null)
     {
         public string ParsingName { get; } = parsingName;
         public string DisplayName { get; } = displayName;
@@ -336,22 +393,27 @@ public sealed class ReadIconsTests
         public uint ParsingStrRetKind { get; } = ParsingKind;
         public uint DisplayStrRetKind { get; } = DisplayKind;
         public Exception? GetDisplayNameError { get; } = DisplayNameError;
+        public Exception? GetPositionError { get; } = PositionError;
     }
 
     private sealed class ShellFixture(
         FixtureItem[] items,
-        bool returnSFalseOnLastItem = false,
+        bool returnSFalseOnFirstItem = false,
         Exception? itemsError = null,
-        int? nextErrorHrAfterItems = null)
+        int? nextErrorHrAfterItems = null,
+        nint sentinelOnZeroOrError = 0,
+        Action<nint>? onFreeSpy = null)
     {
         private readonly FixtureItem[] _items = items;
-        private readonly bool _returnSFalseOnLastItem = returnSFalseOnLastItem;
+        private readonly bool _returnSFalseOnFirstItem = returnSFalseOnFirstItem;
         private readonly Exception? _itemsError = itemsError;
         private readonly int? _nextErrorHrAfterItems = nextErrorHrAfterItems;
+        private readonly nint _sentinelOnZeroOrError = sentinelOnZeroOrError;
+        private readonly Action<nint>? _onFreeSpy = onFreeSpy;
         private readonly Dictionary<nint, FixtureItem> _activePidls = [];
-        private readonly HashSet<object> _liveComObjects = new(ReferenceEqualityComparer.Instance);
-        public HashSet<nint> AllocatedPidls { get; } = [];
-        public HashSet<nint> FreedPidls { get; } = [];
+        private readonly Dictionary<object, int> _comReleaseCounts = new(ReferenceEqualityComparer.Instance);
+        public int AllocationEvents { get; private set; }
+        public int FreeEvents { get; private set; }
         public int OutputStringsFreed { get; private set; }
 
         public ShellDesktopIcons CreateDesktopIcons(IMonitors monitors, Action<string>? warn = null) =>
@@ -359,18 +421,24 @@ public sealed class ReadIconsTests
                 openView: () =>
                 {
                     var view = new FakeFolderView(this);
-                    _liveComObjects.Add(view);
+                    TrackComObject(view);
                     return DesktopView.Open(
                         () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(view))),
-                        obj => _liveComObjects.Remove(obj));
+                        RecordComRelease);
                 },
                 monitors: monitors,
                 warn: warn,
                 freeCoTaskMem: ptr =>
                 {
+                    _onFreeSpy?.Invoke(ptr);
+                    if (ptr == _sentinelOnZeroOrError && _sentinelOnZeroOrError != nint.Zero)
+                    {
+                        return;
+                    }
+
                     if (_activePidls.Remove(ptr))
                     {
-                        FreedPidls.Add(ptr);
+                        FreeEvents++;
                     }
                     else
                     {
@@ -379,25 +447,39 @@ public sealed class ReadIconsTests
 
                     Marshal.FreeCoTaskMem(ptr);
                 },
-                releaseComObject: obj => _liveComObjects.Remove(obj));
+                releaseComObject: RecordComRelease);
 
-        public void AssertAllResourcesReleased()
+        public void AssertAllResourcesReleased(int expectedOutputStringsFreed)
         {
             Assert.Empty(_activePidls);
-            Assert.Equal(AllocatedPidls.Count, FreedPidls.Count);
-            Assert.Empty(_liveComObjects);
+            Assert.Equal(AllocationEvents, FreeEvents);
+            Assert.Equal(expectedOutputStringsFreed, OutputStringsFreed);
+            Assert.NotEmpty(_comReleaseCounts);
+            foreach (KeyValuePair<object, int> entry in _comReleaseCounts)
+            {
+                Assert.Equal(1, entry.Value);
+            }
+        }
+
+        private void TrackComObject(object comObj) => _comReleaseCounts[comObj] = 0;
+
+        private void RecordComRelease(object comObj)
+        {
+            if (_comReleaseCounts.TryGetValue(comObj, out int count))
+            {
+                _comReleaseCounts[comObj] = count + 1;
+            }
         }
 
         private nint AllocatePidl(FixtureItem item)
         {
-            // Embed the ANSI parsing name at byte offset 4 so STRRET_OFFSET (uOffset = 4) works through real StrRetToStrW.
             byte[] asciiBytes = Encoding.ASCII.GetBytes(item.ParsingName);
             nint ptr = Marshal.AllocCoTaskMem(4 + asciiBytes.Length + 1);
             Marshal.WriteInt32(ptr, 0, asciiBytes.Length);
             Marshal.Copy(asciiBytes, 0, ptr + 4, asciiBytes.Length);
             Marshal.WriteByte(ptr, 4 + asciiBytes.Length, 0);
             _activePidls[ptr] = item;
-            AllocatedPidls.Add(ptr);
+            AllocationEvents++;
             return ptr;
         }
 
@@ -448,7 +530,7 @@ public sealed class ReadIconsTests
             {
                 Assert.Equal(typeof(IShellFolder).GUID, riid);
                 var folder = new FakeShellFolder(owner);
-                owner._liveComObjects.Add(folder);
+                owner.TrackComObject(folder);
                 ppv = folder;
             }
 
@@ -465,7 +547,7 @@ public sealed class ReadIconsTests
                 }
 
                 var enumerator = new FakeEnumIdList(owner);
-                owner._liveComObjects.Add(enumerator);
+                owner.TrackComObject(enumerator);
                 ppv = enumerator;
             }
 
@@ -475,6 +557,11 @@ public sealed class ReadIconsTests
             public void GetItemPosition(nint pidl, out NativePoint ppt)
             {
                 FixtureItem item = owner._activePidls[pidl];
+                if (item.GetPositionError is not null)
+                {
+                    throw item.GetPositionError;
+                }
+
                 ppt = item.ViewPosition;
             }
 
@@ -529,6 +616,7 @@ public sealed class ReadIconsTests
             {
                 if (_index >= owner._items.Length)
                 {
+                    rgelt[0] = owner._sentinelOnZeroOrError;
                     pceltFetched = 0;
                     return owner._nextErrorHrAfterItems ?? ShellConstants.S_FALSE;
                 }
@@ -536,7 +624,7 @@ public sealed class ReadIconsTests
                 FixtureItem item = owner._items[_index++];
                 rgelt[0] = owner.AllocatePidl(item);
                 pceltFetched = 1;
-                if (owner._returnSFalseOnLastItem && _index == owner._items.Length)
+                if (owner._returnSFalseOnFirstItem && _index == 1)
                 {
                     return ShellConstants.S_FALSE;
                 }

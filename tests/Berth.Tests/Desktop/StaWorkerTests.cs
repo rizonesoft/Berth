@@ -25,7 +25,7 @@ public sealed partial class StaWorkerTests
     {
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
-        using var icons = new ShellDesktopIcons();
+        using var icons = new ShellDesktopIcons(DesktopView.Open);
         (ApartmentState CallerApartment, ApartmentState WorkerApartment, int Count) result = await Task.Run(() =>
         {
             ApartmentState callerApartment = Thread.CurrentThread.GetApartmentState();
@@ -464,7 +464,7 @@ public sealed class UnitStaWorkerTests
     [Fact]
     public void DisposingShellDesktopIconsStopsWorkerThreadAndRejectsSubsequentCalls()
     {
-        var icons = new ShellDesktopIcons();
+        var icons = new ShellDesktopIcons(DesktopView.Open);
         Thread workerThread = icons.RunOnWorker(() => Thread.CurrentThread);
         Assert.True(workerThread.IsAlive);
 

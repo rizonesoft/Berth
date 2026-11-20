@@ -59,7 +59,7 @@ public sealed class AutoArrangeTests
         Assert.SkipUnless(allowed, "Opt-in test: set BERTH_TEST_ALLOW_AUTOARRANGE=1 on a disposable interactive desktop.");
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
-        using var icons = new ShellDesktopIcons();
+        using var icons = new ShellDesktopIcons(DesktopView.Open);
         bool startedOn = icons.AutoArrange;
         Assert.True(
             startedOn,

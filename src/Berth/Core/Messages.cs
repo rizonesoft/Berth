@@ -471,6 +471,13 @@ internal static class Messages
         return start >= end ? "unknown error" : EscapeControls(collapsed[start..end]);
     }
 
+    /// <summary>Formats arbitrary text for a single-line log or CLI sentence per SPEC §13 and §18.</summary>
+    internal static string SingleLine(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return EscapeControls(CollapseLineBreaks(value));
+    }
+
     private static string EscapeControls(string value)
     {
         int first = -1;

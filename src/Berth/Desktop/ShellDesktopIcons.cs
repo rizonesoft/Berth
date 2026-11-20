@@ -34,17 +34,6 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     {
     }
 
-    internal ShellDesktopIcons()
-        : this(
-            DesktopView.Open,
-            new SystemMonitors(),
-            warn: null,
-            Marshal.FreeCoTaskMem,
-            DefaultReleaseComObject,
-            onMemberExecuted: null)
-    {
-    }
-
     internal ShellDesktopIcons(
         Func<DesktopView> openView,
         Action<string>? onMemberExecuted = null,
@@ -117,7 +106,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
             }
             else
             {
-                warn?.Invoke($"Duplicate desktop icon parsing name ignored: \"{icon.Id}\".");
+                warn?.Invoke($"Duplicate desktop icon parsing name ignored: \"{Messages.SingleLine(icon.Id)}\".");
             }
         }
 
@@ -174,27 +163,27 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
             {
                 batch[0] = nint.Zero;
                 int hr = enumerator.Next(1, batch, out uint fetched);
+                if (hr < 0)
+                {
+                    Exception? hrEx = Marshal.GetExceptionForHR(hr);
+                    throw hrEx is not null
+                        ? Unavailable(hrEx)
+                        : new DesktopUnavailableException($"IEnumIDList.Next failed (HRESULT 0x{hr:X8}).");
+                }
+
+                if (fetched == 0)
+                {
+                    break;
+                }
+
                 nint pidl = batch[0];
+                if (pidl == nint.Zero)
+                {
+                    throw new DesktopUnavailableException("Desktop icon enumeration returned a null item identifier list.");
+                }
+
                 try
                 {
-                    if (hr < 0)
-                    {
-                        Exception? hrEx = Marshal.GetExceptionForHR(hr);
-                        throw hrEx is not null
-                            ? Unavailable(hrEx)
-                            : new DesktopUnavailableException($"IEnumIDList.Next failed (HRESULT 0x{hr:X8}).");
-                    }
-
-                    if (fetched == 0)
-                    {
-                        break;
-                    }
-
-                    if (pidl == nint.Zero)
-                    {
-                        throw new DesktopUnavailableException("Desktop icon enumeration returned a null item identifier list.");
-                    }
-
                     desktop.View.GetItemPosition(pidl, out NativePoint viewPoint);
                     folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
                     string id = DecodeStrRet(ref parsingRet, pidl);
@@ -212,18 +201,10 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
                     (int x, int y) = DesktopCoordinates.ToDesktop(viewPoint.X, viewPoint.Y, monitors);
                     raw.Add(new IconPosition(id, name, x, y));
-
-                    if (hr == ShellConstants.S_FALSE)
-                    {
-                        break;
-                    }
                 }
                 finally
                 {
-                    if (pidl != nint.Zero)
-                    {
-                        _freeCoTaskMem(pidl);
-                    }
+                    _freeCoTaskMem(pidl);
                 }
             }
 
