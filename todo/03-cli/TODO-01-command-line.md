@@ -127,6 +127,8 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 ## 4. The restore command
 
+> **Started:** 2026-11-20T16:10:59Z
+
 `berth restore` with its refusals (SPEC §13, §15).
 
 **Phase:** 3
@@ -135,16 +137,16 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 **Build order:**
 
-1. Implement `Restore` in `CliRunner`. Done when: the full and partial lines match SPEC §13.
-2. Cover the three refusals. Done when: each returns 3 with its SPEC §18 message.
+1. Implement `Restore` in `CliRunner` and route `CliCommand.Restore` in `Program.Run`. **Corrected 2026-11-20:** included `Program.Run` routing and an entry-point test so `berth restore` does not exit 2. Done when: the full and partial lines match SPEC §13 and `Program.Run(["restore"], ...)` exits 0.
+2. Cover all five refusals (`AutoArrange`, `NoLayout`, `DesktopUnavailable`, `Busy`, `UnreadableLayout`) and placement failure (`SnapBy = 1` + `SnapIds`). Done when: each asserts exact literal contents of both streams (including newline) and the SPEC exit code.
 
-- [ ] Implement `Restore`: call `LayoutService.Restore()`, write `Messages.Cli(result)` to `output` and return 0 for `Restored`, full or partial. Done when: unit tests get `Restored 3 icons from "2 monitors".` and, with one icon missing, `Restored 2 of 3 icons from "2 monitors". 1 is no longer on the desktop.`, both with exit 0. Cheaper substitute: a non-zero code for a partial restore, which SPEC §13 says is still done.
-- [ ] Return 1 with the SPEC §13 "did not stay" line on standard error, and nothing on standard output, when the result is `Failed` with `NotPlaced` above 0. Done when: a unit test with `SnapBy` 1 on the fake compares the exact line and code. Cheaper substitute: exit 0 for a restore Windows did not honour.
-- [ ] Return 3 with the SPEC §18 message on standard error for auto arrange, no layout and an unreachable desktop, and for `Busy`. Done when: a unit test per refusal compares the exact message and code. Cheaper substitute: printing the refusal on standard output, where a script would read it as a result.
-- [ ] Add `tests/Berth.Tests/Cli/RestoreCommandTests.cs`. Done when: all pass, and the auto arrange test fails when its message is written to `output`. Cheaper substitute: one happy-path test.
-- [ ] Commit: `cli: the restore command`
+- [x] Implement `Restore` in `CliRunner` and route `CliCommand.Restore` in `Program.Run`: call `LayoutService.Restore()`, write `Messages.Cli(result)` to `output` and return 0 for `Restored`, full or partial. **Corrected 2026-11-20:** added `Program.Run(["restore"], ...)` routing test and exact literal both-stream assertions (including newline). Done when: unit tests get `Restored 3 icons from "2 monitors".` and, with one icon missing, `Restored 2 of 3 icons from "2 monitors". 1 is no longer on the desktop.`, both with exit 0 and empty stderr. Cheaper substitute: a non-zero code for a partial restore, which SPEC §13 says is still done.
+- [x] Return 1 with the SPEC §13 "did not stay" line on standard error, and nothing on standard output, when the result is `Failed` with `NotPlaced` above 0. **Corrected 2026-11-20:** added both all-snapped and combined missing + `SnapIds` cases proving §8 clause order and placement-failure precedence. Done when: unit tests with `SnapBy` 1 on the fake compare both streams against exact literals and exit 1. Cheaper substitute: exit 0 for a restore Windows did not honour.
+- [x] Return 3 with the SPEC §18 message on standard error (and empty standard output) for `AutoArrange`, `NoLayout`, `DesktopUnavailable`, `Busy`, and `UnreadableLayout` (leaving malformed JSON bytes intact). **Corrected 2026-11-20:** added `UnreadableLayout` case with malformed JSON byte-preservation check. Done when: a unit test per refusal compares exact literal contents of both streams and exit 3. Cheaper substitute: printing the refusal on standard output, where a script would read it as a result.
+- [x] Add `tests/Berth.Tests/Cli/RestoreCommandTests.cs`. Done when: all pass, and the auto arrange test fails when its message is written to `output`. Cheaper substitute: one happy-path test.
+- [x] Commit: `cli: the restore command`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RestoreCommandTests"` passes, and fails when a refusal is written to standard output.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*RestoreCommandTests" --filter-class "*SaveCommandTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when a refusal is written to standard output.
 
 ## 5. The undo command
 

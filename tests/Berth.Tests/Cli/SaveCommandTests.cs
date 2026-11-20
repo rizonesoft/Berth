@@ -335,7 +335,8 @@ public sealed class SaveCommandTests
                 "BERTH_DATA" => data.Root,
                 "BERTH_TEST_REPORT" => existingDir,
                 _ => null,
-            });
+            },
+            createComposition: (_, _) => throw new InvalidOperationException("composition must not run after test-report failure"));
 
         Assert.Equal(CliExit.Error, exitCode);
         Assert.Equal(string.Empty, output.ToString());
@@ -346,7 +347,7 @@ public sealed class SaveCommandTests
         string[] logLines = logText.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
         Assert.Single(logLines, l => l.Contains(" FAIL ", StringComparison.Ordinal));
         Assert.Contains("FAIL Something went wrong: Access to the path", logText, StringComparison.Ordinal);
-        Assert.Contains(nameof(TestModeSwitches.Apply), logText, StringComparison.Ordinal);
+        Assert.Contains("Berth.Cli.TestModeSwitches.Apply(", logText, StringComparison.Ordinal);
     }
 
     private sealed class FixedClock(DateTimeOffset start) : TimeProvider

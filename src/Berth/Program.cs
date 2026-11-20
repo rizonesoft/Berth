@@ -52,7 +52,7 @@ internal static class Program
                 output.WriteLine("Berth " + AppInfo.Version);
                 exitCode = CliExit.Done;
             }
-            else if (parsed.Command == CliCommand.Save)
+            else if (parsed.Command is CliCommand.Save or CliCommand.Restore)
             {
                 paths ??= BerthPaths.FromEnvironment(readEnv, folder);
                 log ??= new Log(paths, effectiveClock);

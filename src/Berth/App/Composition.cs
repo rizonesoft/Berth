@@ -91,6 +91,16 @@ internal sealed class Composition : IDisposable
             : new ScopedDesktopIcons(desktop, prefix);
     }
 
+    internal static Composition ForTest(
+        BerthPaths paths,
+        Log log,
+        IMonitors monitors,
+        IDesktopIcons desktop,
+        LayoutStore store,
+        OperationLock gate,
+        LayoutService service) =>
+        new(paths, log, monitors, desktop, ownedDesktop: null, store, gate, service);
+
     public void Dispose()
     {
         if (_disposed)

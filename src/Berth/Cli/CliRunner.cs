@@ -37,6 +37,7 @@ internal sealed class CliRunner
         return args.Command switch
         {
             CliCommand.Save => WriteOperationResult(_service.Save(args.Name)),
+            CliCommand.Restore => WriteOperationResult(_service.Restore()),
             _ => CliExit.Usage,
         };
     }
