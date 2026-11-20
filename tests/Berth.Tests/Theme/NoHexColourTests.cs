@@ -96,21 +96,21 @@ public sealed partial class NoHexColourTests
                     .FromArgb(255, 1, 2, 3); }
                 """);
 
-            // Bad C# call inside string interpolation must also be detected.
+            // Bad C# call inside string interpolation, including after a commented closing brace.
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "BadInterpolated.cs"),
                 """
                 using System.Windows.Media;
-                class BadInterpolated { static string S => $"c={Color.FromRgb(1, 2, 3)}"; }
+                class BadInterpolated { static string S => $"c={/* } */ Color.FromRgb(1, 2, 3)}"; }
                 """);
 
-            // C# comments mentioning Color.FromRgb or hex literals must not trigger a violation.
+            // C# comments mentioning Color.FromRgb or hex literals (including inside interpolation holes) must not trigger a violation.
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "CommentOnly.cs"),
                 """
                 // Never call Color.FromRgb(1, 2, 3) or Color.FromArgb(255, 1, 2, 3) or use "#FF0000".
                 /* Color.FromScRgb(1, 1, 1, 1) "#AABBCC" */
-                class CommentOnly { }
+                class CommentOnly { static string S => $"ok={/* Color.FromRgb(1, 2, 3) */ 42}"; }
                 """);
 
             List<string> violations = FindViolations(tempDir);
@@ -278,7 +278,7 @@ public sealed partial class NoHexColourTests
                             continue;
                         }
 
-                        // Interpolation expression hole: emit its C# code into codeBuilder!
+                        // Interpolation expression hole: emit its non-comment C# code into codeBuilder!
                         CheckLiteralForHex(rel, startLine, literalChunk.ToString(), violations);
                         literalChunk.Clear();
                         i++;
@@ -286,16 +286,95 @@ public sealed partial class NoHexColourTests
                         codeBuilder.Append(' ');
                         while (i < text.Length && depth > 0)
                         {
-                            if (text[i] == '\n')
+                            char hc = text[i];
+                            if (hc == '\n')
                             {
                                 line++;
+                                codeBuilder.Append('\n');
+                                i++;
+                                continue;
                             }
 
-                            if (text[i] == '{')
+                            if (hc == '/' && i + 1 < text.Length && text[i + 1] == '/')
+                            {
+                                i += 2;
+                                while (i < text.Length && text[i] != '\n')
+                                {
+                                    i++;
+                                }
+
+                                continue;
+                            }
+
+                            if (hc == '/' && i + 1 < text.Length && text[i + 1] == '*')
+                            {
+                                i += 2;
+                                while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/'))
+                                {
+                                    if (text[i] == '\n')
+                                    {
+                                        line++;
+                                        codeBuilder.Append('\n');
+                                    }
+
+                                    i++;
+                                }
+
+                                i = Math.Min(i + 2, text.Length);
+                                continue;
+                            }
+
+                            if (hc == '"')
+                            {
+                                int nestedLine = line;
+                                i++;
+                                int nestedStart = i;
+                                while (i < text.Length && text[i] != '"')
+                                {
+                                    if (text[i] == '\\' && i + 1 < text.Length)
+                                    {
+                                        i += 2;
+                                        continue;
+                                    }
+
+                                    if (text[i] == '\n')
+                                    {
+                                        line++;
+                                    }
+
+                                    i++;
+                                }
+
+                                CheckLiteralForHex(rel, nestedLine, text[nestedStart..i], violations);
+                                codeBuilder.Append("\"\"");
+                                i = Math.Min(i + 1, text.Length);
+                                continue;
+                            }
+
+                            if (hc == '\'')
+                            {
+                                i++;
+                                while (i < text.Length && text[i] != '\'')
+                                {
+                                    if (text[i] == '\\' && i + 1 < text.Length)
+                                    {
+                                        i += 2;
+                                        continue;
+                                    }
+
+                                    i++;
+                                }
+
+                                codeBuilder.Append("''");
+                                i = Math.Min(i + 1, text.Length);
+                                continue;
+                            }
+
+                            if (hc == '{')
                             {
                                 depth++;
                             }
-                            else if (text[i] == '}')
+                            else if (hc == '}')
                             {
                                 depth--;
                                 if (depth == 0)
@@ -305,7 +384,7 @@ public sealed partial class NoHexColourTests
                                 }
                             }
 
-                            codeBuilder.Append(text[i]);
+                            codeBuilder.Append(hc);
                             i++;
                         }
 

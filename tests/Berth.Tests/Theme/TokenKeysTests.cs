@@ -30,7 +30,7 @@ public sealed partial class TokenKeysTests
         "Tokens.Shared.xaml",
     ];
 
-    [GeneratedRegex(@"\{(?:StaticResource|DynamicResource)\s+(?:ResourceKey\s*=\s*)?(Berth\.[A-Za-z0-9_.]+)\s*\}", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\{(?:StaticResource|DynamicResource)\s+(?:ResourceKey\s*=\s*)?['""]?(Berth\.[A-Za-z0-9_.]+)['""]?\s*\}", RegexOptions.CultureInvariant)]
     private static partial Regex MarkupResourceRefRegex();
 
     [Fact]
@@ -217,6 +217,7 @@ public sealed partial class TokenKeysTests
                     <!-- <Border Background="{DynamicResource Berth.CommentedOutKey}" /> -->
                     <Border Background="{DynamicResource Berth.NoSuchKey}"
                             BorderBrush="{StaticResource ResourceKey = Berth.SpacedMissing}"
+                            OpacityMask="{StaticResource ResourceKey = 'Berth.QuotedMarkupMissing'}"
                             Foreground="{StaticResource Berth.MarkerInPlace}">
                         <Border.Tag>
                             <DynamicResource ResourceKey='Berth.SingleQuotedMissing' />
@@ -226,9 +227,10 @@ public sealed partial class TokenKeysTests
                 """);
 
             List<string> missing = FindMissingKeys(tempDir, knownKeys);
-            Assert.Equal(3, missing.Count);
+            Assert.Equal(4, missing.Count);
             Assert.Contains(missing, m => m.Contains("Berth.NoSuchKey", StringComparison.Ordinal));
             Assert.Contains(missing, m => m.Contains("Berth.SpacedMissing", StringComparison.Ordinal));
+            Assert.Contains(missing, m => m.Contains("Berth.QuotedMarkupMissing", StringComparison.Ordinal));
             Assert.Contains(missing, m => m.Contains("Berth.SingleQuotedMissing", StringComparison.Ordinal));
             Assert.DoesNotContain(missing, m => m.Contains("Berth.CommentedOutKey", StringComparison.Ordinal));
         }
