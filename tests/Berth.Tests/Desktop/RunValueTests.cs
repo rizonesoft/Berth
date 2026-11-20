@@ -41,6 +41,13 @@ public sealed class RunValueTests
         // 7. REG_EXPAND_SZ with the exact matching path -> false (must be REG_SZ).
         testKey.SetValue("Berth", $"\"{SampleExe}\"", RegistryValueKind.ExpandString);
         Assert.False(runValue.IsOn);
+
+        // 8. REG_SZ with trailing embedded NUL + extra payload -> native reader preserves embedded NUL so IsOn is false.
+        testKey.SetValue("Berth", $"\"{SampleExe}\"\0extra", RegistryValueKind.String);
+        Assert.False(runValue.IsOn);
+        Assert.True(HkcuRunRegistry.Instance.TryReadValue(testKey.Path, "Berth", out string? rawWithNul, out RegistryValueKind nulKind));
+        Assert.Equal(RegistryValueKind.String, nulKind);
+        Assert.Equal($"\"{SampleExe}\"\0extra", rawWithNul);
     }
 
     [Fact]

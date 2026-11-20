@@ -79,8 +79,8 @@ internal sealed partial class HkcuRunRegistry : IRunRegistry
                 string decoded = charBytes >= 2
                     ? Encoding.Unicode.GetString(buffer, 0, charBytes)
                     : string.Empty;
-                int nullIndex = decoded.IndexOf('\0');
-                value = nullIndex >= 0 ? decoded[..nullIndex] : decoded;
+                // Strip only the single terminating NUL stored by REG_SZ, preserving any embedded NULs for exact comparison.
+                value = decoded.EndsWith('\0') ? decoded[..^1] : decoded;
             }
             else
             {
