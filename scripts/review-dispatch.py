@@ -917,13 +917,21 @@ def section_record(record_path):
     """True for a findings file named for a TODO section, `<receipts>/<NN-domain>/D<NN>-T<NN>-s<N>.md`: the file
     whose passes have an order. Any other findings file is a standalone review. The folder is the repository's, so
     the path is matched whole from the repository root: `docs/reviews/...` is not a file in a folder named `reviews`."""
+    return section_ref_for_record(record_path) is not None
+
+
+def section_ref_for_record(record_path):
+    """Return `D<NN> T<NN> §<N>` for a section findings file under the repository root, or None."""
     if not record_path:
-        return False
+        return None
     try:
         relative = Path(os.path.realpath(record_path)).relative_to(ROOT).as_posix()
     except ValueError:  # outside the repository: never a section's findings file
-        return False
-    return bool(section_findings_pattern().fullmatch(relative))
+        return None
+    if not section_findings_pattern().fullmatch(relative):
+        return None
+    m = re.search(r"/D(\d{2})-T(\d{2})-s([1-9]\d*)\.md$", relative)
+    return f"D{m[1]} T{m[2]} §{m[3]}" if m else None
 
 
 def returned_plan(record_path):
@@ -1288,11 +1296,19 @@ def check_three_pass_order(kind, record_path, candidate, schedule):
         if len(rounds) != 1 or len(completions) != 1 or not ended_gaps(completions[0]):
             raise Refused("a reconciliation follows one round and a completion review that returned gaps")
         chain = [completions[0], *reconciled]
+        unsettled = False
         if not ended_gaps(chain[-1]):
-            raise Refused("the section's reconciliation already returned complete; it needs no further pass")
+            ref = section_ref_for_record(record_path)
+            if len(chain) > 1 and ref is not None:
+                import todo_graph as _tg
+                unsettled = not _tg.reconciliation_settles(
+                    ROOT, ref, completions[0]["candidate"], chain[-1]["candidate"]
+                )
+            if not unsettled:
+                raise Refused("the section's reconciliation already returned complete; it needs no further pass")
         worst = [declared_highest(e["review"]) for e in chain]
         # Only a pin that names its blocking levels ends the loop this way; without the key every gap is repaired.
-        if "blocking" in schedule and not review_pin.blocks(schedule, worst[-1]):
+        if not unsettled and "blocking" in schedule and not review_pin.blocks(schedule, worst[-1]):
             raise Refused(f"the last pass's worst finding is {worst[-1]}, below the pin's blocking levels "
                           f"({', '.join(schedule['blocking'])}): file its findings and stamp; it takes no further pass")
         cap = pass_cap(schedule)
