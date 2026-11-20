@@ -43,6 +43,7 @@ $steps = @(
     @{ Name = 'tooling-tests'; Program = 'python'; Arguments = @('-m', 'unittest', 'discover', '-s', 'scripts/tests') }
     @{ Name = 'script-tests'; Program = 'python'; Arguments = @('-m', 'unittest', 'discover', '-s', 'tests/scripts') }
     @{ Name = 'agent-tiers'; Program = 'node'; Arguments = @('scripts/verify-agent-tiers.mjs') }
+    @{ Name = 'tokens'; Program = 'python'; Arguments = @('scripts/build-tokens.py', '--check') }
     @{ Name = 'build'; Program = 'dotnet'; Arguments = @('build', 'Berth.slnx', '-c', 'Release'); Heavy = $true }
     @{ Name = 'test'; Program = 'dotnet'; Arguments = @('test', '--solution', 'Berth.slnx', '-c', 'Release'); Heavy = $true; ReusesBuild = $true }
 )

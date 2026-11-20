@@ -1,0 +1,21 @@
+<!-- Generated from design/tokens.json by scripts/build-tokens.py. Do not edit by hand; run python scripts/build-tokens.py. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Berth.MapBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Berth.MapGrid" Color="#12000000" />
+    <SolidColorBrush x:Key="Berth.MapBorder" Color="#E0E0E0" />
+    <SolidColorBrush x:Key="Berth.MonitorFill" Color="#F3F3F3" />
+    <SolidColorBrush x:Key="Berth.MonitorStroke" Color="#767676" />
+    <SolidColorBrush x:Key="Berth.MarkerInPlace" Color="#0F6CBD" />
+    <SolidColorBrush x:Key="Berth.MarkerMoved" Color="#8A5A00" />
+    <SolidColorBrush x:Key="Berth.MarkerMissing" Color="#5C5C5C" />
+    <SolidColorBrush x:Key="Berth.MarkerNeutral" Color="#5C5C5C" />
+    <SolidColorBrush x:Key="Berth.MarkerSelected" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="Berth.ActiveBadgeFill" Color="#0F6CBD" />
+    <SolidColorBrush x:Key="Berth.ActiveBadgeText" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Berth.TextSecondary" Color="#5C5C5C" />
+    <SolidColorBrush x:Key="Berth.NoticeWarningFill" Color="#FFF4CE" />
+    <SolidColorBrush x:Key="Berth.NoticeWarningBorder" Color="#E9D48A" />
+    <SolidColorBrush x:Key="Berth.NoticeErrorFill" Color="#FDE7E9" />
+    <SolidColorBrush x:Key="Berth.NoticeErrorBorder" Color="#F1BBBC" />
+</ResourceDictionary>

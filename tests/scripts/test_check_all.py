@@ -28,6 +28,7 @@ STEPS = [
     "tooling-tests",
     "script-tests",
     "agent-tiers",
+    "tokens",
     "build",
     "test",
 ]
@@ -38,6 +39,7 @@ EXPECTED_CALLS = [
     ["python", "-m", "unittest", "discover", "-s", "scripts/tests"],
     ["python", "-m", "unittest", "discover", "-s", "tests/scripts"],
     ["node", "scripts/verify-agent-tiers.mjs"],
+    ["python", "scripts/build-tokens.py", "--check"],
     ["dotnet", "build", "Berth.slnx", "-c", "Release"],
     ["dotnet", "test", "--solution", "Berth.slnx", "-c", "Release", "--no-build"],
 ]
@@ -163,7 +165,16 @@ class CheckAllTests(unittest.TestCase):
     def test_only_one_step(self) -> None:
         result = self.run_script("-Only", "build")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(self.calls(), [EXPECTED_CALLS[5]])
+        self.assertEqual(self.calls(), [EXPECTED_CALLS[6]])
+
+    def test_tokens_failure_stops_before_build(self) -> None:
+        result = self.run_script(fail={"build-tokens.py": 1})
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.calls(), EXPECTED_CALLS[:6])
+        self.assertEqual(
+            result.stdout.splitlines()[-1],
+            "FAILED tokens: python scripts/build-tokens.py --check (exit 1)",
+        )
 
     def test_only_runs_in_declared_order_and_test_alone_rebuilds(self) -> None:
         result = self.run_script("-Only", "test,plan-validate")
@@ -186,10 +197,10 @@ class CheckAllTests(unittest.TestCase):
         self.assertEqual(
             self.calls(),
             [
-                ["bosun", "run", "--", *EXPECTED_CALLS[5]],
-                EXPECTED_CALLS[5],
                 ["bosun", "run", "--", *EXPECTED_CALLS[6]],
                 EXPECTED_CALLS[6],
+                ["bosun", "run", "--", *EXPECTED_CALLS[7]],
+                EXPECTED_CALLS[7],
             ],
         )
         self.assertIn("== build: bosun run -- dotnet build Berth.slnx -c Release", result.stdout)
@@ -220,7 +231,7 @@ class CheckAllTests(unittest.TestCase):
     def test_heavy_steps_run_directly_without_bosun(self) -> None:
         result = self.run_script("-Only", "build,test")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(self.calls(), EXPECTED_CALLS[5:])
+        self.assertEqual(self.calls(), EXPECTED_CALLS[6:])
         self.assertNotIn("bosun", result.stdout)
 
 
