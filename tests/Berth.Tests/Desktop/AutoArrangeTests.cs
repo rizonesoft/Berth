@@ -14,17 +14,23 @@ public sealed class AutoArrangeTests
     {
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
-        using var icons = new ShellDesktopIcons();
-        _ = icons.AutoArrange;
-        (bool Primary, bool Fallback) liveValues = icons.RunWithView(desktop =>
+        int rawFallbackHr = -1;
+        bool hadView2 = false;
+        using var icons = new ShellDesktopIcons(() =>
         {
-            Assert.NotNull(desktop.View2);
-            return (
-                ShellDesktopIcons.ReadAutoArrange(desktop.View, desktop.View2),
-                ShellDesktopIcons.ReadAutoArrange(desktop.View, null));
+            DesktopView desktop = DesktopView.Open();
+            hadView2 = desktop.View2 is not null;
+            rawFallbackHr = desktop.View.GetAutoArrange();
+            return desktop;
         });
 
-        Assert.Equal(liveValues.Primary, liveValues.Fallback);
+        bool publicValue = icons.AutoArrange;
+
+        Assert.True(hadView2, "Expected the live Windows 11 desktop folder view to expose IFolderView2.");
+        Assert.True(
+            rawFallbackHr is ShellConstants.S_OK or ShellConstants.S_FALSE,
+            $"Expected raw IFolderView.GetAutoArrange() to return S_OK or S_FALSE, got 0x{rawFallbackHr:X8}.");
+        Assert.Equal(rawFallbackHr == ShellConstants.S_OK, publicValue);
     }
 
     [Fact]
