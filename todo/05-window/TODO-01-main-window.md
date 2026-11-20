@@ -39,7 +39,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Window view model and desktop polling | D04 T01 §9, D01 T01 §16, D02 T01 §8 | [x] |
 | 2 | §2 | Layouts pane | §1, D04 T01 §11 | [x] |
-| 3 | §3 | Detail header and action buttons | §2 | [ ] |
+| 3 | §3 | Detail header and action buttons | §2 | [x] |
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [ ] |
 | 5 | §5 | Marker states, selection and readout | §4 | [ ] |
 | 6 | §6 | Status line with Undo and Retry | §3 | [ ] |
@@ -129,18 +129,21 @@ The right pane's header: title, the monitors line, and Restore, Save current lay
 1. Add `DetailViewModel` and `DetailHeader.xaml`. Done when: the three header variants appear for the three row kinds.
 2. Wire Save and Restore. Done when: both run off the UI thread and disable the buttons meanwhile.
 
-- [ ] Add `DetailViewModel` in `src/Berth/Window/DetailViewModel.cs` with `Title` (the name, or `Not saved yet`), `Subtitle` (`Formats.MonitorSizes`, then ` · saved ` and `Formats.When` for a saved layout), `Kind` (`Active`, `Unsaved`, `Other`), `ShowRestore`, `ShowSave`, `ShowMore`, `OtherArrangementLine` (the SPEC §6 sentence, only for `Other`) and `IsBusy`. Done when: unit tests cover the three kinds and compare the subtitle `2560 × 1440 and 1920 × 1080 · saved today, 09:14`. Cheaper substitute: one header for every kind with buttons disabled without explanation.
-- [ ] Add `src/Berth/Window/DetailHeader.xaml`: the title in the `title` style, the subtitle in `caption` with `Berth.TextSecondary`, and on the right `Restore` (standard), `Save current layout` (accent) and `More` (three dots, automation name `More options`), each visible per the view model, hosted at the top of `MainWindow.DetailHost` with padding from the tokens. Done when: a test per kind reads which buttons are visible. Cheaper substitute: hiding buttons with opacity, leaving them clickable.
-- [ ] Add `SaveCommand` and `RestoreCommand`: set `IsBusy`, run `LayoutService.Save()` or `Restore()` off the UI thread, publish the `OperationResult` to the status line (§6), refresh, and clear `IsBusy`. After a save, select the saved arrangement's row. Done when: unit tests with fakes see the layout file written, the fake desktop moved, the selection on the active row, and `IsBusy` `true` during and `false` after. Cheaper substitute: awaiting on the UI thread with `.Result`.
-- [ ] Disable the three buttons while `IsBusy` (SPEC §6, last bullet). Done when: a test holding a slow fake operation reads `IsEnabled` `false` on all three, and `true` afterwards. Cheaper substitute: allowing a second click to queue a second restore.
-- [ ] Add the More menu with `Rename`, `Revert to previous save` and `Delete` in that order, the commands left for §8 and §9, and `Revert to previous save` enabled only when the layout has a previous save. Done when: a test opens the menu and reads three items and the enabled state for both cases. Cheaper substitute: a menu with items that do nothing.
-- [ ] Add render tests writing `header-active`, `header-unsaved`, `header-other` and `header-busy` in light and dark (SPEC §19 "Detail header"). Done when: `pwsh scripts/render-window.ps1` writes the eight files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/DetailHeaderTests.cs`. Done when: all pass, and the kind test fails when `Restore` is visible for `Other`. Cheaper substitute: none needed.
-- [ ] Commit: `window: detail header and action buttons`
+- [x] Add `DetailViewModel` in `src/Berth/Window/DetailViewModel.cs` with `Title` (the name, or `Not saved yet`), `Subtitle` (`Formats.MonitorSizes`, then ` · saved ` and `Formats.When` for a saved layout), `Kind` (`Active`, `Unsaved`, `Other`), `ShowRestore`, `ShowSave`, `ShowMore`, `OtherArrangementLine` (the SPEC §6 sentence, only for `Other`) and `IsBusy`. Done when: unit tests cover the three kinds and compare the subtitle `2560 × 1440 and 1920 × 1080 · saved today, 09:14`. Cheaper substitute: one header for every kind with buttons disabled without explanation.
+- [x] Add `src/Berth/Window/DetailHeader.xaml`: the title in the `title` style, the subtitle in `caption` with `Berth.TextSecondary`, and on the right `Restore` (standard), `Save current layout` (accent) and `More` (three dots, automation name `More options`), each visible per the view model, hosted at the top of `MainWindow.DetailHost` with padding from the tokens. Done when: a test per kind reads which buttons are visible. Cheaper substitute: hiding buttons with opacity, leaving them clickable.
+- [x] Add `SaveCommand` and `RestoreCommand`: set `IsBusy`, run `LayoutService.Save()` or `Restore()` off the UI thread, publish the `OperationResult` to the status line (§6), refresh, and clear `IsBusy`. After a save, select the saved arrangement's row. Done when: unit tests with fakes see the layout file written, the fake desktop moved, the selection on the active row, and `IsBusy` `true` during and `false` after. Cheaper substitute: awaiting on the UI thread with `.Result`.
+- [x] Disable the three buttons while `IsBusy` (SPEC §6, last bullet). Done when: a test holding a slow fake operation reads `IsEnabled` `false` on all three, and `true` afterwards. Cheaper substitute: allowing a second click to queue a second restore.
+- [x] Add the More menu with `Rename`, `Revert to previous save` and `Delete` in that order, the commands left for §8 and §9, and `Revert to previous save` enabled only when the layout has a previous save. Done when: a test opens the menu and reads three items and the enabled state for both cases. Cheaper substitute: a menu with items that do nothing.
+- [x] Add render tests writing `header-active`, `header-unsaved`, `header-other` and `header-busy` in light and dark (SPEC §19 "Detail header"). Done when: `pwsh scripts/render-window.ps1` writes the eight files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/DetailHeaderTests.cs`. Done when: all pass, and the kind test fails when `Restore` is visible for `Other`. Cheaper substitute: none needed.
+- [x] Commit: `window: detail header and action buttons`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*DetailHeaderTests"` passes, and fails when "Restore" is shown for a layout saved for another arrangement.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §3 | 63f4470333619c402ffdd55e9a7017af187d46ed
+> **Review:** `docs/reviews/d05-t01-s3.json`
 
 ## 4. Position map: monitors and markers
 

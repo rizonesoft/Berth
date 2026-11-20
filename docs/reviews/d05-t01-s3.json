@@ -1,0 +1,85 @@
+{
+  "ref": "D05 T01 \u00a73",
+  "title": "Detail header and action buttons",
+  "implementation_sha": "63f4470333619c402ffdd55e9a7017af187d46ed",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s3.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "DetailHeaderTests+TrayMenuTests+MainViewModelTests+test_build_tokens.py+render-window.ps1+design-lint.py+Opus5.5-PASS:pass"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s3.md",
+    "verdict": "filed",
+    "candidate": "63f4470333619c402ffdd55e9a7017af187d46ed",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D05 T01 \u00a714"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s3.md",
+    "candidate": "0d129cabb01824cfa47a8ed52cd0201737951534",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "0d129cabb01824cfa47a8ed52cd0201737951534",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
