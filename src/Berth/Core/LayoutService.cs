@@ -251,6 +251,7 @@ internal sealed class LayoutService(
         // The way back is staged beside undo.json, then put in its place just before anything moves, so `berth undo`
         // in another process has it, and an abort before the move leaves the earlier undo exactly as it was.
         string staged = paths.UndoFile + ".next";
+        byte[]? previousUndoBytes = null;
         try
         {
             BerthPaths.EnsureFolderFor(paths.UndoFile);
@@ -260,6 +261,11 @@ internal sealed class LayoutService(
             if (!StillThe(key))
             {
                 return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
+            }
+
+            if (File.Exists(paths.UndoFile))
+            {
+                previousUndoBytes = File.ReadAllBytes(paths.UndoFile);
             }
 
             File.Move(staged, paths.UndoFile, overwrite: true);
@@ -280,6 +286,12 @@ internal sealed class LayoutService(
         {
             desktop.SetPositions(wanted);
             after = desktop.ReadIcons();
+        }
+        catch (OverflowException overflow)
+        {
+            // Coordinate conversion failed before SelectAndPositionItems ran, so no icon moved: put the previous undo back.
+            RestorePreviousUndo(previousUndoBytes);
+            return OperationResult.Failed(FailureKind.Unexpected, path: null, overflow.Message, layout.Name, overflow);
         }
         catch (DesktopUnavailableException)
         {
@@ -650,6 +662,30 @@ internal sealed class LayoutService(
     }
 
     /// <summary>Whether the monitors still give <paramref name="key"/>; an unreachable desktop counts as a change.</summary>
+    private void RestorePreviousUndo(byte[]? previousUndoBytes)
+    {
+        if (previousUndoBytes is null)
+        {
+            DeleteIfThere(paths.UndoFile);
+            return;
+        }
+
+        string rollback = paths.UndoFile + ".rollback";
+        try
+        {
+            File.WriteAllBytes(rollback, previousUndoBytes);
+            File.Move(rollback, paths.UndoFile, overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort rollback; leave original failure to surface.
+        }
+        finally
+        {
+            DeleteIfThere(rollback);
+        }
+    }
+
     private static IconPosition? FindOutOfRangePosition(
         IReadOnlyList<IconPosition> requested,
         IReadOnlyList<IconPosition> liveDesktop,

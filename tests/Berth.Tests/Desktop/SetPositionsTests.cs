@@ -162,6 +162,23 @@ public sealed class SetPositionsTests
 
         disappearFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 1);
 
+        // GetDisplayNameOf throws COMException on second item -> wrapped, zero positioning calls, all PIDLs/COM freed.
+        Exception nameComError = Marshal.GetExceptionForHR(unchecked((int)0x800706BA))!;
+        var nameComFailFixture = new ShellFixture(
+        [
+            new FixtureItem(@"C:\Desktop\A.txt"),
+            new FixtureItem(@"C:\Desktop\B.txt", DisplayNameError: nameComError),
+        ]);
+        using (ShellDesktopIcons icons = nameComFailFixture.CreateDesktopIcons(monitors))
+        {
+            DesktopUnavailableException thrown = Assert.Throws<DesktopUnavailableException>(() =>
+                icons.SetPositions([new(@"C:\Desktop\A.txt", "A", 10, 20)]));
+            Assert.Same(nameComError, thrown.InnerException);
+        }
+
+        Assert.Equal(0, nameComFailFixture.SelectAndPositionCalls);
+        nameComFailFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 1);
+
         // SelectAndPositionItems throws COMException -> submitted PIDLs were live during call and freed afterward.
         Exception positionError = Marshal.GetExceptionForHR(unchecked((int)0x800706BA))!;
         var positionFailFixture = new ShellFixture(
@@ -255,6 +272,71 @@ public sealed class SetPositionsTests
         {
             Directory.Delete(tempRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public void RestoreWithMidOperationMonitorOriginChangePreservesExistingUndoSnapshotAndMovesNothing()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), "Berth.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            BerthPaths paths = BerthPaths.ForRoot(tempRoot);
+            MonitorInfo[] initialArrangement = [new(0, 0, 2560, 1440, 100, Primary: true)];
+            MonitorInfo[] extendedArrangement =
+            [
+                new(-1920, 0, 1920, 1080, 100, Primary: false),
+                new(0, 0, 2560, 1440, 100, Primary: true),
+            ];
+            string key = ArrangementKey.From(initialArrangement);
+            // LayoutService.RestoreOnce reads monitors 5 times before SetPositions (Capture before + ReadIcons + Capture after + StillThe x2);
+            // the 6th read happens inside SetPositionsOnView, simulating a left monitor connecting right after undo.json moved.
+            int monitorReads = 0;
+            var dynamicMonitors = new DynamicMonitors(() => ++monitorReads <= 5 ? initialArrangement : extendedArrangement);
+            var fixture = new ShellFixture([new FixtureItem(@"C:\Desktop\Alpha.txt")]);
+
+            var store = new LayoutStore(paths);
+            var layout = new Layout(
+                Layout.CurrentSchemaVersion,
+                key,
+                "Single",
+                DateTimeOffset.UtcNow,
+                [.. initialArrangement],
+                [new IconPosition(@"C:\Desktop\Alpha.txt", "Alpha", int.MaxValue, 100)],
+                Previous: null);
+            store.Save(layout, new LayoutSnapshot(key, null, null));
+
+            var existingUndo = new UndoSnapshot(
+                UndoSnapshot.CurrentSchemaVersion,
+                key,
+                DateTimeOffset.UtcNow.AddMinutes(-5),
+                [new IconPosition(@"C:\Desktop\Alpha.txt", "Alpha", 42, 84)]);
+            BerthPaths.EnsureFolderFor(paths.UndoFile);
+            JsonFile.Write(paths.UndoFile, existingUndo, BerthJson.Default.UndoSnapshot);
+            byte[] undoBefore = File.ReadAllBytes(paths.UndoFile);
+
+            using var icons = fixture.CreateDesktopIcons(dynamicMonitors);
+            var opLock = new OperationLock(paths, TimeSpan.FromSeconds(5));
+            var log = new Log(paths, TimeProvider.System);
+            var service = new LayoutService(icons, dynamicMonitors, store, paths, opLock, log, TimeProvider.System);
+
+            OperationResult result = service.Restore();
+
+            Assert.Equal(6, monitorReads);
+            Assert.Equal(OperationKind.Failed, result.Kind);
+            Assert.Equal(FailureKind.Unexpected, result.Failure);
+            Assert.Equal(0, fixture.SelectAndPositionCalls);
+            Assert.Equal(undoBefore, File.ReadAllBytes(paths.UndoFile));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    private sealed class DynamicMonitors(Func<IReadOnlyList<MonitorInfo>> read) : IMonitors
+    {
+        public IReadOnlyList<MonitorInfo> Read() => read();
     }
 
     private sealed class FixedMonitors(IReadOnlyList<MonitorInfo> monitors) : IMonitors
