@@ -166,10 +166,11 @@ internal static class TrayApp
             Func<IMainWindow> effectiveCreateMainWindow = createMainWindow ?? (() => new MainWindow());
             IMainWindow? mainWindow = null;
             bool firstWindowOpenedNotified = false;
+            bool exitRequested = false;
 
             void OpenMainWindow()
             {
-                if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+                if (exitRequested || app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
                 {
                     return;
                 }
@@ -192,6 +193,8 @@ internal static class TrayApp
             };
 
             trayMenu.ExitRequested += () =>
+            {
+                exitRequested = true;
                 trayMenu.BeginDrain(() =>
                 {
                     if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
@@ -201,6 +204,7 @@ internal static class TrayApp
                         app.Shutdown(0);
                     }
                 });
+            };
 
             trayIcon.SetContextMenu(trayMenu.Strip);
             onTrayIconCreated?.Invoke(trayIcon);

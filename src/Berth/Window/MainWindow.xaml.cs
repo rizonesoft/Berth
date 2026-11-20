@@ -20,9 +20,6 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
     /// <summary>Optional test seam overriding <see cref="System.Windows.Window.Activate"/> to test activation refusal deterministically.</summary>
     internal Func<bool>? ActivateOverride { get; set; }
 
-    /// <summary>Optional test observer invoked whenever <see cref="BringToFront"/> toggles <see cref="System.Windows.Window.Topmost"/>.</summary>
-    internal Action<bool>? TopmostChangedForTest { get; set; }
-
     /// <summary>Shows the window, restores it if minimized, activates it, and falls back to a brief Topmost toggle if activation is refused.</summary>
     public void BringToFront()
     {
@@ -42,9 +39,7 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
             if (!wasTopmost)
             {
                 Topmost = true;
-                TopmostChangedForTest?.Invoke(true);
                 Topmost = false;
-                TopmostChangedForTest?.Invoke(false);
             }
 
             _ = TryActivate();
@@ -61,14 +56,12 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
     protected override void OnClosing(CancelEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
+        base.OnClosing(e);
         if (!AllowClose)
         {
             e.Cancel = true;
             Hide();
-            return;
         }
-
-        base.OnClosing(e);
     }
 
     private bool TryActivate() => ActivateOverride is not null ? ActivateOverride() : Activate();

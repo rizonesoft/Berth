@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -51,6 +52,7 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
                 Assert.InRange(window.ActualHeight, 640d - tolerance, 640d + tolerance);
                 Assert.InRange(window.LayoutsColumn.ActualWidth, 250d - tolerance, 250d + tolerance);
                 Assert.InRange(window.LayoutsHost.ActualWidth, 250d - tolerance, 250d + tolerance);
+                Assert.True(window.PaneDivider.ActualWidth > 0d, "PaneDivider must have a positive rendered width.");
                 Assert.InRange(window.PaneDivider.ActualWidth, 1d - tolerance, 1d + tolerance);
 
                 double initialDetailWidth = window.DetailHost.ActualWidth;
@@ -74,17 +76,20 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
     }
 
     [Fact]
-    public void ClosingHidesWindowAndKeepsItReusableByShow()
+    public void ClosingRaisesClosingEventHidesWindowAndKeepsItReusableByShow()
     {
         appFixture.Invoke(() =>
         {
             var window = new MainWindow();
+            int closingEvents = 0;
+            window.Closing += (_, _) => closingEvents++;
             try
             {
                 window.Show();
                 Assert.True(window.IsVisible);
 
                 window.Close();
+                Assert.Equal(1, closingEvents);
                 Assert.False(window.IsVisible);
 
                 // Must still be usable after Close() hid it.
@@ -135,13 +140,16 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
         appFixture.Invoke(() =>
         {
             var window = new MainWindow();
+            List<bool> topmostEvents = [];
+            DependencyPropertyDescriptor topmostDescriptor = DependencyPropertyDescriptor.FromProperty(
+                System.Windows.Window.TopmostProperty,
+                typeof(MainWindow))!;
+            EventHandler onTopmostChanged = (_, _) => topmostEvents.Add(window.Topmost);
+            topmostDescriptor.AddValueChanged(window, onTopmostChanged);
             try
             {
                 window.Show();
                 window.WindowState = WindowState.Minimized;
-
-                List<bool> topmostEvents = [];
-                window.TopmostChangedForTest = value => topmostEvents.Add(value);
 
                 // Case 1: Activation accepted -> restores Normal, visible, NO Topmost toggle.
                 window.ActivateOverride = () => true;
@@ -164,6 +172,7 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
             }
             finally
             {
+                topmostDescriptor.RemoveValueChanged(window, onTopmostChanged);
                 window.AllowClose = true;
                 window.Close();
             }
@@ -241,6 +250,26 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
         Assert.Equal("True", report["visibleAfterFirstOpen"]);
         Assert.Equal("False", report["visibleAfterClose"]);
         Assert.Equal("True", report["visibleAfterMenuReopen"]);
+        Assert.Equal("0", report["exitCode"]);
+    }
+
+    [Fact]
+    public void ExitDuringInFlightOperationBlocksTrayClickAndSecondInstanceActivationFromReopeningWindow()
+    {
+        using var data = new TestData();
+        string reportFile = Path.Combine(data.Root, "exit-drain-activation.txt");
+        string instanceName = $"Berth.Tests.ExitDrainAct.{Guid.NewGuid():N}";
+
+        (int exitCode, string stdout, string stderr) = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.ExitBlocksActivationDuringDrainScenario,
+            data.Root,
+            instanceName,
+            reportFile: reportFile);
+
+        Assert.True(exitCode == 0, $"Expected exit 0, got {exitCode}. stdout={stdout} stderr={stderr}");
+        Dictionary<string, string> report = ParseReport(reportFile);
+
+        Assert.Equal("False", report["visibleAfterDrainActivation"]);
         Assert.Equal("0", report["exitCode"]);
     }
 

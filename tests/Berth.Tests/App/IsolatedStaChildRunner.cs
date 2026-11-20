@@ -25,6 +25,7 @@ internal static class IsolatedStaChildRunner
     public const string WindowHideReopenAndMenuExitScenario = "window-hide-reopen-menu-exit";
     public const string TrayAppWiringFirstRunScenario = "tray-wiring-first-run";
     public const string TrayAppWiringTrayOnlyScenario = "tray-wiring-tray-only";
+    public const string ExitBlocksActivationDuringDrainScenario = "exit-blocks-activation-drain";
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
 
     public static int RunMain(string[] args)
@@ -181,6 +182,8 @@ internal static class IsolatedStaChildRunner
             TrayAppWiringFirstRunScenario => RunTrayAppWiringScenario(paths, log, instanceName, openWindow: true),
 
             TrayAppWiringTrayOnlyScenario => RunTrayAppWiringScenario(paths, log, instanceName, openWindow: false),
+
+            ExitBlocksActivationDuringDrainScenario => RunExitBlocksActivationDuringDrainScenario(paths, log, instanceName),
 
             RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
 
@@ -564,40 +567,60 @@ internal static class IsolatedStaChildRunner
                     return;
                 }
 
-                // Raise TrayIcon left-click (production NotifyIcon MouseClick handler).
-                typeof(System.Windows.Forms.NotifyIcon)
-                    .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                    .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
-
-                // Raise TrayMenu Open Berth click.
-                capturedMenu.OpenItem.PerformClick();
-
-                // Trigger a real second-instance pipe activation from a background worker thread so SingleInstance.Activated
-                // runs off the STA thread and must marshal onto app.Dispatcher.
-                _ = Task.Run(() =>
+                if (openWindow)
                 {
-                    using var second = new SingleInstance(instanceName);
-                    bool claimed = second.TryClaim();
-                    if (!claimed)
-                    {
-                        _ = second.RunSecondary();
-                    }
+                    // First run already created and showed the window; now exercise TrayIcon, TrayMenu, and worker pipe activation.
+                    typeof(System.Windows.Forms.NotifyIcon)
+                        .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                        .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
 
-                    // Wait briefly for the marshalled activation to run on the UI thread, then click Exit.
-                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-                    while (DateTime.UtcNow < deadline)
+                    capturedMenu.OpenItem.PerformClick();
+
+                    _ = Task.Run(() =>
                     {
-                        int expected = openWindow ? 4 : 3;
-                        if (Volatile.Read(ref bringToFrontCount) >= expected)
+                        using var second = new SingleInstance(instanceName);
+                        if (!second.TryClaim())
                         {
-                            break;
+                            _ = second.RunSecondary();
                         }
 
-                        Thread.Sleep(20);
-                    }
+                        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                        while (DateTime.UtcNow < deadline && Volatile.Read(ref bringToFrontCount) < 4)
+                        {
+                            Thread.Sleep(20);
+                        }
 
-                    app.Dispatcher.BeginInvoke(() => capturedMenu.ExitItem.PerformClick());
-                });
+                        app.Dispatcher.BeginInvoke(() => capturedMenu.ExitItem.PerformClick());
+                    });
+                }
+                else
+                {
+                    // Tray-only: send worker-thread pipe activation FIRST so first creation + BringToFront both run via STA marshalling.
+                    _ = Task.Run(() =>
+                    {
+                        using var second = new SingleInstance(instanceName);
+                        if (!second.TryClaim())
+                        {
+                            _ = second.RunSecondary();
+                        }
+
+                        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                        while (DateTime.UtcNow < deadline && Volatile.Read(ref bringToFrontCount) < 1)
+                        {
+                            Thread.Sleep(20);
+                        }
+
+                        app.Dispatcher.BeginInvoke(() =>
+                        {
+                            typeof(System.Windows.Forms.NotifyIcon)
+                                .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                                .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
+
+                            capturedMenu.OpenItem.PerformClick();
+                            capturedMenu.ExitItem.PerformClick();
+                        });
+                    });
+                }
             });
 
         File.WriteAllLines(
@@ -610,6 +633,98 @@ internal static class IsolatedStaChildRunner
                 $"onWindowOpenedCount={onWindowOpenedCount}",
                 $"allOnUiThread={allOnUiThread}",
                 $"trace={string.Join(",", trace)}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunExitBlocksActivationDuringDrainScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        using var desktop = new GatedDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        Berth.Window.MainWindow? capturedWindow = null;
+        TrayIcon? capturedIcon = null;
+        TrayMenu? capturedMenu = null;
+        bool visibleAfterDrainActivation = false;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: true,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon => capturedIcon = icon,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            createMainWindow: () =>
+            {
+                capturedWindow = new Berth.Window.MainWindow();
+                return capturedWindow;
+            },
+            onAppStartup: app =>
+            {
+                if (capturedWindow is null || capturedIcon is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                // Hide the window, then start a gated Save so Exit enters BeginDrain.
+                capturedWindow.Close();
+                desktop.ArmGate();
+                capturedMenu.SaveItem.PerformClick();
+
+                _ = Task.Run(() =>
+                {
+                    desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
+
+                    // Select Exit while Save is in flight, then attempt both a tray click and a second-instance activation.
+                    app.Dispatcher.Invoke(() =>
+                    {
+                        capturedMenu.ExitItem.PerformClick();
+                        typeof(System.Windows.Forms.NotifyIcon)
+                            .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                            .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
+                    });
+
+                    using var second = new SingleInstance(instanceName);
+                    if (!second.TryClaim())
+                    {
+                        _ = second.RunSecondary();
+                    }
+
+                    // Pump UI thread to give any queued activation a chance to run, verify window stays hidden, then release Save.
+                    app.Dispatcher.Invoke(() =>
+                    {
+                        visibleAfterDrainActivation = capturedWindow.IsVisible;
+                    });
+                    desktop.ReleaseGate();
+                });
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"visibleAfterDrainActivation={visibleAfterDrainActivation}",
                 $"exitCode={exitCode}",
             ]);
 
