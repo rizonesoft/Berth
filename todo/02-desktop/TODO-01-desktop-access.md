@@ -11,7 +11,7 @@ depends_on: ["layout-core"]
 
 > **Goal:** Berth reads every desktop icon's identity and position, sets positions, reads and clears auto arrange, and reads the monitors, through the documented shell interfaces, proven on the real desktop with an icon the test itself creates.
 
-> **Current state:** Measured 2026-11-20. `D01 T01 §8` declares `IDesktopIcons` and `IMonitors` and their fakes. `D02 T01 §1` (shell COM declarations in `src/Berth/Desktop/Interop/`), `D02 T01 §2` (`DesktopView` in `src/Berth/Desktop/DesktopView.cs`, `[StaFact]` in `tests/Berth.Tests/Sta.cs`), and `D02 T01 §9` (`StaWorker` in `src/Berth/Desktop/StaWorker.cs` and `ShellDesktopIcons` in `src/Berth/Desktop/ShellDesktopIcons.cs`) are stamped. `SystemMonitors`, `ScopedDesktopIcons`, `DesktopCoordinates`, and the `ShellDesktopIcons` methods (`§3`, `§4`, `§5`) are not implemented yet. The interface chain is written in `docs/plans/2026-11-15-berth-foundation.md` under "How icon positions are read and written".
+> **Current state:** Measured 2026-11-20. `D01 T01 §8` declares `IDesktopIcons` and `IMonitors` and their fakes. `D02 T01 §1` (shell COM declarations in `src/Berth/Desktop/Interop/`), `D02 T01 §2` (`DesktopView` in `src/Berth/Desktop/DesktopView.cs`, `[StaFact]` in `tests/Berth.Tests/Sta.cs`), `D02 T01 §9` (`StaWorker` in `src/Berth/Desktop/StaWorker.cs` and `ShellDesktopIcons` in `src/Berth/Desktop/ShellDesktopIcons.cs`), and `D02 T01 §5` (`AutoArrange` and `TryTurnAutoArrangeOff`) are stamped. `SystemMonitors`, `ScopedDesktopIcons`, `DesktopCoordinates`, and `ShellDesktopIcons.ReadIcons`/`SetPositions` (`§3`, `§4`) are not implemented yet. The interface chain is written in `docs/plans/2026-11-15-berth-foundation.md` under "How icon positions are read and written".
 
 ## Inputs
 
@@ -175,6 +175,8 @@ Berth detects auto arrange and can turn it off on the user's click (SPEC §9).
 
 ## 6. Monitor bounds, scale and primary
 
+> **Started:** 2026-11-20T10:57Z
+
 `SystemMonitors.Read` returns each monitor as SPEC §14 stores it.
 
 **Phase:** 2
@@ -183,16 +185,16 @@ Berth detects auto arrange and can turn it off on the user's click (SPEC §9).
 
 **Build order:**
 
-1. Add `SystemMonitors` in `src/Berth/Desktop/SystemMonitors.cs`. Done when: it returns at least one monitor with one primary.
-2. Read each monitor's scale. Done when: the scale is a whole percentage such as 100, 125 or 150.
+1. Add `SystemMonitors` in `src/Berth/Desktop/SystemMonitors.cs`. Done when: it returns at least one monitor with one primary, in `MonitorNumbering` order.
+2. Read each monitor's scale and validate native failures. Done when: the scale is a whole percentage such as 100, 125 or 150, and native enumeration, info, or DPI failures throw `DesktopUnavailableException`.
 
-- [ ] Implement `IMonitors.Read()` with `EnumDisplayMonitors` and `GetMonitorInfo` (physical pixel bounds in virtual-desktop coordinates, since the process is per-monitor DPI aware) and `GetDpiForMonitor(MDT_EFFECTIVE_DPI)`, converting DPI to a percentage (`dpi * 100 / 96`, rounded). Done when: a test on the build machine gets one or more monitors, exactly one `Primary`, positive sizes and a scale from 100 to 500. Cheaper substitute: `System.Windows.Forms.Screen`, which reports no scale.
-- [ ] Return monitors in `MonitorNumbering` order (`D01 T01 §13`). Done when: a test asserts the returned list equals its own sort by `X` then `Y`. Cheaper substitute: enumeration order, which Windows does not promise.
-- [ ] Throw `DesktopUnavailableException` when no monitor is returned (a locked or disconnected session). Done when: a unit test over an internal overload that takes the raw list asserts the exception for an empty list. Cheaper substitute: returning an empty list, which `ArrangementKey` then refuses with a less useful error.
-- [ ] Add `tests/Berth.Tests/Desktop/SystemMonitorsTests.cs` (trait `RealDesktop` for the live read). Done when: they pass, and the primary test fails when the primary flag is never set. Cheaper substitute: asserting only a non-empty list.
+- [ ] Implement `SystemMonitors` (`src/Berth/Desktop/SystemMonitors.cs`, implementing `IMonitors`) with `[LibraryImport("user32.dll", SetLastError = true)]` `EnumDisplayMonitors` (using an `[UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]` callback and `GCHandle` freed in `finally` so no managed exception unwinds across native code) and `GetMonitorInfoW` (`MONITORINFO.cbSize` initialized, `MONITORINFOF_PRIMARY = 0x00000001u`, physical pixel bounds in virtual-desktop coordinates under per-monitor DPI awareness v2) and `[LibraryImport("shcore.dll")]` `GetDpiForMonitor(MDT_EFFECTIVE_DPI = 0)`, converting effective DPI to a whole percentage `ScaleFromDpi(uint dpi) => (int)((dpi * 100L + 48L) / 96L)` (rounded away from zero). **Corrected 2026-11-20:** specified `LibraryImport`, `[UnmanagedCallersOnly]` callback safety, exact `MONITORINFO` struct initialization, and DPI-to-percentage rounding formula. Done when: a `RealDesktop` test on the build machine gets one or more monitors, exactly one `Primary`, positive sizes and a scale from 100 to 500, and unit tests verify `ScaleFromDpi` across standard (96, 120, 144, 168, 192, 480) and midpoint (108) DPIs. Cheaper substitute: `System.Windows.Forms.Screen`, which reports no scale.
+- [ ] Return monitors in `MonitorNumbering.Order` order (`D01 T01 §13`: sorted by `X` then `Y`). Done when: unit tests with unsorted multi-monitor input (including negative `X` and `Y` and equal `X` tie-breaking by `Y`) and the live `RealDesktop` test assert the returned list equals `MonitorNumbering.Order(result)`. Cheaper substitute: enumeration order, which Windows does not promise.
+- [ ] Throw `DesktopUnavailableException` when no monitor is returned (locked or disconnected session), when `EnumDisplayMonitors` or `GetMonitorInfoW` fails (preserving `Win32Exception` as `InnerException`), when `GetDpiForMonitor` returns a non-zero HRESULT (preserving `Marshal.GetExceptionForHR` as `InnerException`) or `dpiX == 0`, when any monitor has non-positive width/height or scale `<= 0`, or when the enumerated set does not have exactly one primary monitor. **Corrected 2026-11-20:** specified native failure mapping (`EnumDisplayMonitors`, `GetMonitorInfoW`, `GetDpiForMonitor`) and bounds/primary invariants alongside the empty-list case so a partial or corrupt enumeration never produces a wrong arrangement key. Done when: unit tests over the internal raw-list and native-seam overloads assert `DesktopUnavailableException` (with inner exception preserved where applicable) for each failure case. Cheaper substitute: returning an empty list or silently dropping a monitor whose info/DPI query failed.
+- [ ] Add `tests/Berth.Tests/Desktop/SystemMonitorsTests.cs` with the live read in `[Collection(DesktopCollectionDefinition.Name)]` marked `[Trait("Category", "RealDesktop")]` (skipping only when `!Sta.HasInteractiveDesktopSession`) plus unit tests for `MonitorNumbering` ordering, DPI rounding, empty list, missing/duplicate primary, non-positive size, and native `EnumDisplayMonitors`/`GetMonitorInfoW`/`GetDpiForMonitor` failures. **Corrected 2026-11-20:** added `DesktopCollectionDefinition.Name` serialization and `Sta.HasInteractiveDesktopSession` guard (`AGENTS.md`, 2026-11-18). Done when: all pass with `0` skipped on the build machine, and the primary test fails when the primary flag is never set. Cheaper substitute: asserting only a non-empty list.
 - [ ] Commit: `desktop: monitor bounds, scale and primary`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SystemMonitorsTests"` passes on the build machine, and fails when `Primary` is never set.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SystemMonitorsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped on the build machine, and fails when `Primary` is never set, when ordering is omitted, or when an empty list or native DPI failure does not throw `DesktopUnavailableException`.
 
 ## 7. Real-desktop round trip on a probe icon
 
