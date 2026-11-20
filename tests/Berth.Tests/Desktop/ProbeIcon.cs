@@ -15,7 +15,6 @@ internal sealed class ProbeIcon : IDisposable
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(100);
 
     private bool _ownsFile;
-    private bool _disposed;
 
     private ProbeIcon(string prefix, string filePath, ScopedDesktopIcons scopedDesktop, IconPosition icon)
     {
@@ -87,17 +86,13 @@ internal sealed class ProbeIcon : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        if (!_ownsFile)
         {
             return;
         }
 
-        _disposed = true;
-        if (_ownsFile)
-        {
-            _ownsFile = false;
-            DeleteOwnedFile(FilePath);
-        }
+        DeleteOwnedFile(FilePath);
+        _ownsFile = false;
     }
 
     private static IconPosition? WaitForProbeIcon(
@@ -131,9 +126,25 @@ internal sealed class ProbeIcon : IDisposable
 
     private static void DeleteOwnedFile(string filePath)
     {
-        if (File.Exists(filePath))
+        const int maxAttempts = 5;
+        for (int attempt = 1; ; attempt++)
         {
-            File.Delete(filePath);
+            if (!File.Exists(filePath))
+            {
+                return;
+            }
+
+            try
+            {
+                File.Delete(filePath);
+                return;
+            }
+            catch (Exception ex) when (
+                attempt < maxAttempts
+                && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(25);
+            }
         }
     }
 }

@@ -68,14 +68,40 @@ public sealed class ProbeIconUnitTests
         Assert.True(File.Exists(collisionPath));
         Assert.Equal("pre-existing-owner-bytes", File.ReadAllText(collisionPath));
         Assert.Equal("decoy-bytes", File.ReadAllText(decoyPath));
+
+        // 6) Transient sharing violation on Dispose retains ownership so a subsequent Dispose deletes the file.
+        string lockedPrefix = $"berth-test-probe-{Guid.NewGuid():N}";
+        string lockedPath = Path.Combine(tempDesktop.Root, $"{lockedPrefix}.txt");
+        var lockedFake = new FakeDesktopIcons(new IconPosition(lockedPath, lockedPrefix, 100, 120));
+        ProbeIcon lockedProbe = ProbeIcon.CreateInFolder(lockedFake, tempDesktop.Root, lockedPrefix, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(10));
+        using (new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.Throws<IOException>(() => lockedProbe.Dispose());
+            Assert.True(File.Exists(lockedPath));
+        }
+
+        lockedProbe.Dispose();
+        Assert.False(File.Exists(lockedPath));
+        Assert.Equal("decoy-bytes", File.ReadAllText(decoyPath));
+    }
+
+    [Fact]
+    public void ChooseInBoundsTargetPreservesRequiredSeparationEvenOnNarrowAxis()
+    {
+        IReadOnlyList<MonitorInfo> narrow = [new(0, 0, 600, 600, 100, Primary: true)];
+        (int targetX, int targetY) = ProbeIconTests.ChooseInBoundsTarget(300, 300, 201, 0, narrow);
+        Assert.Equal(300, targetY);
+        Assert.InRange(targetX, 0, 599);
+        Assert.True(Math.Abs(targetX - 300) >= 201, $"Expected separation >= 201, got targetX={targetX}.");
     }
 }
 
 [Collection(DesktopCollectionDefinition.Name)]
 [Trait("Category", "RealDesktop")]
-public sealed partial class ProbeIconTests
+public sealed class ProbeIconTests
 {
-    private const uint FwfSnapToGrid = 0x00080000u;
+    // Windows SDK 10.0.26100.0 (ShObjIdl_core.h): FOLDERFLAGS.FWF_SNAPTOGRID = 0x00000004.
+    private const uint FwfSnapToGrid = 0x00000004u;
 
     [Fact]
     public void RealDesktopRoundTripMovesProbePreservesSelectionAndRunsFullLayoutServiceCycle()
@@ -107,6 +133,9 @@ public sealed partial class ProbeIconTests
             // Part A: move probe in-bounds by at least max(200, spacingX * 2 + 1) alongside an unknown Id.
             int stepX = snapToGrid ? Math.Max(200, spacingX * 2 + 1) : 200;
             (int target1X, int target1Y) = ChooseInBoundsTarget(initial.X, initial.Y, stepX, 0, currentMonitors);
+            Assert.True(
+                Math.Abs(target1X - initial.X) >= stepX,
+                $"Target 1 X ({target1X}) did not achieve required separation {stepX} from initial X ({initial.X}).");
             probe.ScopedDesktop.SetPositions(
             [
                 initial with { X = target1X, Y = target1Y },
@@ -116,6 +145,7 @@ public sealed partial class ProbeIconTests
             IconPosition posA = WaitForPosition(
                 probe.ScopedDesktop,
                 initial.Id,
+                $"Move 1 target ({target1X},{target1Y})",
                 candidate => IsWithinAcceptance(candidate.X, candidate.Y, target1X, target1Y, snapToGrid, spacingX, spacingY)
                              && !IsWithinAcceptance(candidate.X, candidate.Y, initial.X, initial.Y, snapToGrid, spacingX, spacingY));
 
@@ -149,14 +179,21 @@ public sealed partial class ProbeIconTests
             // Move probe to a distinct second in-bounds position outside posA's acceptance region.
             int stepY = snapToGrid ? Math.Max(200, spacingY * 2 + 1) : 200;
             (int target2X, int target2Y) = ChooseInBoundsTarget(posA.X, posA.Y, 0, stepY, currentMonitors);
+            Assert.True(
+                Math.Abs(target2Y - posA.Y) >= stepY,
+                $"Target 2 Y ({target2Y}) did not achieve required separation {stepY} from posA Y ({posA.Y}).");
             probe.ScopedDesktop.SetPositions([posA with { X = target2X, Y = target2Y }]);
 
             IconPosition posB = WaitForPosition(
                 probe.ScopedDesktop,
                 initial.Id,
+                $"Move 2 target ({target2X},{target2Y})",
                 candidate => IsWithinAcceptance(candidate.X, candidate.Y, target2X, target2Y, snapToGrid, spacingX, spacingY)
                              && !IsWithinAcceptance(candidate.X, candidate.Y, posA.X, posA.Y, snapToGrid, spacingX, spacingY));
 
+            Assert.True(
+                IsWithinAcceptance(posB.X, posB.Y, target2X, target2Y, snapToGrid, spacingX, spacingY),
+                $"Move 2 landed at ({posB.X},{posB.Y}), outside expected ({target2X},{target2Y}) tolerance ({spacingX},{spacingY}).");
             Assert.False(
                 IsWithinAcceptance(posB.X, posB.Y, posA.X, posA.Y, snapToGrid, spacingX, spacingY),
                 $"Move 2 landed at ({posB.X},{posB.Y}), still within posA ({posA.X},{posA.Y}) acceptance region.");
@@ -263,7 +300,12 @@ public sealed partial class ProbeIconTests
                 {
                     batch[0] = nint.Zero;
                     int hr = enumerator.Next(1, batch, out uint fetched);
-                    if (hr < 0 || fetched == 0)
+                    if (hr < 0)
+                    {
+                        Marshal.ThrowExceptionForHR(hr);
+                    }
+
+                    if (fetched == 0)
                     {
                         break;
                     }
@@ -300,7 +342,7 @@ public sealed partial class ProbeIconTests
             }
         });
 
-    private static (int X, int Y) ChooseInBoundsTarget(
+    internal static (int X, int Y) ChooseInBoundsTarget(
         int startX,
         int startY,
         int deltaX,
@@ -311,27 +353,46 @@ public sealed partial class ProbeIconTests
             startX >= m.X && startX < m.X + m.Width && startY >= m.Y && startY < m.Y + m.Height)
             ?? monitors.First(m => m.Primary);
 
-        const int margin = 120;
-        int minX = host.X + margin;
-        int maxX = host.X + host.Width - margin;
-        int minY = host.Y + margin;
-        int maxY = host.Y + host.Height - margin;
-
-        int targetX = startX + deltaX;
-        if (deltaX != 0 && (targetX > maxX || targetX < minX))
-        {
-            targetX = startX - deltaX;
-        }
-
-        int targetY = startY + deltaY;
-        if (deltaY != 0 && (targetY > maxY || targetY < minY))
-        {
-            targetY = startY - deltaY;
-        }
-
-        targetX = Math.Clamp(targetX, minX, maxX);
-        targetY = Math.Clamp(targetY, minY, maxY);
+        int targetX = ChooseAxisTarget(startX, deltaX, host.X, host.X + host.Width - 1);
+        int targetY = ChooseAxisTarget(startY, deltaY, host.Y, host.Y + host.Height - 1);
         return (targetX, targetY);
+    }
+
+    private static int ChooseAxisTarget(int start, int delta, int axisMin, int axisMax)
+    {
+        if (delta == 0)
+        {
+            return start;
+        }
+
+        const int preferredMargin = 120;
+        int softMin = Math.Min(axisMax, axisMin + preferredMargin);
+        int softMax = Math.Max(axisMin, axisMax - preferredMargin);
+
+        int plus = start + delta;
+        int minus = start - delta;
+
+        if (plus >= softMin && plus <= softMax)
+        {
+            return plus;
+        }
+
+        if (minus >= softMin && minus <= softMax)
+        {
+            return minus;
+        }
+
+        if (plus >= axisMin && plus <= axisMax)
+        {
+            return plus;
+        }
+
+        if (minus >= axisMin && minus <= axisMax)
+        {
+            return minus;
+        }
+
+        return Math.Clamp(plus, axisMin, axisMax);
     }
 
     private static bool IsWithinAcceptance(
@@ -354,21 +415,26 @@ public sealed partial class ProbeIconTests
     private static IconPosition WaitForPosition(
         ScopedDesktopIcons scoped,
         string expectedId,
+        string description,
         Func<IconPosition, bool> predicate)
     {
         var elapsed = Stopwatch.StartNew();
         IconPosition last = Assert.Single(scoped.ReadIcons());
-        while (elapsed.Elapsed < TimeSpan.FromSeconds(2))
+        while (true)
         {
             if (string.Equals(last.Id, expectedId, StringComparison.OrdinalIgnoreCase) && predicate(last))
             {
                 return last;
             }
 
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(2))
+            {
+                throw new TimeoutException(
+                    $"Probe icon '{expectedId}' did not settle at {description} within 2s (last observed: ({last.X},{last.Y})).");
+            }
+
             Thread.Sleep(50);
             last = Assert.Single(scoped.ReadIcons());
         }
-
-        return last;
     }
 }
