@@ -7,10 +7,12 @@ namespace Berth.Tests.App;
 public sealed class CrashHandlerTests
 {
     [Fact]
-    public void HandleLogsIndentedStackAndInnerExceptionAndShowsExactTwoLineRedactedMessage()
+    public void HandleLogsIndentedStackAndInnerExceptionRedactsSourceAndShowsExactTwoLineRedactedMessage()
     {
         using var data = new TestData();
-        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        string fakeProfile = Path.Combine(data.Root, "AliceFolder");
+        string scopedDataRoot = Path.Combine(fakeProfile, "BerthData");
+        BerthPaths paths = BerthPaths.ForRoot(scopedDataRoot);
         var log = new Log(paths, TimeProvider.System);
 
         string? shown = null;
@@ -21,15 +23,15 @@ public sealed class CrashHandlerTests
                 shown = msg;
                 return true;
             },
-            userProfile: @"C:\Users\AliceFolder",
+            userProfile: fakeProfile,
             userName: "AliceUser",
             exitProcess: _ => { });
 
         Exception thrown = CaptureThrownException(
-            "Failed reading C:\\Users\\AliceFolder\\Desktop for AliceUser...\r\nSecond line...",
-            new IOException("Inner denied at C:/Users/AliceFolder/file.txt by aliceuser"));
+            $"Failed reading {fakeProfile}\\Desktop for AliceUser...\r\nSecond line...",
+            new IOException($"Inner denied at {fakeProfile.Replace('\\', '/')}/file.txt by aliceuser"));
 
-        handler.Handle(thrown, "DispatcherUnhandledException");
+        handler.Handle(thrown, $@"{fakeProfile}\worker-AliceUser");
 
         Assert.NotNull(shown);
         string[] dialogLines = shown.Split('\n');
@@ -37,13 +39,13 @@ public sealed class CrashHandlerTests
         Assert.Equal(
             "Something went wrong: Failed reading <profile>\\Desktop for <user>... Second line. The details are in the log.",
             dialogLines[0]);
-        Assert.Equal(CrashHandler.Redact(paths.LogFile, @"C:\Users\AliceFolder", "AliceUser"), dialogLines[1]);
+        Assert.Equal(@"<profile>\BerthData\local\logs\berth.log", dialogLines[1]);
         Assert.DoesNotContain("AliceFolder", shown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("AliceUser", shown, StringComparison.OrdinalIgnoreCase);
 
         string[] logLines = File.ReadAllLines(paths.LogFile);
         Assert.True(logLines.Length > 3, "Expected header line plus indented exception and stack lines.");
-        Assert.Contains(" FAIL DispatcherUnhandledException: Something went wrong: ", logLines[0], StringComparison.Ordinal);
+        Assert.Contains(@" FAIL <profile>\worker-<user>: Something went wrong: ", logLines[0], StringComparison.Ordinal);
         Assert.Contains(logLines, l => l.StartsWith("  System.InvalidOperationException:", StringComparison.Ordinal));
         Assert.Contains(logLines, l => l.Contains("System.IO.IOException: Inner denied at <profile>/file.txt by <user>", StringComparison.Ordinal));
         Assert.Contains(logLines, l => l.StartsWith("     at ", StringComparison.Ordinal) && l.Contains(nameof(CaptureThrownException), StringComparison.Ordinal));
@@ -88,7 +90,7 @@ public sealed class CrashHandlerTests
     }
 
     [Fact]
-    public void AttachDrivesAllThreeSourcesInOrderAndDetachesCleanlyOnDoubleDispose()
+    public void AttachDrivesAllThreeSourcesLogsEachHeaderAndDetachesCleanlyOnDoubleDispose()
     {
         using var data = new TestData();
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
@@ -109,6 +111,9 @@ public sealed class CrashHandlerTests
 
         IDisposable attachment = handler.Attach(fakeSources, shutdown: code => events.Add($"shutdown:{code}"));
 
+        static string[] FailHeaders(string logFile) =>
+            File.ReadAllLines(logFile).Where(l => !l.StartsWith("  ", StringComparison.Ordinal)).ToArray();
+
         // 1. DispatcherUnhandledException -> handled, logged, dialog shown, shutdown(1).
         bool dispatcherHandled = false;
         fakeSources.RaiseDispatcher(new InvalidOperationException("UI boom"), () =>
@@ -120,6 +125,9 @@ public sealed class CrashHandlerTests
         Assert.Equal(
             ["handled", "dialog:Something went wrong: UI boom. The details are in the log.", "shutdown:1"],
             events);
+        string[] headers1 = FailHeaders(paths.LogFile);
+        Assert.Single(headers1);
+        Assert.Contains(" FAIL DispatcherUnhandledException: Something went wrong: UI boom.", headers1[0], StringComparison.Ordinal);
 
         // 2. AppDomain.UnhandledException with Exception -> logged, dialog shown, exitProcess(1).
         events.Clear();
@@ -127,6 +135,9 @@ public sealed class CrashHandlerTests
         Assert.Equal(
             ["dialog:Something went wrong: Domain boom. The details are in the log.", "exit:1"],
             events);
+        string[] headers2 = FailHeaders(paths.LogFile);
+        Assert.Equal(2, headers2.Length);
+        Assert.Contains(" FAIL AppDomain.UnhandledException: Something went wrong: Domain boom.", headers2[1], StringComparison.Ordinal);
 
         // 3. AppDomain.UnhandledException with non-Exception payload -> logged, dialog shown, exitProcess(1).
         events.Clear();
@@ -134,6 +145,9 @@ public sealed class CrashHandlerTests
         Assert.Equal(
             ["dialog:Something went wrong: Raw string failure. The details are in the log.", "exit:1"],
             events);
+        string[] headers3 = FailHeaders(paths.LogFile);
+        Assert.Equal(3, headers3.Length);
+        Assert.Contains(" FAIL AppDomain.UnhandledException: Something went wrong: Raw string failure.", headers3[2], StringComparison.Ordinal);
 
         // 4. TaskScheduler.UnobservedTaskException -> logged, observed, NO dialog, NO shutdown/exit.
         events.Clear();
@@ -145,8 +159,12 @@ public sealed class CrashHandlerTests
         });
         Assert.True(taskObserved);
         Assert.Equal(["observed"], events);
+        string[] headers4 = FailHeaders(paths.LogFile);
+        Assert.Equal(4, headers4.Length);
+        Assert.Contains(" FAIL TaskScheduler.UnobservedTaskException: ", headers4[3], StringComparison.Ordinal);
 
-        // 5. Double-dispose detaches all three handlers cleanly -> zero further deliveries.
+        // 5. Double-dispose detaches all three handlers cleanly -> zero further deliveries and log stays unchanged.
+        string logBeforeDispose = File.ReadAllText(paths.LogFile);
         attachment.Dispose();
         attachment.Dispose();
         Assert.True(fakeSources.Disposed);
@@ -160,10 +178,11 @@ public sealed class CrashHandlerTests
         Assert.False(afterHandled);
         Assert.False(afterObserved);
         Assert.Empty(events);
+        Assert.Equal(logBeforeDispose, File.ReadAllText(paths.LogFile));
     }
 
     [Fact]
-    public void ReEntrantDialogThrowingDialogAndThrowingPayloadToStringStillCompleteActionsAndReleaseGuard()
+    public void ReEntrantDialogThrowingDialogPreDialogFailureAndThrowingPayloadToStringStillCompleteActionsAndReleaseGuard()
     {
         using var data = new TestData();
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
@@ -174,6 +193,7 @@ public sealed class CrashHandlerTests
         int shutdownCalls = 0;
         CrashHandler? handler = null;
         bool throwInDialog = false;
+        bool throwBeforeDialog = false;
         bool reEnterInDialog = true;
 
         handler = new CrashHandler(
@@ -201,6 +221,13 @@ public sealed class CrashHandlerTests
             {
                 Assert.Equal(1, code);
                 exitCalls++;
+            },
+            beforeDialog: () =>
+            {
+                if (throwBeforeDialog)
+                {
+                    throw new InvalidOperationException("Simulated reporting failure before dialog");
+                }
             });
 
         var sources = new FakeCrashSources();
@@ -221,11 +248,22 @@ public sealed class CrashHandlerTests
         Assert.Equal(2, dialogCalls);
         Assert.Equal(1, exitCalls);
 
-        // 3. Guard was released after throwing dialog: a subsequent fatal event still displays a dialog.
+        // 3. Reporting failure BEFORE dialog on all three sources still runs shutdown(1), exitProcess(1), and setObserved().
         throwInDialog = false;
+        throwBeforeDialog = true;
+        bool observedOnFailure = false;
+        sources.RaiseDispatcher(new InvalidOperationException("PreDialog1"), () => { });
+        sources.RaiseAppDomain(new InvalidOperationException("PreDialog2"));
+        sources.RaiseUnobservedTask(new AggregateException(new InvalidOperationException("PreDialog3")), () => observedOnFailure = true);
+        Assert.Equal(2, shutdownCalls);
+        Assert.Equal(2, exitCalls);
+        Assert.True(observedOnFailure);
+
+        // 4. Guard was released after failures: a subsequent fatal event still displays a dialog.
+        throwBeforeDialog = false;
         sources.RaiseDispatcher(new InvalidOperationException("Later"), () => { });
         Assert.Equal(3, dialogCalls);
-        Assert.Equal(2, shutdownCalls);
+        Assert.Equal(3, shutdownCalls);
 
         string logText = File.ReadAllText(paths.LogFile);
         Assert.Contains(nameof(ThrowingToStringPayload), logText, StringComparison.Ordinal);

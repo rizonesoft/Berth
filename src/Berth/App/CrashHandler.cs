@@ -26,6 +26,7 @@ internal sealed class CrashHandler
     private readonly string? _userProfile;
     private readonly string? _userName;
     private readonly Action<int> _exitProcess;
+    private readonly Action? _beforeDialog;
     private int _dialogActive;
 
     public CrashHandler(
@@ -34,6 +35,17 @@ internal sealed class CrashHandler
         string? userProfile = null,
         string? userName = null,
         Action<int>? exitProcess = null)
+        : this(log, showMessage, userProfile, userName, exitProcess, beforeDialog: null)
+    {
+    }
+
+    internal CrashHandler(
+        Log log,
+        Func<string, bool> showMessage,
+        string? userProfile,
+        string? userName,
+        Action<int>? exitProcess,
+        Action? beforeDialog)
     {
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(showMessage);
@@ -42,6 +54,7 @@ internal sealed class CrashHandler
         _userProfile = userProfile ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _userName = userName ?? Environment.UserName;
         _exitProcess = exitProcess ?? Environment.Exit;
+        _beforeDialog = beforeDialog;
     }
 
     /// <summary>
@@ -98,20 +111,50 @@ internal sealed class CrashHandler
         void OnDispatcher(Exception ex, Action markHandled)
         {
             markHandled();
-            Handle(ex, "DispatcherUnhandledException", showDialog: true);
-            effectiveShutdown(1);
+            try
+            {
+                Handle(ex, "DispatcherUnhandledException", showDialog: true);
+            }
+            catch (Exception)
+            {
+                // Completion action below must still shut down with exit code 1 even if reporting fails.
+            }
+            finally
+            {
+                effectiveShutdown(1);
+            }
         }
 
         void OnAppDomain(object? payload)
         {
-            HandleObject(payload, "AppDomain.UnhandledException", showDialog: true);
-            _exitProcess(1);
+            try
+            {
+                HandleObject(payload, "AppDomain.UnhandledException", showDialog: true);
+            }
+            catch (Exception)
+            {
+                // Completion action below must still exit with code 1 even if reporting fails.
+            }
+            finally
+            {
+                _exitProcess(1);
+            }
         }
 
         void OnUnobservedTask(AggregateException ex, Action setObserved)
         {
-            Handle(ex, "TaskScheduler.UnobservedTaskException", showDialog: false);
-            setObserved();
+            try
+            {
+                Handle(ex, "TaskScheduler.UnobservedTaskException", showDialog: false);
+            }
+            catch (Exception)
+            {
+                // Completion action below must still observe the task even if reporting fails.
+            }
+            finally
+            {
+                setObserved();
+            }
         }
 
         sources.DispatcherUnhandled += OnDispatcher;
@@ -172,11 +215,13 @@ internal sealed class CrashHandler
 
     private void HandleCore(string rawReason, string rawDetails, string source, bool showDialog)
     {
+        string redactedSource = Redact(source, _userProfile, _userName);
         string redactedReason = Redact(rawReason, _userProfile, _userName);
         string redactedDetails = Redact(rawDetails, _userProfile, _userName);
         string sentence = Messages.Unexpected(redactedReason);
 
-        _log.FailWithDetails($"{source}: {sentence}", redactedDetails);
+        _log.FailWithDetails($"{redactedSource}: {sentence}", redactedDetails);
+        _beforeDialog?.Invoke();
 
         if (!showDialog)
         {
