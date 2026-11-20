@@ -31,7 +31,8 @@ internal sealed class LayoutService(
     /// reads the desktop back and counts. <paramref name="origin"/> (an automatic restore's trigger) rides on the
     /// result and its log line.
     /// </summary>
-    public OperationResult Restore(string? origin = null) => Logged(() => RestoreLocked(origin), origin);
+    public OperationResult Restore(string? origin = null, string? expectedKey = null) =>
+        Logged(() => RestoreLocked(origin, expectedKey), origin);
 
     /// <summary>
     /// Whether <c>undo.json</c> holds a valid snapshot for the monitors connected now, without touching the desktop.
@@ -176,12 +177,12 @@ internal sealed class LayoutService(
         return OperationResult.Saved(layoutName, icons.Count, replacedEarlierSave: snapshot.Layout is not null, arrangementKey: key);
     }
 
-    private OperationResult RestoreLocked(string? origin)
+    private OperationResult RestoreLocked(string? origin, string? expectedKey)
     {
         // The arrangement is checked again before the way back is written; a change there starts over.
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            if (RestoreOnce(origin) is { } result)
+            if (RestoreOnce(origin, expectedKey) is { } result)
             {
                 return result;
             }
@@ -191,7 +192,7 @@ internal sealed class LayoutService(
     }
 
     /// <summary>One restore, or null when the displays changed before anything was written, to start over.</summary>
-    private OperationResult? RestoreOnce(string? origin)
+    private OperationResult? RestoreOnce(string? origin, string? expectedKey)
     {
         if (Capture() is not ({ } arrangement, { } icons))
         {
@@ -199,6 +200,13 @@ internal sealed class LayoutService(
         }
 
         string key = ArrangementKey.From(arrangement);
+        if (expectedKey is not null && !string.Equals(key, expectedKey, StringComparison.Ordinal))
+        {
+            return OperationResult.Failed(
+                FailureKind.DisplaysChanged,
+                path: null,
+                detail: "The monitor arrangement changed before anything moved.");
+        }
         Layout? layout;
         try
         {

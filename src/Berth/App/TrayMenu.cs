@@ -102,6 +102,21 @@ internal sealed class TrayMenu : IDisposable
     /// <summary>Raised on the UI thread after a Save or Restore triggered from the menu finishes.</summary>
     public event Action<OperationResult>? OperationFinished;
 
+    /// <summary>Raised on the UI thread when an off-UI-thread tray operation starts (<c>true</c>) or all finish (<c>false</c>).</summary>
+    public event Action<bool>? OperationBusyChanged;
+
+    /// <summary>Whether any tray-initiated Save or Restore operation is currently running.</summary>
+    public bool IsOperationBusy
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _inFlightCount > 0;
+            }
+        }
+    }
+
     /// <summary>Raised when the user clicks "Open Berth".</summary>
     public event Action? OpenRequested;
 
@@ -415,6 +430,7 @@ internal sealed class TrayMenu : IDisposable
 
     private void RunOperationOffUiThread(Func<OperationResult> operation)
     {
+        bool becameBusy;
         lock (_sync)
         {
             if (_disposed || _exiting)
@@ -423,6 +439,12 @@ internal sealed class TrayMenu : IDisposable
             }
 
             _inFlightCount++;
+            becameBusy = _inFlightCount == 1;
+        }
+
+        if (becameBusy)
+        {
+            OperationBusyChanged?.Invoke(true);
         }
 
         _ = Task.Run(() =>
@@ -477,6 +499,7 @@ internal sealed class TrayMenu : IDisposable
     private void CompleteOperationOnUiThread(OperationResult result, Layout? activeLayout)
     {
         Action? drainCallback = null;
+        bool becameIdle = false;
         try
         {
             bool disposed;
@@ -494,6 +517,15 @@ internal sealed class TrayMenu : IDisposable
         finally
         {
             drainCallback = CompleteInFlightWork();
+            lock (_sync)
+            {
+                becameIdle = _inFlightCount == 0 && !_disposed;
+            }
+        }
+
+        if (becameIdle)
+        {
+            OperationBusyChanged?.Invoke(false);
         }
 
         drainCallback?.Invoke();

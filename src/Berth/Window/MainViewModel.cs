@@ -132,7 +132,7 @@ internal sealed class MainViewModel : ObservableObject
     /// </summary>
     public Task RefreshAsync()
     {
-        Task refreshTask;
+        TaskCompletionSource gate;
         lock (_refreshGate)
         {
             if (_activeRefreshTask is not null)
@@ -140,39 +140,32 @@ internal sealed class MainViewModel : ObservableObject
                 return Task.CompletedTask;
             }
 
-            refreshTask = RunRefreshCoreAsync();
-            _activeRefreshTask = refreshTask;
+            gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeRefreshTask = gate.Task;
         }
 
-        return refreshTask;
+        _ = RunRefreshCoreAsync(gate);
+        return gate.Task;
     }
 
     /// <summary>
     /// Waits for any in-flight poll to finish, then runs a fresh capture guaranteed to start after an operation's write.
-    /// When <paramref name="selectKey"/> is given, remembers that arrangement key until a usable snapshot selects it.
+    /// When <paramref name="selectKey"/> is given, publishes that saved arrangement key only after any older poll finishes,
+    /// and retains it until a post-write snapshot selects that saved row.
     /// </summary>
     public async Task RefreshAfterOperationAsync(string? selectKey = null)
     {
-        if (selectKey is not null)
-        {
-            await _marshalToUiAsync(() =>
-            {
-                _pendingSelectedKey = selectKey;
-                _lastKnownSelectedKey = selectKey;
-            }).ConfigureAwait(false);
-        }
-
         while (true)
         {
             Task? existing;
-            Task? started = null;
+            TaskCompletionSource? gate = null;
             lock (_refreshGate)
             {
                 existing = _activeRefreshTask;
                 if (existing is null)
                 {
-                    started = RunRefreshCoreAsync();
-                    _activeRefreshTask = started;
+                    gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _activeRefreshTask = gate.Task;
                 }
             }
 
@@ -182,12 +175,22 @@ internal sealed class MainViewModel : ObservableObject
                 continue;
             }
 
-            await started!.ConfigureAwait(false);
+            if (selectKey is not null)
+            {
+                await _marshalToUiAsync(() =>
+                {
+                    _pendingSelectedKey = selectKey;
+                    _lastKnownSelectedKey = selectKey;
+                }).ConfigureAwait(false);
+            }
+
+            _ = RunRefreshCoreAsync(gate!);
+            await gate!.Task.ConfigureAwait(false);
             return;
         }
     }
 
-    private async Task RunRefreshCoreAsync()
+    private async Task RunRefreshCoreAsync(TaskCompletionSource gate)
     {
         try
         {
@@ -201,8 +204,13 @@ internal sealed class MainViewModel : ObservableObject
         {
             lock (_refreshGate)
             {
-                _activeRefreshTask = null;
+                if (ReferenceEquals(_activeRefreshTask, gate.Task))
+                {
+                    _activeRefreshTask = null;
+                }
             }
+
+            gate.TrySetResult();
         }
     }
 
@@ -344,7 +352,7 @@ internal sealed class MainViewModel : ObservableObject
 
         LayoutRow? nextSelected = ChooseSelection(nextRows, preferredKey);
         if (_pendingSelectedKey is not null
-            && nextSelected is not null
+            && nextSelected is { IsUnsaved: false }
             && string.Equals(nextSelected.Key, _pendingSelectedKey, StringComparison.Ordinal))
         {
             _pendingSelectedKey = null;

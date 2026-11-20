@@ -165,7 +165,7 @@ internal static class TrayApp
                 MarshalToUi);
 
             Func<IMainWindow> effectiveCreateMainWindow = createMainWindow
-                ?? (() => CreateProductionMainWindow(app, settingsStore, effectiveComposition, effectiveMonitors, effectiveClock));
+                ?? (() => CreateProductionMainWindow(app, settingsStore, effectiveComposition, effectiveMonitors, effectiveClock, trayMenu));
             IMainWindow? mainWindow = null;
             bool firstWindowOpenedNotified = false;
             bool exitRequested = false;
@@ -269,7 +269,8 @@ internal static class TrayApp
         SettingsStore settingsStore,
         Composition composition,
         IMonitors monitors,
-        TimeProvider clock)
+        TimeProvider clock,
+        TrayMenu? trayMenu = null)
     {
         var viewModel = new MainViewModel(
             composition.Store,
@@ -300,13 +301,23 @@ internal static class TrayApp
             TimeSpan.FromSeconds(pollSeconds),
             onError: ex => composition.Log.FailWithDetails("Desktop poll failed.", ex.ToString()));
 
-        return new MainWindow(
+        var window = new MainWindow(
             settingsStore,
             monitors,
             composition.Log,
             boundsInterop: null,
             viewModel: viewModel,
             poller: poller);
+
+        if (trayMenu is not null)
+        {
+            viewModel.Detail.SetExternalBusy(trayMenu.IsOperationBusy);
+            void OnTrayBusyChanged(bool busy) => viewModel.Detail.SetExternalBusy(busy);
+            trayMenu.OperationBusyChanged += OnTrayBusyChanged;
+            window.Closed += (_, _) => trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
+        }
+
+        return window;
     }
 
     internal static void HandleUserPreferenceChanged(TaskbarTheme theme, UserPreferenceCategory category)

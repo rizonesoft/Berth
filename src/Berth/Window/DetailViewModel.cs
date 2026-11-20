@@ -40,6 +40,8 @@ internal sealed class DetailViewModel : ObservableObject
     private readonly TimeZoneInfo _timeZone;
 
     private int _operationInFlight;
+    private bool _localBusy;
+    private bool _externalBusy;
     private bool _isBusy;
     private DetailKind _kind;
     private string _title = string.Empty;
@@ -147,6 +149,21 @@ internal sealed class DetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Shares in-process operation busy state from the tray menu so a slow tray Save or Restore disables the open
+    /// window's header actions until it completes.
+    /// </summary>
+    internal void SetExternalBusy(bool busy)
+    {
+        if (_externalBusy == busy)
+        {
+            return;
+        }
+
+        _externalBusy = busy;
+        IsBusy = _localBusy || _externalBusy;
+    }
+
     public bool CanRestore =>
         !_isBusy
         && _service is not null
@@ -218,6 +235,7 @@ internal sealed class DetailViewModel : ObservableObject
         {
             await _main.MarshalToUiAsync(() =>
             {
+                _localBusy = true;
                 IsBusy = true;
                 OperationStarted?.Invoke(kind);
             }).ConfigureAwait(false);
@@ -242,7 +260,8 @@ internal sealed class DetailViewModel : ObservableObject
             await _main.MarshalToUiAsync(() =>
             {
                 Volatile.Write(ref _operationInFlight, 0);
-                IsBusy = false;
+                _localBusy = false;
+                IsBusy = _externalBusy;
                 if (finalResult is not null)
                 {
                     OperationFinished?.Invoke(kind, finalResult);
@@ -271,9 +290,10 @@ internal sealed class DetailViewModel : ObservableObject
             return Task.FromResult<OperationResult?>(null);
         }
 
+        string? expectedKey = _main.Selected?.Key;
         return RunOperationAsync(
             WindowOperationKind.Restore,
-            () => _service.Restore());
+            () => _service.Restore(expectedKey: expectedKey));
     }
 
     private void ExecuteSave() => _lastOperationTask = SaveAsync();

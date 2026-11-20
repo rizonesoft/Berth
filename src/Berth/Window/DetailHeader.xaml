@@ -45,6 +45,7 @@
                             Command="{Binding RestoreCommand}"
                             IsEnabled="{Binding CanRestore}"
                             ToolTip="{Binding RestoreToolTip}"
+                            ToolTipService.ShowOnDisabled="True"
                             Visibility="{Binding ShowRestore, Converter={StaticResource BoolToVisibility}}"
                             AutomationProperties.Name="Restore" />
 
@@ -56,6 +57,7 @@
                             Command="{Binding SaveCommand}"
                             IsEnabled="{Binding CanSave}"
                             ToolTip="{Binding SaveToolTip}"
+                            ToolTipService.ShowOnDisabled="True"
                             Visibility="{Binding ShowSave, Converter={StaticResource BoolToVisibility}}"
                             AutomationProperties.Name="Save current layout" />
 
