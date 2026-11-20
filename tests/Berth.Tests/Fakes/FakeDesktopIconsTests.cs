@@ -172,4 +172,22 @@ public sealed class FakeDesktopIconsTests
 
         Assert.Throws<DesktopUnavailableException>(() => Seam(fake).Read());
     }
+
+    [Fact]
+    public void SetPositionsWithBeforeMoveDistinguishesPrePreparationFromPlacementFailure()
+    {
+        var fake = new FakeDesktopIcons(A) { Unavailable = true };
+        IDesktopIcons desktop = Seam(fake);
+        int beforeMoveCalls = 0;
+
+        Assert.Throws<DesktopUnavailableException>(() => desktop.SetPositions([A with { X = 99 }], () => beforeMoveCalls++));
+        Assert.Equal(0, beforeMoveCalls);
+        Assert.Empty(fake.Calls);
+
+        fake.Unavailable = false;
+        fake.UnavailableOnSet = true;
+        Assert.Throws<DesktopUnavailableException>(() => desktop.SetPositions([A with { X = 99 }], () => beforeMoveCalls++));
+        Assert.Equal(1, beforeMoveCalls);
+        Assert.Single(fake.Calls);
+    }
 }
