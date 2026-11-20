@@ -70,7 +70,7 @@ public sealed class SaveTests
 
         OperationResult result = rig.Service().Save();
 
-        Assert.Equal(OperationResult.Saved("2 monitors", 3, replacedEarlierSave: false), result);
+        Assert.Equal(OperationResult.Saved("2 monitors", 3, replacedEarlierSave: false, arrangementKey: rig.Key), result);
         Layout stored = rig.Stored()!;
         Assert.Equal(rig.Key, stored.Key);
         Assert.Equal("2 monitors", stored.Name);
@@ -116,7 +116,7 @@ public sealed class SaveTests
 
         OperationResult result = rig.Service().Save();
 
-        Assert.Equal(OperationResult.Saved("2 monitors", 1, replacedEarlierSave: false), result);
+        Assert.Equal(OperationResult.Saved("2 monitors", 1, replacedEarlierSave: false, arrangementKey: rig.Key), result);
         Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 1 icon to \"2 monitors\"."], rig.LogLines());
     }
 
@@ -453,16 +453,16 @@ public sealed class SaveTests
         using var rig = new Rig(Three);
 
         OperationResult backspace = rig.Service().Save("AB\bC");
-        Assert.Equal(OperationResult.Saved("AB\bC", 3, replacedEarlierSave: false), backspace);
+        Assert.Equal(OperationResult.Saved("AB\bC", 3, replacedEarlierSave: false, arrangementKey: rig.Key), backspace);
         Assert.Equal("AB\bC", rig.Stored()!.Name);
 
         const string ForgedLineName = "Desk\u20282026-11-19T00:00:00Z FAIL forged";
         OperationResult lineSep = rig.Service().Save(ForgedLineName);
-        Assert.Equal(OperationResult.Saved(ForgedLineName, 3, replacedEarlierSave: true), lineSep);
+        Assert.Equal(OperationResult.Saved(ForgedLineName, 3, replacedEarlierSave: true, arrangementKey: rig.Key), lineSep);
         Assert.Equal(ForgedLineName, rig.Stored()!.Name);
 
         OperationResult paraSep = rig.Service().Save("Para\u2029Break");
-        Assert.Equal(OperationResult.Saved("Para\u2029Break", 3, replacedEarlierSave: true), paraSep);
+        Assert.Equal(OperationResult.Saved("Para\u2029Break", 3, replacedEarlierSave: true, arrangementKey: rig.Key), paraSep);
         Assert.Equal("Para\u2029Break", rig.Stored()!.Name);
 
         string rawLog = System.IO.File.ReadAllText(rig.Paths.LogFile);

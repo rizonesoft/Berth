@@ -60,7 +60,7 @@ public sealed class UndoTests
         using var rig = new Rig(savedA, savedB);
 
         OperationResult saved = rig.Service().Save();
-        Assert.Equal(OperationResult.Saved("2 monitors", 2, replacedEarlierSave: false), saved);
+        Assert.Equal(OperationResult.Saved("2 monitors", 2, replacedEarlierSave: false, arrangementKey: rig.Key), saved);
 
         using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(rig.File)))
         {
