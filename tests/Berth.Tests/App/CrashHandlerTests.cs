@@ -56,6 +56,42 @@ public sealed class CrashHandlerTests
     }
 
     [Fact]
+    public void DefaultConstructorRedactsCurrentEnvironmentUserNameAndUserProfile()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var log = new Log(paths, TimeProvider.System);
+
+        string currentUser = Environment.UserName;
+        string currentProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        Assert.False(string.IsNullOrWhiteSpace(currentUser));
+        Assert.False(string.IsNullOrWhiteSpace(currentProfile));
+
+        string? shown = null;
+        var handler = new CrashHandler(log, msg =>
+        {
+            shown = msg;
+            return true;
+        });
+
+        handler.Handle(
+            new InvalidOperationException($"Boom for {currentUser} under {currentProfile}\\Desktop"),
+            "DispatcherUnhandledException");
+
+        Assert.NotNull(shown);
+        Assert.Contains("<user>", shown, StringComparison.Ordinal);
+        Assert.Contains("<profile>", shown, StringComparison.Ordinal);
+        Assert.DoesNotContain(currentUser, shown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(currentProfile, shown, StringComparison.OrdinalIgnoreCase);
+
+        string fullLog = File.ReadAllText(paths.LogFile);
+        Assert.Contains("<user>", fullLog, StringComparison.Ordinal);
+        Assert.Contains("<profile>", fullLog, StringComparison.Ordinal);
+        Assert.DoesNotContain(currentUser, fullLog, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(currentProfile, fullLog, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RedactIsSinglePassHandlesMixedSeparatorsShortUsernamesAndEmptyKeys()
     {
         // Username "pro" must NEVER corrupt the "<profile>" marker emitted for the profile path.
