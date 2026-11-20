@@ -1300,7 +1300,7 @@ def check_three_pass_order(kind, record_path, candidate, schedule):
         if not ended_gaps(chain[-1]):
             ref = section_ref_for_record(record_path)
             if len(chain) > 1 and ref is not None:
-                import todo_graph as _tg
+                from lib import todo_graph as _tg
                 unsettled = not _tg.reconciliation_settles(
                     ROOT, ref, completions[0]["candidate"], chain[-1]["candidate"]
                 )
