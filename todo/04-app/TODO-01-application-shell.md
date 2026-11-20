@@ -2,7 +2,7 @@
 schema_version: 1
 id: application-shell
 domain: 04-app
-status: active
+status: done
 title: "TODO-01 -- Application shell"
 depends_on: ["layout-core", "desktop-access", "command-line"]
 ---
@@ -47,7 +47,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [x] |
 | 9 | §9 | Main window frame with two panes | §5 | [x] |
 | 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [x] |
-| 11 | §11 | Off-screen rendering of the window for review | §9 | [ ] |
+| 11 | §11 | Off-screen rendering of the window for review | §9 | [x] |
 
 ## 1. Entry routing and the first-run rule
 
@@ -350,16 +350,19 @@ A way to turn the window, in a given state and theme, into a PNG with nobody loo
 1. Add `WindowRenderer` in `tests/Berth.Tests/Render/WindowRenderer.cs`. Done when: it writes a PNG of the frame.
 2. Add a render script. Done when: one command writes the frame in light and dark.
 
-- [ ] Add `WindowRenderer.Render(FrameworkElement root, int width, int height, string path)`: measure and arrange `root` at the size, render it with `RenderTargetBitmap` at 96 DPI, and save a PNG. Done when: a test renders the `MainWindow` content at 980 by 640 and the file is a PNG of that size whose pixels are not all one colour. Cheaper substitute: a screenshot of the visible desktop, which needs a person's screen and captures their windows.
-- [ ] Add a `theme` parameter (`Light`, `Dark`) that sets the application's `ThemeMode` for the render and restores it afterwards. Done when: the light and dark renders of the frame differ in their average brightness by a wide margin asserted in the test. Cheaper substitute: rendering only in the theme the machine happens to use.
-- [ ] Add `scripts/render-window.ps1` that runs the tests with trait `Render` and collects their PNGs into `build/renders/` (ignored by git), printing each path. Done when: `pwsh scripts/render-window.ps1` exits 0 and `build/renders/frame-light.png` and `frame-dark.png` exist. Cheaper substitute: committing renders, which go stale silently.
-- [ ] Record in `docs/todo-workflow.md`, under a new heading "Rendering a surface for review", that a `Surface: yes` section runs `pwsh scripts/render-window.ps1` and passes the PNG paths to the review. Done when: the heading exists and names the script and the output folder. Cheaper substitute: leaving each section to invent its own capture.
-- [ ] Add `tests/Berth.Tests/Render/WindowRendererTests.cs` (trait `Render`). Done when: all pass, and the size test fails when the render size is ignored. Cheaper substitute: none needed.
-- [ ] Commit: `test: off-screen rendering of the window for review`
+- [x] Add `WindowRenderer.Render(FrameworkElement root, int width, int height, string path)`: measure and arrange `root` at the size, render it with `RenderTargetBitmap` at 96 DPI, and save a PNG. Done when: a test renders the `MainWindow` content at 980 by 640 and the file is a PNG of that size whose pixels are not all one colour. Cheaper substitute: a screenshot of the visible desktop, which needs a person's screen and captures their windows.
+- [x] Add a `theme` parameter (`Light`, `Dark`) that sets the application's `ThemeMode` for the render and restores it afterwards. Done when: the light and dark renders of the frame differ in their average brightness by a wide margin asserted in the test. Cheaper substitute: rendering only in the theme the machine happens to use.
+- [x] Add `scripts/render-window.ps1` that runs the tests with trait `Render` and collects their PNGs into `build/renders/` (ignored by git), printing each path. Done when: `pwsh scripts/render-window.ps1` exits 0 and `build/renders/frame-light.png` and `frame-dark.png` exist. Cheaper substitute: committing renders, which go stale silently.
+- [x] Record in `docs/todo-workflow.md`, under a new heading "Rendering a surface for review", that a `Surface: yes` section runs `pwsh scripts/render-window.ps1` and passes the PNG paths to the review. Done when: the heading exists and names the script and the output folder. Cheaper substitute: leaving each section to invent its own capture.
+- [x] Add `tests/Berth.Tests/Render/WindowRendererTests.cs` (trait `Render`). Done when: all pass, and the size test fails when the render size is ignored. Cheaper substitute: none needed.
+- [x] Commit: `test: off-screen rendering of the window for review`
 
 **Test checkpoint:** `pwsh scripts/render-window.ps1` exits 0 and writes `build/renders/frame-light.png` and `build/renders/frame-dark.png`, two different images of 980 by 640 pixels.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-20 | §11 | 0a093fdde2a48243be9385173142999b9421bc00
+> **Review:** `docs/reviews/d04-t01-s11.json`
 
 ## Verification
 
