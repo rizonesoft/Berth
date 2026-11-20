@@ -185,37 +185,56 @@ public sealed class RestoreCommandTests
 
             using var acquired = new ManualResetEventSlim(false);
             using var release = new ManualResetEventSlim(false);
+            bool holderAcquired = false;
+            Exception? holderError = null;
             var holder = new Thread(() =>
             {
-                using var mutex = new Mutex(initiallyOwned: false, gate.MutexName);
-                Assert.True(mutex.WaitOne(TimeSpan.FromSeconds(5)));
                 try
                 {
+                    using var mutex = new Mutex(initiallyOwned: false, gate.MutexName);
+                    holderAcquired = mutex.WaitOne(TimeSpan.FromSeconds(5));
                     acquired.Set();
-                    release.Wait(TimeSpan.FromSeconds(10));
+                    if (holderAcquired)
+                    {
+                        try
+                        {
+                            release.Wait();
+                        }
+                        finally
+                        {
+                            mutex.ReleaseMutex();
+                        }
+                    }
                 }
-                finally
+                catch (Exception ex)
                 {
-                    mutex.ReleaseMutex();
+                    holderError = ex;
+                    acquired.Set();
                 }
-            });
+            })
+            {
+                IsBackground = true,
+            };
             holder.Start();
             try
             {
                 Assert.True(acquired.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+                Assert.Null(holderError);
+                Assert.True(holderAcquired, "Background thread failed to acquire the operation mutex.");
+
                 var output = new StringWriter();
                 var error = new StringWriter();
 
                 int code = new CliRunner(service, output, error).Run(CliArguments.Parse(["restore"]));
 
-                Assert.Equal(CliExit.Refused, code);
+                Assert.Equal(3, code);
                 Assert.Equal(string.Empty, output.ToString());
                 Assert.Equal($"Berth is busy with another save or restore. Try again in a moment.{Environment.NewLine}", error.ToString());
             }
             finally
             {
                 release.Set();
-                holder.Join(TimeSpan.FromSeconds(5));
+                Assert.True(holder.Join(TimeSpan.FromSeconds(5)), "Mutex-holder thread did not exit before event disposal.");
             }
         }
 
@@ -248,6 +267,15 @@ public sealed class RestoreCommandTests
             Assert.Equal($"The layout file {key}.json could not be read. It was left untouched.{Environment.NewLine}", error.ToString());
             Assert.Equal(malformedBytes, File.ReadAllBytes(layoutPath));
         }
+    }
+
+    [Fact]
+    public void ExitCodesMatchSpec13NumericContract()
+    {
+        Assert.Equal(0, CliExit.Done);
+        Assert.Equal(1, CliExit.Error);
+        Assert.Equal(2, CliExit.Usage);
+        Assert.Equal(3, CliExit.Refused);
     }
 
     [Fact]
