@@ -46,7 +46,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [x] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [x] |
 | 9 | §9 | Main window frame with two panes | §5 | [x] |
-| 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [ ] |
+| 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [x] |
 | 11 | §11 | Off-screen rendering of the window for review | §9 | [ ] |
 
 ## 1. Entry routing and the first-run rule
@@ -322,17 +322,20 @@ The window remembers its size and position and never opens off screen (SPEC §4,
 1. Add `WindowPlacementRule` in `src/Berth/Window/WindowPlacementRule.cs`. Done when: a saved placement is accepted or rejected by pure logic.
 2. Save on hide and apply on open. Done when: a reopened window is where it was.
 
-- [ ] Add `WindowPlacementRule.Resolve(WindowPlacement? saved, IReadOnlyList<MonitorInfo> monitors, int minWidth, int minHeight)` returning the saved placement when at least 100 by 100 px of it lies on some monitor and it is at least the minimum size, and `null` (use the default, centred on the primary monitor) otherwise. Done when: unit tests cover a visible placement, one entirely off screen, one on a disconnected monitor's coordinates, and one smaller than the minimum. Cheaper substitute: restoring any saved position, which loses the window after undocking.
-- [ ] Add `WindowPixels` in `src/Berth/Window/WindowPixels.cs` converting between WPF's device-independent units and physical pixels at the window boundary: `ToPhysical(Rect dips, double scale)` and `ToDips(WindowPlacement physical, double scale)`, where `scale` is the DPI scale of the monitor the placement lies on (`MonitorInfo.Scale / 100`). `settings.json` holds physical pixels (SPEC §14), and the rule above compares physical with physical. Done when: unit tests round-trip a placement at 100%, 150% and 200% without drift. Cheaper substitute: saving WPF units and comparing them with physical monitor bounds, which is wrong on any scaled display.
-- [ ] Apply the rule when the window is first shown, placing it with `SetWindowPos` in physical pixels (or setting `Left`, `Top`, `Width`, `Height` from `WindowPixels.ToDips` for the target monitor's scale). Done when: a test with a stored placement shows the window and `GetWindowRect` returns that placement. Cheaper substitute: `WindowStartupLocation` alone.
-- [ ] When the window hides, save its restored bounds in physical pixels (`GetWindowPlacement`'s normal position, so a maximised or minimised window saves its restored size) to `Settings.Window` through `SettingsStore`, keeping `RestoreAutomatically` as it is. Done when: a test moves the window, hides it, and reads the new placement from `settings.json`. Cheaper substitute: saving on every move event, which writes the file hundreds of times.
-- [ ] A failed settings write when hiding (an `IOException`, an `UnauthorizedAccessException`, or the `UnreadableSettingsException` of an unreadable `settings.json`, `D01 T01 §6`) is logged as `WARN` with its SPEC §18 message and never blocks the hide or ends the tray app. Done when: tests with a failing store and with `{` in `settings.json` hide the window, the tray app keeps running, and the bad file's bytes are unchanged. Cheaper substitute: an error dialog on close, or an exception that reaches the crash handler. **Corrected 2026-11-18:** the unreadable-file refusal was not named (`D01 T01 §6` round 1 P2).
-- [ ] Add `tests/Berth.Tests/Window/WindowPlacementTests.cs`. Done when: all pass, and the off-screen test fails when the rule accepts every placement. Cheaper substitute: none needed.
-- [ ] Commit: `window: placement that persists`
+- [x] Add `WindowPlacementRule.Resolve(WindowPlacement? saved, IReadOnlyList<MonitorInfo> monitors, int minWidth, int minHeight)` returning the saved placement when at least 100 by 100 px of it lies on some monitor and it is at least the minimum size, and `null` (use the default, centred on the primary monitor) otherwise. Done when: unit tests cover a visible placement, one entirely off screen, one on a disconnected monitor's coordinates, and one smaller than the minimum. Cheaper substitute: restoring any saved position, which loses the window after undocking.
+- [x] Add `WindowPixels` in `src/Berth/Window/WindowPixels.cs` converting between WPF's device-independent units and physical pixels at the window boundary: `ToPhysical(Rect dips, double scale)` and `ToDips(WindowPlacement physical, double scale)`, where `scale` is the DPI scale of the monitor the placement lies on (`MonitorInfo.Scale / 100`). `settings.json` holds physical pixels (SPEC §14), and the rule above compares physical with physical. Done when: unit tests round-trip a placement at 100%, 150% and 200% without drift. Cheaper substitute: saving WPF units and comparing them with physical monitor bounds, which is wrong on any scaled display.
+- [x] Apply the rule when the window is first shown, placing it with `SetWindowPos` in physical pixels (or setting `Left`, `Top`, `Width`, `Height` from `WindowPixels.ToDips` for the target monitor's scale). Done when: a test with a stored placement shows the window and `GetWindowRect` returns that placement. Cheaper substitute: `WindowStartupLocation` alone.
+- [x] When the window hides, save its restored bounds in physical pixels (`GetWindowPlacement`'s normal position, so a maximised or minimised window saves its restored size) to `Settings.Window` through `SettingsStore`, keeping `RestoreAutomatically` as it is. Done when: a test moves the window, hides it, and reads the new placement from `settings.json`. Cheaper substitute: saving on every move event, which writes the file hundreds of times.
+- [x] A failed settings write when hiding (an `IOException`, an `UnauthorizedAccessException`, or the `UnreadableSettingsException` of an unreadable `settings.json`, `D01 T01 §6`) is logged as `WARN` with its SPEC §18 message and never blocks the hide or ends the tray app. Done when: tests with a failing store and with `{` in `settings.json` hide the window, the tray app keeps running, and the bad file's bytes are unchanged. Cheaper substitute: an error dialog on close, or an exception that reaches the crash handler. **Corrected 2026-11-18:** the unreadable-file refusal was not named (`D01 T01 §6` round 1 P2).
+- [x] Add `tests/Berth.Tests/Window/WindowPlacementTests.cs`. Done when: all pass, and the off-screen test fails when the rule accepts every placement. Cheaper substitute: none needed.
+- [x] Commit: `window: placement that persists`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*WindowPlacementTests"` passes, and fails when an off-screen placement is accepted.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-20 | §10 | fbcf64f445abcd50a374b1e04bf12e2b8e56ad0f
+> **Review:** `docs/reviews/d04-t01-s10.json`
 
 ## 11. Off-screen rendering of the window for review
 

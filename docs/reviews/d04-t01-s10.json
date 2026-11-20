@@ -1,0 +1,88 @@
+{
+  "ref": "D04 T01 \u00a710",
+  "title": "Window placement that persists",
+  "implementation_sha": "fbcf64f445abcd50a374b1e04bf12e2b8e56ad0f",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/04-app/D04-T01-s10.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *WindowPlacementRuleTests --filter-class *WindowPlacementTests --filter-class *MainWindowFrameTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/04-app/D04-T01-s10.md",
+    "verdict": "filed",
+    "candidate": "fbcf64f445abcd50a374b1e04bf12e2b8e56ad0f",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D04 T01 \u00a711"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/04-app/D04-T01-s10.md",
+    "candidate": "3c3521bb7a45a09d129e0b4aefe5f9e5a0328121",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "3c3521bb7a45a09d129e0b4aefe5f9e5a0328121",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
