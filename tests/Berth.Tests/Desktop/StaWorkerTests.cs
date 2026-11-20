@@ -419,7 +419,8 @@ public sealed class UnitStaWorkerTests
             () => DesktopView.Open(
                 () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(new StubShellView()))),
                 _ => { }),
-            member => calls.Add((member, Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState())));
+            member => calls.Add((member, Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState())),
+            monitors: new StubMonitors());
 
         int expectedWorkerId = icons.RunOnWorker(() => Environment.CurrentManagedThreadId);
 
@@ -428,7 +429,7 @@ public sealed class UnitStaWorkerTests
         {
             try
             {
-                Assert.Throws<NotImplementedException>(() => icons.ReadIcons());
+                Assert.Empty(icons.ReadIcons());
                 Assert.Throws<NotImplementedException>(() => icons.SetPositions(Array.Empty<IconPosition>()));
                 Assert.False(icons.AutoArrange);
                 Assert.False(icons.TryTurnAutoArrangeOff());
@@ -543,10 +544,10 @@ public sealed class UnitStaWorkerTests
         public void GetItemObject(uint uItem, in Guid riid, out object ppv) => ppv = new object();
         public void GetCurrentViewMode(out uint pViewMode) => pViewMode = 0;
         public void SetCurrentViewMode(uint viewMode) { }
-        public void GetFolder(in Guid riid, out object ppv) => ppv = new object();
+        public void GetFolder(in Guid riid, out object ppv) => ppv = new StubShellFolder();
         public void Item(int iItemIndex, out nint ppidl) => ppidl = nint.Zero;
         public void ItemCount(uint uFlags, out int pcItems) => pcItems = 7;
-        public void Items(uint uFlags, in Guid riid, out object ppv) => ppv = new object();
+        public void Items(uint uFlags, in Guid riid, out object ppv) => ppv = new EmptyEnumIdList();
         public void GetSelectionMarkedItem(out int piItem) => piItem = 0;
         public void GetFocusedItem(out int piItem) => piItem = 0;
         public void GetItemPosition(nint pidl, out NativePoint ppt) => ppt = default;
@@ -555,5 +556,32 @@ public sealed class UnitStaWorkerTests
         public int GetAutoArrange() => ShellConstants.S_FALSE;
         public void SelectItem(int iItem, uint dwFlags) { }
         public void SelectAndPositionItems(uint cidl, nint[] apidl, NativePoint[]? apt, uint dwFlags) { }
+    }
+
+    private sealed class StubMonitors : IMonitors
+    {
+        public IReadOnlyList<MonitorInfo> Read() => [new(0, 0, 1920, 1080, 100, Primary: true)];
+    }
+
+    private sealed class StubShellFolder : IShellFolder
+    {
+        public void ParseDisplayName(nint hwnd, nint pbc, string pszDisplayName, nint pchEaten, out nint ppidl, nint pdwAttributes) => ppidl = nint.Zero;
+        public int EnumObjects(nint hwnd, uint grfFlags, out IEnumIDList? ppenumIDList) { ppenumIDList = null; return ShellConstants.S_FALSE; }
+        public void BindToObject(nint pidl, nint pbc, in Guid riid, out object ppv) => ppv = new object();
+        public void BindToStorage(nint pidl, nint pbc, in Guid riid, out object ppv) => ppv = new object();
+        public int CompareIDs(nint lParam, nint pidl1, nint pidl2) => 0;
+        public void CreateViewObject(nint hwndOwner, in Guid riid, out object ppv) => ppv = new object();
+        public void GetAttributesOf(uint cidl, nint[]? apidl, ref uint rgfInOut) { }
+        public void GetUIObjectOf(nint hwndOwner, uint cidl, nint[] apidl, in Guid riid, nint rgfReserved, out object ppv) => ppv = new object();
+        public void GetDisplayNameOf(nint pidl, uint uFlags, out StrRet pName) => pName = default;
+        public void SetNameOf(nint hwnd, nint pidl, string pszName, uint uFlags, out nint ppidlOut) => ppidlOut = nint.Zero;
+    }
+
+    private sealed class EmptyEnumIdList : IEnumIDList
+    {
+        public int Next(uint celt, nint[] rgelt, out uint pceltFetched) { pceltFetched = 0; return ShellConstants.S_FALSE; }
+        public int Skip(uint celt) => ShellConstants.S_FALSE;
+        public void Reset() { }
+        public void Clone(out IEnumIDList ppenum) => ppenum = this;
     }
 }
