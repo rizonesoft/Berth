@@ -16,6 +16,7 @@ title: "TODO-01 -- Operator steps"
 
 - `assets/banner/github-social-preview.png` (1280 by 640).
 - `design/SPEC.md` §16 (automatic restore), which the walkthrough exercises on real hardware.
+- -> XREF: D02 T01 §5 -- the auto arrange read/clear opt-in test run on a disposable desktop
 - -> XREF: D06 T01 §2 -- the automatic restore the walkthrough exercises
 - -> XREF: D07 T01 §2 -- the release workflow the tag starts
 
@@ -35,6 +36,7 @@ title: "TODO-01 -- Operator steps"
 | 1 | §1 | Social preview image on the GitHub repository | -- | [ ] |
 | 2 | §2 | Dock and undock walkthrough on real monitors | D06 T01 §5 | [ ] |
 | 3 | §3 | First release tagged and published | D07 T01 §5 | [ ] |
+| 4 | §4 | Auto arrange round trip on a disposable desktop | D02 T01 §5 | [ ] |
 
 ## 1. Social preview image on the GitHub repository
 
@@ -96,6 +98,25 @@ Publishing is outward-facing and the owner's decision: the run prepares everythi
 - [ ] Commit: `release: 0.1.0`
 
 **Test checkpoint:** `gh release view v0.1.0 --json isDraft --jq .isDraft` prints `false`, and fails with "release not found" before the release exists.
+
+## 4. Auto arrange round trip on a disposable desktop
+
+The automated suite never toggles auto arrange on the owner's desktop (`AGENTS.md`, rules specific to Berth). One operator-run pass on a disposable Windows 11 desktop confirms `IFolderView2.SetCurrentFolderFlags` clears `FWF_AUTOARRANGE` and restores it cleanly.
+
+**Phase:** 99
+**Needs:** attended, operator
+**Surface:** no
+
+**Build order:**
+
+1. Enable "Auto arrange icons" on a disposable interactive Windows 11 desktop. Done when: Explorer's View menu shows "Auto arrange icons" checked.
+2. Run the opt-in test with `BERTH_TEST_ALLOW_AUTOARRANGE=1` and record the result. Done when: `OptInRoundTripTurnsAutoArrangeOffReadsBackAndRestores` passes with `0` skipped and the record is committed.
+
+- [ ] On a disposable interactive Windows 11 desktop (not the owner's primary desktop layout), confirm "Auto arrange icons" is checked under right-click > View. Done when: `Auto arrange icons` is checked before the test runs. Cheaper substitute: running with auto arrange off, which fails the test's precondition.
+- [ ] Run `$env:BERTH_TEST_ALLOW_AUTOARRANGE='1'; dotnet test --solution Berth.slnx -c Release --filter-method "*OptInRoundTripTurnsAutoArrangeOffReadsBackAndRestores"` and record the Windows build (`winver`) and full test output in `docs/acceptance/2026-autoarrange-roundtrip.md`. Done when: the test exits `0` with `succeeded: 1, skipped: 0, failed: 0`, the desktop returns to auto arrange on, and the file records the output. Cheaper substitute: an unrecorded manual click.
+- [ ] Commit: `docs: record auto arrange disposable-desktop round trip`
+
+**Test checkpoint:** `Test-Path docs/acceptance/2026-autoarrange-roundtrip.md` is `True` and the file quotes `succeeded: 1` and `skipped: 0` from `OptInRoundTripTurnsAutoArrangeOffReadsBackAndRestores`; it is `False` before the run.
 
 ## Verification
 

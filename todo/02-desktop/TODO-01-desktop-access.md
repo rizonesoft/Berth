@@ -23,6 +23,7 @@ depends_on: ["layout-core"]
 - -> XREF: D03 T01 §3 -- the commands run against `ShellDesktopIcons`
 - -> XREF: D05 T01 §7 -- the auto arrange notice calls `TryTurnAutoArrangeOff`
 - -> XREF: D06 T01 §2 -- the automatic restore reads the monitors after a display change
+- -> XREF: D99 T01 §4 -- operator opt-in auto arrange round trip on a disposable desktop
 
 ## Outcome
 
@@ -146,6 +147,7 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 ## 5. Auto arrange read and clear
 
 > **Started:** 2026-11-20T10:24:00Z
+> **Deferred:** real Explorer on/off/on auto arrange round trip on a disposable Windows 11 desktop (`BERTH_TEST_ALLOW_AUTOARRANGE=1`) -> XREF: D99 T01 §4
 
 Berth detects auto arrange and can turn it off on the user's click (SPEC §9).
 
