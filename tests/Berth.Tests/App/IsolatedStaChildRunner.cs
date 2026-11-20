@@ -16,8 +16,11 @@ internal static class IsolatedStaChildRunner
 {
     public const string Switch = "--berth-tray-child";
     public const string DialogFileEnvVar = "BERTH_TEST_CHILD_DIALOG_FILE";
+    public const string RegPathEnvVar = "BERTH_TEST_CHILD_REG_PATH";
+    public const string ReportFileEnvVar = "BERTH_TEST_CHILD_REPORT_FILE";
     public const string TimerShutdownScenario = "tray-timer-shutdown";
     public const string DispatcherCrashScenario = "tray-dispatcher-crash";
+    public const string PrimaryStartupTrayScenario = "tray-primary-startup";
 
     public static int RunMain(string[] args)
     {
@@ -46,7 +49,9 @@ internal static class IsolatedStaChildRunner
         string dataRoot,
         string instanceName,
         string? dialogFile = null,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        string? regPath = null,
+        string? reportFile = null)
     {
         string testExe = Path.Combine(AppContext.BaseDirectory, "Berth.Tests.exe");
         if (!File.Exists(testExe))
@@ -69,6 +74,16 @@ internal static class IsolatedStaChildRunner
         if (dialogFile is not null)
         {
             psi.Environment[DialogFileEnvVar] = dialogFile;
+        }
+
+        if (regPath is not null)
+        {
+            psi.Environment[RegPathEnvVar] = regPath;
+        }
+
+        if (reportFile is not null)
+        {
+            psi.Environment[ReportFileEnvVar] = reportFile;
         }
 
         using Process proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start isolated STA child.");
@@ -152,7 +167,69 @@ internal static class IsolatedStaChildRunner
                         new Action(() => throw new InvalidOperationException("Isolated child dispatcher boom")));
                 }),
 
+            PrimaryStartupTrayScenario => RunPrimaryStartupTrayScenario(paths, log, instanceName),
+
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
+    }
+
+    private static int RunPrimaryStartupTrayScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string regPath = Environment.GetEnvironmentVariable(RegPathEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REG_PATH must be set.");
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        var theme = new Berth.Desktop.TaskbarTheme(regPath);
+        TrayIcon? capturedIcon = null;
+        bool initialVisible = false;
+        string initialTooltip = string.Empty;
+        IntPtr initialHandle = IntPtr.Zero;
+
+        return TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: new FixedChildClock(fixedNow),
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            onTrayIconCreated: icon =>
+            {
+                capturedIcon = icon;
+                initialVisible = icon.IsVisible;
+                initialTooltip = icon.TooltipText;
+                initialHandle = icon.IconHandle;
+
+                // Simulate a taskbar theme change occurring between icon creation and UserPreferenceChanged subscription.
+                using Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(regPath, writable: true);
+                key.SetValue("SystemUsesLightTheme", 1, Microsoft.Win32.RegistryValueKind.DWord);
+            },
+            onAppStartup: app =>
+            {
+                bool reconciledIsLight = theme.IsLight;
+                bool handleChanged = capturedIcon is not null && capturedIcon.IconHandle != initialHandle;
+                File.WriteAllLines(
+                    reportFile,
+                    [
+                        $"initialVisible={initialVisible}",
+                        $"initialTooltip={initialTooltip}",
+                        $"reconciledIsLight={reconciledIsLight}",
+                        $"handleChanged={handleChanged}",
+                    ]);
+                app.Shutdown(0);
+            });
+    }
+
+    private sealed class FixedChildClock(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

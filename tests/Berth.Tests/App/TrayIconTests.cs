@@ -244,6 +244,43 @@ public sealed class TrayIconTests(AppFixture appFixture)
         }
     }
 
+    [Fact]
+    public void PrimaryStartupCreatesVisibleTrayIconWithSavedTooltipAndReconcilesThemeAfterSubscribe()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var savedLayout = new Layout(
+            Layout.CurrentSchemaVersion,
+            ArrangementKey.From(SingleMonitor),
+            "Docked",
+            fixedNow,
+            [.. SingleMonitor],
+            [new IconPosition("id-1", "Icon", 10, 20)],
+            Previous: null);
+        store.Save(savedLayout);
+
+        using var testKey = new IsolatedTaskbarKey();
+        testKey.SetDword(0); // Start dark; child flips to light right before subscribing to UserPreferenceChanged.
+
+        string reportFile = Path.Combine(data.Root, "tray-startup-report.txt");
+        var result = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.PrimaryStartupTrayScenario,
+            data.Root,
+            "iso-tray-" + Guid.NewGuid().ToString("N"),
+            regPath: testKey.Path,
+            reportFile: reportFile);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(reportFile), "Primary startup scenario did not write its report.");
+        string[] lines = File.ReadAllLines(reportFile);
+        Assert.Contains("initialVisible=True", lines);
+        Assert.Contains("initialTooltip=Berth: Docked, saved today, 09:14", lines);
+        Assert.Contains("reconciledIsLight=True", lines);
+        Assert.Contains("handleChanged=True", lines);
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
