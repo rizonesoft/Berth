@@ -1,0 +1,88 @@
+{
+  "ref": "D05 T01 \u00a710",
+  "title": "Start with Windows registry value",
+  "implementation_sha": "803284ec2a092bf3736f72e42a69c265d82d1526",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s10.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *RunValueTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s10.md",
+    "verdict": "filed",
+    "candidate": "803284ec2a092bf3736f72e42a69c265d82d1526",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D05 T01 \u00a711"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s10.md",
+    "candidate": "2f3a42adb930eb434838677fc6aafd1e598869d8",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "2f3a42adb930eb434838677fc6aafd1e598869d8",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

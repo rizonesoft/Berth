@@ -46,7 +46,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 7 | §7 | Notices and the controls they disable | §6 | [ ] |
 | 8 | §8 | Rename dialog | §3 | [ ] |
 | 9 | §9 | Revert to previous save and delete | §8 | [ ] |
-| 10 | §10 | Start with Windows registry value | D00 T01 §3 | [ ] |
+| 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [ ] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [ ] |
 | 13 | §13 | High contrast and 150% scale | §12 | [ ] |
@@ -312,14 +312,17 @@ The `Run` value behind the second switch, with the registry path as a parameter 
 1. Add `RunValue` in `src/Berth/Desktop/RunValue.cs`. Done when: it reads, sets and clears the value under a given key.
 2. Test under a test key. Done when: the real `Run` key is never written by a test.
 
-- [ ] Add `RunValue(string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run", string valueName = "Berth", string? executablePath = null)` with `bool IsOn` (the value exists and, unquoted and compared ignoring case, equals the running executable's path from `Environment.ProcessPath` or the parameter). Done when: tests under `HKCU\Software\Berth.Tests\<guid>` cover missing, matching, quoted matching, and a value naming another path (off). Cheaper substitute: "the value exists", which shows On for a stale copy (SPEC §11).
-- [ ] Add `void Set(bool on)`: write the quoted path as `REG_SZ` or delete the value, then read back and throw `IOException` with the system's reason when the state is not what was asked. Done when: tests set on, read `IsOn` `true` and the exact quoted string, set off, and find the value gone. Cheaper substitute: writing without read-back.
-- [ ] Add `tests/Berth.Tests/Desktop/RunValueTests.cs`, each test creating and deleting its own key under `HKCU\Software\Berth.Tests`. Done when: all pass, and `git grep -n "CurrentVersion\\\\Run" tests/` finds no test that passes the real path. Cheaper substitute: a test that writes the owner's real `Run` key (`AGENTS.md`).
-- [ ] Commit: `desktop: Start with Windows registry value`
+- [x] Add `RunValue(string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run", string valueName = "Berth", string? executablePath = null)` with `bool IsOn` (the value exists and, unquoted and compared ignoring case, equals the running executable's path from `Environment.ProcessPath` or the parameter). Done when: tests under `HKCU\Software\Berth.Tests\<guid>` cover missing, matching, quoted matching, and a value naming another path (off). Cheaper substitute: "the value exists", which shows On for a stale copy (SPEC §11).
+- [x] Add `void Set(bool on)`: write the quoted path as `REG_SZ` or delete the value, then read back and throw `IOException` with the system's reason when the state is not what was asked. Done when: tests set on, read `IsOn` `true` and the exact quoted string, set off, and find the value gone. Cheaper substitute: writing without read-back.
+- [x] Add `tests/Berth.Tests/Desktop/RunValueTests.cs`, each test creating and deleting its own key under `HKCU\Software\Berth.Tests`. Done when: all pass, and `git grep -n "CurrentVersion\\\\Run" tests/` finds no test that passes the real path. Cheaper substitute: a test that writes the owner's real `Run` key (`AGENTS.md`).
+- [x] Commit: `desktop: Start with Windows registry value`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RunValueTests"` passes, and fails when `IsOn` is `true` for a value naming another executable.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-21 | §10 | 803284ec2a092bf3736f72e42a69c265d82d1526
+> **Review:** `docs/reviews/d05-t01-s10.json`
 
 ## 11. Settings switches and version caption
 
