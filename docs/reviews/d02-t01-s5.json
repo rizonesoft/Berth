@@ -1,0 +1,84 @@
+{
+  "ref": "D02 T01 \u00a75",
+  "title": "Auto arrange read and clear",
+  "implementation_sha": "40d9c217c9e94bf94a8b19ae3643e9684ca9934c",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s5.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "Remove-Item Env:BERTH_TEST_ALLOW_AUTOARRANGE -ErrorAction SilentlyContinue; dotnet test --solution Berth.slnx -c Release --filter-class *AutoArrangeTests --filter-class *StaWorkerTests --filter-class *LayerRuleTests -> Passed! total: 75, failed: 0, succeeded: 74, skipped: 1",
+    "CI build.yml + plan.yml at 40d9c217c9e9 -> green (https://github.com/rizonesoft/Berth/actions/runs/44722470553, https://github.com/rizonesoft/Berth/actions/runs/44722470555)"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s5.md",
+    "verdict": "complete",
+    "candidate": "40d9c217c9e94bf94a8b19ae3643e9684ca9934c",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s5.md",
+    "candidate": "843e2f358b0b2e3fbd3a5d074545fc7ce84f1a07",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "843e2f358b0b2e3fbd3a5d074545fc7ce84f1a07",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
