@@ -105,6 +105,11 @@ public sealed partial class NoHexColourTests
                 class BadInterpolated { static string S => $"outer={/* } */ $"inner={Color.FromRgb(1, 2, 3)}"}"; }
                 """);
 
+            // Bad C# Color.FromRgb after a lone CR line-comment terminator (C# accepts \r as a line terminator).
+            File.WriteAllText(
+                Path.Combine(tempDir, "Window", "BadCrComment.cs"),
+                "using System.Windows.Media;\rclass BadCr { static Color C() { return// comment\rColor.FromRgb(1, 2, 3); } }\r");
+
             // C# comments mentioning Color.FromRgb or hex literals (including inside interpolation holes) must not trigger a violation.
             File.WriteAllText(
                 Path.Combine(tempDir, "Window", "CommentOnly.cs"),
@@ -115,12 +120,13 @@ public sealed partial class NoHexColourTests
                 """);
 
             List<string> violations = FindViolations(tempDir);
-            Assert.Equal(5, violations.Count);
+            Assert.Equal(6, violations.Count);
             Assert.Contains(violations, v => v.Contains("Extra.xaml", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("MultilineBad.xaml", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("BadRgb.cs", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("BadArgb.cs", StringComparison.Ordinal));
             Assert.Contains(violations, v => v.Contains("BadInterpolated.cs", StringComparison.Ordinal));
+            Assert.Contains(violations, v => v.Contains("BadCrComment.cs", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("Tokens.Light.xaml", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("Commented.xaml", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("CommentOnly.cs", StringComparison.Ordinal));
@@ -182,10 +188,17 @@ public sealed partial class NoHexColourTests
 
     private static void ScanCSharp(string rel, string text, List<string> violations)
     {
-        var codeBuilder = new StringBuilder(text.Length);
+        // Normalize all C# line terminators (\r\n, \r, U+0085, U+2028, U+2029) to \n before lexing.
+        string normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Replace('\u0085', '\n')
+            .Replace('\u2028', '\n')
+            .Replace('\u2029', '\n');
+        var codeBuilder = new StringBuilder(normalized.Length);
         int i = 0;
         int line = 1;
-        ScanCSharpSegment(rel, text, ref i, ref line, codeBuilder, violations, stopAtCloseBrace: false);
+        ScanCSharpSegment(rel, normalized, ref i, ref line, codeBuilder, violations, stopAtCloseBrace: false);
 
         string strippedCode = codeBuilder.ToString();
         foreach (Match match in ColorFromCallRegex().Matches(strippedCode))
