@@ -270,6 +270,9 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
         Dictionary<string, string> report = ParseReport(reportFile);
 
         Assert.Equal("False", report["visibleAfterDrainActivation"]);
+        Assert.Equal("False", report["secondClaimed"]);
+        Assert.Equal("ActivatedExisting", report["secondOutcome"]);
+        Assert.Equal(string.Empty, report["workerError"]);
         Assert.Equal("0", report["exitCode"]);
     }
 

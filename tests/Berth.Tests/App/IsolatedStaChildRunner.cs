@@ -26,6 +26,7 @@ internal static class IsolatedStaChildRunner
     public const string TrayAppWiringFirstRunScenario = "tray-wiring-first-run";
     public const string TrayAppWiringTrayOnlyScenario = "tray-wiring-tray-only";
     public const string ExitBlocksActivationDuringDrainScenario = "exit-blocks-activation-drain";
+    public const string ProductionTrayPlacementScenario = "production-tray-placement";
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
 
     public static int RunMain(string[] args)
@@ -184,6 +185,8 @@ internal static class IsolatedStaChildRunner
             TrayAppWiringTrayOnlyScenario => RunTrayAppWiringScenario(paths, log, instanceName, openWindow: false),
 
             ExitBlocksActivationDuringDrainScenario => RunExitBlocksActivationDuringDrainScenario(paths, log, instanceName),
+
+            ProductionTrayPlacementScenario => RunProductionTrayPlacementScenario(paths, log, instanceName),
 
             RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
 
@@ -658,6 +661,9 @@ internal static class IsolatedStaChildRunner
         TrayIcon? capturedIcon = null;
         TrayMenu? capturedMenu = null;
         bool visibleAfterDrainActivation = false;
+        bool secondClaimed = true;
+        SecondaryOutcome secondOutcome = SecondaryOutcome.Refused;
+        string workerError = string.Empty;
 
         int exitCode = TrayApp.RunWithInstance(
             openWindow: true,
@@ -695,29 +701,42 @@ internal static class IsolatedStaChildRunner
 
                 _ = Task.Run(() =>
                 {
-                    desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
-
-                    // Select Exit while Save is in flight, then attempt both a tray click and a second-instance activation.
-                    app.Dispatcher.Invoke(() =>
+                    try
                     {
-                        capturedMenu.ExitItem.PerformClick();
-                        typeof(System.Windows.Forms.NotifyIcon)
-                            .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                            .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
-                    });
+                        desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
 
-                    using var second = new SingleInstance(instanceName);
-                    if (!second.TryClaim())
-                    {
-                        _ = second.RunSecondary();
+                        // Select Exit while Save is in flight, then trigger a tray click.
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            capturedMenu.ExitItem.PerformClick();
+                            typeof(System.Windows.Forms.NotifyIcon)
+                                .GetMethod("OnMouseClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                                .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
+                        });
+
+                        // Trigger a second-instance pipe activation and record its exact outcome.
+                        using var second = new SingleInstance(instanceName);
+                        secondClaimed = second.TryClaim();
+                        if (!secondClaimed)
+                        {
+                            secondOutcome = second.RunSecondary();
+                        }
+
+                        // Wait at Background priority so any Normal-priority BeginInvoke queued by SingleInstance.Activated
+                        // has already executed on the primary UI dispatcher before sampling IsVisible.
+                        Thread.Sleep(50);
+                        app.Dispatcher.Invoke(
+                            () => visibleAfterDrainActivation = capturedWindow.IsVisible,
+                            DispatcherPriority.Background);
                     }
-
-                    // Pump UI thread to give any queued activation a chance to run, verify window stays hidden, then release Save.
-                    app.Dispatcher.Invoke(() =>
+                    catch (Exception ex)
                     {
-                        visibleAfterDrainActivation = capturedWindow.IsVisible;
-                    });
-                    desktop.ReleaseGate();
+                        workerError = ex.ToString();
+                    }
+                    finally
+                    {
+                        desktop.ReleaseGate();
+                    }
                 });
             });
 
@@ -725,6 +744,95 @@ internal static class IsolatedStaChildRunner
             reportFile,
             [
                 $"visibleAfterDrainActivation={visibleAfterDrainActivation}",
+                $"secondClaimed={secondClaimed}",
+                $"secondOutcome={secondOutcome}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunProductionTrayPlacementScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Desktop.SystemMonitors();
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        TrayMenu? capturedMenu = null;
+        string savedRectLine = string.Empty;
+        string observedRectLine = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: true,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            createMainWindow: null, // Explicitly exercise the production TrayApp window factory!
+            onAppStartup: app =>
+            {
+                try
+                {
+                    Berth.Window.MainWindow? win = app.Windows.OfType<Berth.Window.MainWindow>().FirstOrDefault();
+                    if (win is null || capturedMenu is null)
+                    {
+                        app.Shutdown(2);
+                        return;
+                    }
+
+                    IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+                    var moved = new WindowPlacement(140, 120, 1020, 680);
+                    _ = Berth.Window.NativeWindowBoundsInterop.Instance.TrySetWindowRect(hwnd, moved);
+                    if (Berth.Window.NativeWindowBoundsInterop.Instance.TryGetWindowRect(hwnd, out WindowPlacement observed))
+                    {
+                        observedRectLine = $"{observed.X},{observed.Y},{observed.Width},{observed.Height}";
+                    }
+
+                    // Update RestoreAutomatically on disk AFTER window opened to verify hide preserves live settings.
+                    var freshStore = new SettingsStore(paths);
+                    _ = freshStore.Update(s => s with { RestoreAutomatically = true });
+
+                    // Hide the window (saves placement), then reopen through tray menu and exit.
+                    win.Close();
+                    SettingsLoad afterHide = freshStore.Load();
+                    if (afterHide.Value.Window is { } saved)
+                    {
+                        savedRectLine = $"{saved.X},{saved.Y},{saved.Width},{saved.Height},{afterHide.Value.RestoreAutomatically}";
+                    }
+
+                    capturedMenu.OpenItem.PerformClick();
+                    capturedMenu.ExitItem.PerformClick();
+                }
+                catch
+                {
+                    app.Shutdown(3);
+                }
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"observed={observedRectLine}",
+                $"saved={savedRectLine}",
                 $"exitCode={exitCode}",
             ]);
 

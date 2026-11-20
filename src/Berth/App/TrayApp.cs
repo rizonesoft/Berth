@@ -163,7 +163,8 @@ internal static class TrayApp
                 effectiveComposition.Log,
                 MarshalToUi);
 
-            Func<IMainWindow> effectiveCreateMainWindow = createMainWindow ?? (() => new MainWindow());
+            Func<IMainWindow> effectiveCreateMainWindow = createMainWindow
+                ?? (() => new MainWindow(settingsStore, effectiveMonitors, effectiveComposition.Log));
             IMainWindow? mainWindow = null;
             bool firstWindowOpenedNotified = false;
             bool exitRequested = false;

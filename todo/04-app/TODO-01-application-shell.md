@@ -332,6 +332,8 @@ The window remembers its size and position and never opens off screen (SPEC §4,
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*WindowPlacementTests"` passes, and fails when an off-screen placement is accepted.
 
+> **Started:** 2026-11-20
+
 ## 11. Off-screen rendering of the window for review
 
 A way to turn the window, in a given state and theme, into a PNG with nobody looking, so the design lens of every `Surface: yes` review has a picture.
