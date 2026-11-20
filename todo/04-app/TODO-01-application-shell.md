@@ -44,7 +44,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [x] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [x] |
-| 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [ ] |
+| 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [x] |
 | 9 | §9 | Main window frame with two panes | §5 | [ ] |
 | 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [ ] |
 | 11 | §11 | Off-screen rendering of the window for review | §9 | [ ] |
@@ -273,6 +273,9 @@ The right-click menu of SPEC §12, wired to the same operations as the window.
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TrayMenuTests"` passes, and fails when "Restore layout" is enabled with no layout for the arrangement.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-20 | §8 | c762d7c1d8aa48a2204b2e4431619085d135a6b9
+> **Review:** `docs/reviews/d04-t01-s8.json`
 
 ## 9. Main window frame with two panes
 

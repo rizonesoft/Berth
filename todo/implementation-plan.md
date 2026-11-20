@@ -96,7 +96,7 @@ Sections: 11 | Checklist items: 72
 | [x]    | D04 T01 §5  | WPF application object and theme              | windows-host, display-session | 6     |
 | [x]    | D04 T01 §6  | Taskbar theme detection                       | none                          | 4     |
 | [x]    | D04 T01 §7  | Tray icon and tooltip                         | windows-host, display-session | 8     |
-| [ ]    | D04 T01 §8  | Tray menu                                     | windows-host, display-session | 8     |
+| [x]    | D04 T01 §8  | Tray menu                                     | windows-host, display-session | 8     |
 | [ ]    | D04 T01 §9  | Main window frame with two panes              | windows-host, display-session | 7     |
 | [ ]    | D04 T01 §10 | Window placement that persists                | windows-host, display-session | 7     |
 | [ ]    | D04 T01 §11 | Off-screen rendering of the window for review | windows-host, display-session | 6     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 56/88 verified sections, 2 ready to run now.
+Progress: 57/88 verified sections, 1 ready to run now.
 
 Checklist: 329/521 items completed (includes Commit items).
