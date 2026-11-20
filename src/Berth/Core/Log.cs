@@ -47,6 +47,9 @@ internal sealed class Log
         this.afterFailedAttempt = afterFailedAttempt;
     }
 
+    /// <summary>The full path of the active log file.</summary>
+    public string FilePath => paths.LogFile;
+
     /// <summary>How many attempts the last call made (1, or 2 after one failure).</summary>
     internal int LastAttempts { get; private set; }
 
@@ -61,6 +64,9 @@ internal sealed class Log
 
     /// <summary>A <c>FAIL</c> line, then the exception (type, message and stack) on lines that start with two spaces.</summary>
     public void Fail(string message, Exception error) => Append(level: LogLevel.Fail, message, error);
+
+    /// <summary>A <c>FAIL</c> line, then pre-formatted (e.g. redacted) multi-line details on lines that start with two spaces.</summary>
+    public void FailWithDetails(string message, string? details) => AppendDetails(LogLevel.Fail, message, details);
 
     public void Write(LogLevel level, string message) => Append(level, message, error: null);
 
@@ -84,7 +90,10 @@ internal sealed class Log
     /// The record as written: the header, with a CR or LF in the message written as <c>\r</c> or <c>\n</c> so one event
     /// is one header line, then any exception's lines, each starting with two spaces; every line ends CRLF.
     /// </summary>
-    internal string Record(LogLevel level, string message, Exception? error)
+    internal string Record(LogLevel level, string message, Exception? error) =>
+        RecordDetails(level, message, error?.ToString());
+
+    internal string RecordDetails(LogLevel level, string message, string? details)
     {
         ArgumentNullException.ThrowIfNull(message);
         string time = clock.GetUtcNow().UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
@@ -93,9 +102,9 @@ internal sealed class Log
         text.Append(time).Append(' ').Append(word).Append(' ')
             .Append(message.Replace("\r", @"\r", StringComparison.Ordinal).Replace("\n", @"\n", StringComparison.Ordinal))
             .Append("\r\n");
-        if (error is not null)
+        if (!string.IsNullOrEmpty(details))
         {
-            foreach (string line in error.ToString().ReplaceLineEndings("\n").Split('\n'))
+            foreach (string line in details.ReplaceLineEndings("\n").Split('\n'))
             {
                 text.Append("  ").Append(line).Append("\r\n");
             }
@@ -152,24 +161,44 @@ internal sealed class Log
                 record = Record(level, (message ?? string.Empty) + " (The error's details could not be written.)", error: null);
             }
 
-            byte[] bytes = Fit(record, cap);
-            for (int attempt = 1; attempt <= 2; attempt++)
-            {
-                LastAttempts = attempt;
-                try
-                {
-                    WriteOnce(bytes);
-                    return;
-                }
-                catch (Exception)
-                {
-                    afterFailedAttempt?.Invoke(attempt);
-                }
-            }
+            WriteRecord(record);
         }
         catch (Exception)
         {
             // Nothing is left that a log call may do but return.
+        }
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "A log call never throws (SPEC §18): a failed write must not end the operation it records.")]
+    private void AppendDetails(LogLevel level, string message, string? details)
+    {
+        LastAttempts = 0;
+        try
+        {
+            string record = RecordDetails(level, message ?? string.Empty, details);
+            WriteRecord(record);
+        }
+        catch (Exception)
+        {
+            // Nothing is left that a log call may do but return.
+        }
+    }
+
+    private void WriteRecord(string record)
+    {
+        byte[] bytes = Fit(record, cap);
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            LastAttempts = attempt;
+            try
+            {
+                WriteOnce(bytes);
+                return;
+            }
+            catch (Exception)
+            {
+                afterFailedAttempt?.Invoke(attempt);
+            }
         }
     }
 

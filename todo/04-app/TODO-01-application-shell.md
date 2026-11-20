@@ -106,6 +106,8 @@ One tray app per user and logon session, and a second start opens the first one'
 
 ## 3. Crash handling
 
+> **Started:** 2026-11-20T19:21Z
+
 An unhandled exception in the tray app is logged, shown and ends the process (SPEC §18, last bullet).
 
 **Phase:** 4
@@ -117,11 +119,11 @@ An unhandled exception in the tray app is logged, shown and ends the process (SP
 1. Add `CrashHandler` in `src/Berth/App/CrashHandler.cs`. Done when: an exception is written to the log with its stack.
 2. Hook the three sources. Done when: each source reaches the handler.
 
-- [ ] Add `CrashHandler(Log log, Func<string, bool> showMessage)` with `Handle(Exception error, string source)`: write `Log.Fail` with the exception, then call `showMessage` with "Something went wrong: `<message>`. The details are in the log." and the log file's path on a second line. Done when: a unit test passes a fake `showMessage`, asserts the text, and finds the stack in the log. Cheaper substitute: a message box with a raw stack trace.
-- [ ] Hook `Application.DispatcherUnhandledException` (handle it, then shut down with exit code 1), `AppDomain.CurrentDomain.UnhandledException` (log before the runtime ends the process) and `TaskScheduler.UnobservedTaskException` (log, observe, carry on) in `CrashHandler.Attach`. Done when: a unit test raises each through an internal `Raise` seam and sees the handler called with the right `source`. Cheaper substitute: swallowing UI-thread exceptions and carrying on with unknown state.
-- [ ] Replace the user's profile path and user name with `<profile>` and `<user>` in everything the handler writes or shows. Done when: a test with an exception message containing `Environment.UserName` finds neither in the log nor in the message. Cheaper substitute: logs a user cannot safely paste into an issue (`.github/ISSUE_TEMPLATE/bug_report.yml` asks for them).
-- [ ] Add `tests/Berth.Tests/App/CrashHandlerTests.cs`. Done when: all pass, and the redaction test fails when redaction is removed. Cheaper substitute: none needed.
-- [ ] Commit: `app: crash handling`
+- [x] Add `CrashHandler(Log log, Func<string, bool> showMessage)` with `Handle(Exception error, string source)`: write `Log.Fail` with the exception, then call `showMessage` with "Something went wrong: `<message>`. The details are in the log." and the log file's path on a second line. Done when: a unit test passes a fake `showMessage`, asserts the text, and finds the stack in the log. Cheaper substitute: a message box with a raw stack trace.
+- [x] Hook `Application.DispatcherUnhandledException` (handle it, then shut down with exit code 1), `AppDomain.CurrentDomain.UnhandledException` (log before the runtime ends the process) and `TaskScheduler.UnobservedTaskException` (log, observe, carry on) in `CrashHandler.Attach`. Done when: a unit test raises each through an internal `Raise` seam and sees the handler called with the right `source`. Cheaper substitute: swallowing UI-thread exceptions and carrying on with unknown state.
+- [x] Replace the user's profile path and user name with `<profile>` and `<user>` in everything the handler writes or shows. Done when: a test with an exception message containing `Environment.UserName` finds neither in the log nor in the message. Cheaper substitute: logs a user cannot safely paste into an issue (`.github/ISSUE_TEMPLATE/bug_report.yml` asks for them).
+- [x] Add `tests/Berth.Tests/App/CrashHandlerTests.cs`. Done when: all pass, and the redaction test fails when redaction is removed. Cheaper substitute: none needed.
+- [x] Commit: `app: crash handling`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*CrashHandlerTests"` passes, and fails when the user name is no longer redacted.
 
