@@ -206,6 +206,8 @@ The foundation plan's one technical bet: a console program with a detached conso
 
 ## 7. Help, version and usage errors
 
+> **Started:** 2026-11-20T16:55:39Z
+
 The usage text and what a mistake prints (SPEC §13, §17).
 
 **Phase:** 3
@@ -214,16 +216,16 @@ The usage text and what a mistake prints (SPEC §13, §17).
 
 **Build order:**
 
-1. Add the usage text in `src/Berth/Cli/Usage.cs`. Done when: `berth --help` prints it.
-2. Route usage errors. Done when: an unknown command prints the error and a hint, and exits 2.
+1. Add `Usage.Text` in `src/Berth/Cli/Usage.cs` and a shared `CliRunner.TryRunStandalone` handler used by both `CliRunner.Run` and `Program.Run` (without touching storage, desktop, or tray). **Corrected 2026-11-20:** unified `Help`, `Version`, and `Error` across `CliRunner.Run` and `Program.Run`, stuck strictly to SPEC §13 forms (`--help`, `-h`, `/?`, `--version`), and documented the two-line parser diagnostic in `design/SPEC.md` §13. Done when: `berth --help` prints `Usage.Text`.
+2. Add `tests/Berth.Tests/Cli/UsageTests.cs` checking structural completeness of `Usage.Text` (exact first line, both headings, 8 distinct command rows, 4 exit-code rows) and exercising `--help`, `-h`, `/?`, `--version`, `frobnicate`, and `save --name` through both `CliRunner.Run` and `Program.Run`. Done when: all pass in Release.
 
-- [ ] Add `Usage.Text`: a first line `Berth saves the positions of your desktop icons and puts them back.`, a `Usage:` block listing every SPEC §13 command with its one-line description (the "Does" column), and an `Exit codes:` block with the four codes. Done when: a unit test asserts every command and every exit code of SPEC §13 appears. Cheaper substitute: a help text maintained apart from the command list, which drifts.
-- [ ] Implement `Help` (print `Usage.Text` to `output`, return 0) and `Version` (print `Berth ` plus `AppInfo.Version`, return 0), replacing the temporary code in `Program.cs`. Done when: unit tests compare both. Cheaper substitute: two version strings.
-- [ ] For `CliArguments.Error`, write `berth: <error>` and then `Run "berth --help" for the commands.` to `error`, and return 2, without starting the tray app. Done when: a unit test for `berth frobnicate` gets both lines and 2. Cheaper substitute: printing the whole usage text on every typo.
-- [ ] Add `tests/Berth.Tests/Cli/UsageTests.cs`. Done when: all pass, and the completeness test fails when a command is removed from `Usage.Text`. Cheaper substitute: none needed.
-- [ ] Commit: `cli: help, version and usage errors`
+- [x] Add `Usage.Text` in `src/Berth/Cli/Usage.cs`: exact first line `Berth saves the positions of your desktop icons and puts them back.`, a `Usage:` block listing 8 distinct command rows (`berth`, `berth save`, `berth save --name <name>`, `berth restore`, `berth undo`, `berth list`, `berth --help, -h, /?`, `berth --version`) with their descriptions, and an `Exit codes:` block with 4 separate exit-code rows (`0`, `1`, `2`, `3`). **Corrected 2026-11-20:** verified exact line prefixes so removing bare `berth` or standalone `berth save` fails even while `berth save --name <name>` remains. Done when: `UsageTests` verifies exact structure. Cheaper substitute: a help text maintained apart from the command list, which drifts.
+- [x] Implement `Help` (print `Usage.Text` to `output`, return 0) and `Version` (print `Berth ` plus `AppInfo.Version`, return 0) in shared `CliRunner.TryRunStandalone`, replacing the temporary `--version` branch in `Program.cs`. **Corrected 2026-11-20:** unified both entry points and verified `--help`, `-h`, `/?`, and `--version` through both `CliRunner.Run` and `Program.Run` with throwing storage/desktop/monitor delegates. Done when: unit tests compare both streams and exit 0. Cheaper substitute: two version strings.
+- [x] For `CliArguments.Error`, write `berth: <error>` and then `Run "berth --help" for the commands.` to `error`, empty `output`, and return 2, without starting the tray app or resolving storage (clarified in `design/SPEC.md` §13). **Corrected 2026-11-20:** tested `frobnicate`, `save --name`, and `--nope` through both `CliRunner.Run` and `Program.Run`. Done when: both entry points get exact two-line stderr, empty stdout, and exit 2. Cheaper substitute: printing the whole usage text on every typo.
+- [x] Add `tests/Berth.Tests/Cli/UsageTests.cs`. Done when: all pass, and the completeness test fails when a command row is removed from `Usage.Text`. Cheaper substitute: none needed.
+- [x] Commit: `cli: help, version and usage errors`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*UsageTests"` passes, and fails when `undo` is removed from `Usage.Text`.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UsageTests" --filter-class "*SaveCommandTests" --filter-class "*CliArgumentsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when `undo` or `berth save` is removed from `Usage.Text`.
 
 ## 8. Process tests of every command and exit code
 

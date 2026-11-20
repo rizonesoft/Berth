@@ -46,14 +46,9 @@ internal static class Program
                 TestModeSwitches.Apply(paths, readEnv);
             }
 
-            if (parsed.Error is not null)
+            if (CliRunner.TryRunStandalone(parsed, output, error, out int standaloneExit))
             {
-                exitCode = CliExit.Usage;
-            }
-            else if (parsed.Command == CliCommand.Version)
-            {
-                output.WriteLine("Berth " + AppInfo.Version);
-                exitCode = CliExit.Done;
+                exitCode = standaloneExit;
             }
             else if (parsed.Command == CliCommand.List)
             {

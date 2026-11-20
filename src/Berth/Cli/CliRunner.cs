@@ -32,9 +32,9 @@ internal sealed class CliRunner
     public int Run(CliArguments args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        if (args.Error is not null)
+        if (TryRunStandalone(args, _output, _error, out int standaloneExit))
         {
-            return CliExit.Usage;
+            return standaloneExit;
         }
 
         return args.Command switch
@@ -44,6 +44,42 @@ internal sealed class CliRunner
             CliCommand.Undo => WriteOperationResult(_service.Undo()),
             _ => CliExit.Usage,
         };
+    }
+
+    /// <summary>
+    /// Handles commands that require no storage, desktop, or tray state (<c>--help</c>, <c>--version</c>, and parser
+    /// usage errors) through one shared path used by both <see cref="Run"/> and <c>Program.Run</c> (SPEC §13, §17).
+    /// </summary>
+    public static bool TryRunStandalone(CliArguments args, TextWriter output, TextWriter error, out int exitCode)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(error);
+
+        if (args.Error is not null)
+        {
+            error.WriteLine($"berth: {args.Error}");
+            error.WriteLine("Run \"berth --help\" for the commands.");
+            exitCode = CliExit.Usage;
+            return true;
+        }
+
+        if (args.Command == CliCommand.Help)
+        {
+            output.WriteLine(Usage.Text);
+            exitCode = CliExit.Done;
+            return true;
+        }
+
+        if (args.Command == CliCommand.Version)
+        {
+            output.WriteLine("Berth " + AppInfo.Version);
+            exitCode = CliExit.Done;
+            return true;
+        }
+
+        exitCode = 0;
+        return false;
     }
 
     /// <summary>

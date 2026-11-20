@@ -143,7 +143,10 @@ public sealed class SaveCommandTests
             folder: _ => throw new InvalidOperationException("folder must not be queried for parser errors"));
         Assert.Equal(CliExit.Usage, missingCode);
         Assert.Equal(string.Empty, outMissing.ToString());
-        Assert.Equal(string.Empty, errMissing.ToString());
+        Assert.Equal(
+            $"berth: --name needs a value{Environment.NewLine}" +
+            $"Run \"berth --help\" for the commands.{Environment.NewLine}",
+            errMissing.ToString());
     }
 
     [Fact]
