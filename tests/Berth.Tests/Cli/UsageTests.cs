@@ -1,14 +1,11 @@
 using Berth.Cli;
 using Berth.Core;
 using Berth.Core.Model;
-using Berth.Tests.Fakes;
 
 namespace Berth.Tests.Cli;
 
 public sealed class UsageTests
 {
-    private static readonly MonitorInfo[] OneMonitor = [new(0, 0, 1920, 1080, 100, true)];
-
     [Fact]
     public void UsageTextMatchesCompleteExpectedLinesForAllCommandsAndExitCodes()
     {
@@ -41,7 +38,7 @@ public sealed class UsageTests
     public void HelpAndVersionFormsWorkIdenticallyThroughCliRunnerAndProgramRunWithoutTouchingStorageOrDesktop()
     {
         using var data = new TestData();
-        (LayoutService service, FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths) = CreateWatchedService(data.Root);
+        (LayoutService service, BerthPaths paths) = CreateThrowingService(data.Root);
 
         // Every SPEC §13 help form: --help, -h, /?.
         foreach (string flag in new[] { "--help", "-h", "/?" })
@@ -52,7 +49,7 @@ public sealed class UsageTests
             Assert.Equal(0, runnerCode);
             Assert.Equal(Usage.Text + Environment.NewLine, runnerOut.ToString());
             Assert.Equal(string.Empty, runnerErr.ToString());
-            AssertZeroDependencyAccess(desktop, monitors, paths);
+            Assert.False(File.Exists(paths.LogFile));
 
             var progOut = new StringWriter();
             var progErr = new StringWriter();
@@ -77,7 +74,7 @@ public sealed class UsageTests
         Assert.Equal(0, verRunnerCode);
         Assert.Equal(expectedVersion, verRunnerOut.ToString());
         Assert.Equal(string.Empty, verRunnerErr.ToString());
-        AssertZeroDependencyAccess(desktop, monitors, paths);
+        Assert.False(File.Exists(paths.LogFile));
 
         var verProgOut = new StringWriter();
         var verProgErr = new StringWriter();
@@ -98,7 +95,7 @@ public sealed class UsageTests
     public void UsageErrorsPrintTwoLineDiagnosticToStderrWithEmptyStdoutAndExit2ThroughBothEntryPoints()
     {
         using var data = new TestData();
-        (LayoutService service, FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths) = CreateWatchedService(data.Root);
+        (LayoutService service, BerthPaths paths) = CreateThrowingService(data.Root);
 
         (string[] Args, string ExpectedFirstLine)[] cases =
         [
@@ -119,7 +116,7 @@ public sealed class UsageTests
             Assert.Equal(2, runnerCode);
             Assert.Equal(string.Empty, runnerOut.ToString());
             Assert.Equal(expectedErr, runnerErr.ToString());
-            AssertZeroDependencyAccess(desktop, monitors, paths);
+            Assert.False(File.Exists(paths.LogFile));
 
             var progOut = new StringWriter();
             var progErr = new StringWriter();
@@ -137,28 +134,40 @@ public sealed class UsageTests
         }
     }
 
-    private static (LayoutService Service, FakeDesktopIcons Desktop, FakeMonitors Monitors, BerthPaths Paths) CreateWatchedService(string root)
+    private static (LayoutService Service, BerthPaths Paths) CreateThrowingService(string root)
     {
         BerthPaths paths = BerthPaths.ForRoot(root);
-        var desktop = new FakeDesktopIcons();
-        var monitors = new FakeMonitors(OneMonitor);
+        // Place a file at LayoutsFolder so any LayoutStore.LoadAll() or Save() call throws IOException immediately.
+        Directory.CreateDirectory(paths.DataRoot);
+        File.WriteAllText(paths.LayoutsFolder, "unreadable-layouts-folder");
+        var clock = new ThrowingTimeProvider();
         var service = new LayoutService(
-            desktop,
-            monitors,
+            new ThrowingDesktopIcons(),
+            new ThrowingMonitors(),
             new LayoutStore(paths),
             paths,
             new OperationLock(paths, TimeSpan.FromSeconds(1)),
-            new Log(paths, TimeProvider.System),
-            TimeProvider.System);
-        return (service, desktop, monitors, paths);
+            new Log(paths, clock),
+            clock);
+        return (service, paths);
     }
 
-    private static void AssertZeroDependencyAccess(FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths)
+    private sealed class ThrowingDesktopIcons : IDesktopIcons
     {
-        Assert.Equal(0, desktop.Reads);
-        Assert.Empty(desktop.Calls);
-        Assert.Equal(0, monitors.Reads);
-        Assert.False(Directory.Exists(paths.LayoutsFolder));
-        Assert.False(File.Exists(paths.LogFile));
+        public bool AutoArrange => throw new InvalidOperationException("Desktop AutoArrange must not be read.");
+        public IReadOnlyList<IconPosition> ReadIcons() => throw new InvalidOperationException("Desktop ReadIcons must not be called.");
+        public void SetPositions(IReadOnlyList<IconPosition> icons) => throw new InvalidOperationException("Desktop SetPositions must not be called.");
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove) => throw new InvalidOperationException("Desktop SetPositions must not be called.");
+        public bool TryTurnAutoArrangeOff() => throw new InvalidOperationException("Desktop TryTurnAutoArrangeOff must not be called.");
+    }
+
+    private sealed class ThrowingMonitors : IMonitors
+    {
+        public IReadOnlyList<MonitorInfo> Read() => throw new InvalidOperationException("Monitors Read must not be called.");
+    }
+
+    private sealed class ThrowingTimeProvider : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => throw new InvalidOperationException("Clock must not be read.");
     }
 }
