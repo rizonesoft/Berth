@@ -1,0 +1,86 @@
+{
+  "ref": "D05 T01 \u00a71",
+  "title": "Window view model and desktop polling",
+  "implementation_sha": "afd8b118a65ab06fc924bbdc996e79e36d1f9dc4",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s1.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *MainViewModelTests --filter-class *DesktopPollerTests --filter-class *MainWindowPollerWiringTests --filter-class *MainWindowFrameTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s1.md",
+    "verdict": "reconciled",
+    "candidate": "afd8b118a65ab06fc924bbdc996e79e36d1f9dc4",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s1.md",
+    "candidate": "2f3a42adb930eb434838677fc6aafd1e598869d8",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "2f3a42adb930eb434838677fc6aafd1e598869d8",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

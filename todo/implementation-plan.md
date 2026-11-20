@@ -107,7 +107,7 @@ Sections: 14 | Checklist items: 100
 
 | Status | Reference   | Deliverable                               | Needs                         | Items |
 | ------ | ----------- | ----------------------------------------- | ----------------------------- | ----- |
-| [ ]    | D05 T01 §1  | Window view model and desktop polling     | none                          | 7     |
+| [x]    | D05 T01 §1  | Window view model and desktop polling     | none                          | 7     |
 | [ ]    | D05 T01 §2  | Layouts pane                              | windows-host, display-session | 7     |
 | [ ]    | D05 T01 §3  | Detail header and action buttons          | windows-host, display-session | 8     |
 | [ ]    | D05 T01 §4  | Position map: monitors and markers        | windows-host, display-session | 8     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 61/88 verified sections, 1 ready to run now.
+Progress: 62/88 verified sections, 1 ready to run now.
 
-Checklist: 353/521 items completed (includes Commit items).
+Checklist: 360/521 items completed (includes Commit items).

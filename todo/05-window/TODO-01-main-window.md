@@ -37,7 +37,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Window view model and desktop polling | D04 T01 §9, D01 T01 §16, D02 T01 §8 | [ ] |
+| 1 | §1 | Window view model and desktop polling | D04 T01 §9, D01 T01 §16, D02 T01 §8 | [x] |
 | 2 | §2 | Layouts pane | §1, D04 T01 §11 | [ ] |
 | 3 | §3 | Detail header and action buttons | §2 | [ ] |
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [ ] |
@@ -65,17 +65,20 @@ The state behind the window, testable with fakes and no window: the rows, the se
 1. Add `MainViewModel` in `src/Berth/Window/MainViewModel.cs`. Done when: it lists layouts and selects the right row.
 2. Add the poller. Done when: it reads only while visible.
 
-- [ ] Add `ObservableObject` (an `INotifyPropertyChanged` base with `Set`) and `RelayCommand` (an `ICommand` with `CanExecute`) in `src/Berth/Window/Mvvm/`. Done when: unit tests see `PropertyChanged` raised once per change and `CanExecuteChanged` raised by `RaiseCanExecuteChanged`. Cheaper substitute: a third-party MVVM package for two small classes (foundation plan, "Tech stack").
-- [ ] Add `LayoutRow` (`Key`, `Name`, `Subtitle` from `Formats.MonitorCount` and `Formats.IconCount` joined by ` · `, `IsActive`, `IsUnsaved`) and `MainViewModel.Rows`, built from `LayoutStore.LoadAll()` and the current arrangement key: the active layout first, the rest by name ignoring case, and a first row `This arrangement` with subtitle `Not saved yet` when the current arrangement has no layout (SPEC §5). Done when: unit tests cover no layouts, an active layout, and an unsaved arrangement beside two saved ones. Cheaper substitute: sorting by file date.
-- [ ] Add `Selected` with the opening rule: the active row, or the `This arrangement` row when unsaved; after a reload, keep the same key selected when it still exists, else fall back to the opening rule. Done when: unit tests cover opening, a reload that keeps the selection, and a deletion of the selected layout. Cheaper substitute: selecting index 0 after every reload, which jumps the user's selection every 5 seconds.
-- [ ] Add `DesktopState` (`Icons`, `Monitors`, `AutoArrange`, `Unavailable`, `CheckedAt`) and `MainViewModel.Refresh()`, which reads `IDesktopIcons` and `IMonitors` off the UI thread, reloads the rows, and rebuilds the selected layout's `LayoutComparison` (`Compare` for the active layout, `Neutral` for another arrangement or an unreachable desktop, `Unsaved` for the unsaved row). Done when: unit tests with fakes cover each of the four comparison kinds. Cheaper substitute: reading the shell on the UI thread.
-- [ ] Add `DesktopPoller` in `src/Berth/Window/DesktopPoller.cs`: calls `Refresh` when started, every `Berth.VisiblePollSeconds` while started, and never overlaps two reads; `MainWindow` starts it on `IsVisibleChanged` to `true` and on `Activated`, and stops it when hidden. Done when: a unit test with a fake timer sees one read on start, one per tick, none after stop, and a second tick during a slow read skipped. Cheaper substitute: a timer that keeps reading the shell while the window is hidden (SPEC §4).
-- [ ] Add `tests/Berth.Tests/Window/MainViewModelTests.cs` and `DesktopPollerTests.cs`. Done when: all pass, and the hidden-window test fails when the poller ignores `Stop`. Cheaper substitute: testing the view model only through the rendered window.
-- [ ] Commit: `window: view model and desktop polling`
+- [x] Add `ObservableObject` (an `INotifyPropertyChanged` base with `Set`) and `RelayCommand` (an `ICommand` with `CanExecute`) in `src/Berth/Window/Mvvm/`. Done when: unit tests see `PropertyChanged` raised once per change and `CanExecuteChanged` raised by `RaiseCanExecuteChanged`. Cheaper substitute: a third-party MVVM package for two small classes (foundation plan, "Tech stack").
+- [x] Add `LayoutRow` (`Key`, `Name`, `Subtitle` from `Formats.MonitorCount` and `Formats.IconCount` joined by ` · `, `IsActive`, `IsUnsaved`) and `MainViewModel.Rows`, built from `LayoutStore.LoadAll()` and the current arrangement key: the active layout first, the rest by name ignoring case, and a first row `This arrangement` with subtitle `Not saved yet` when the current arrangement has no layout (SPEC §5). Done when: unit tests cover no layouts, an active layout, and an unsaved arrangement beside two saved ones. Cheaper substitute: sorting by file date.
+- [x] Add `Selected` with the opening rule: the active row, or the `This arrangement` row when unsaved; after a reload, keep the same key selected when it still exists, else fall back to the opening rule. Done when: unit tests cover opening, a reload that keeps the selection, and a deletion of the selected layout. Cheaper substitute: selecting index 0 after every reload, which jumps the user's selection every 5 seconds.
+- [x] Add `DesktopState` (`Icons`, `Monitors`, `AutoArrange`, `Unavailable`, `CheckedAt`) and `MainViewModel.Refresh()`, which reads `IDesktopIcons` and `IMonitors` off the UI thread, reloads the rows, and rebuilds the selected layout's `LayoutComparison` (`Compare` for the active layout, `Neutral` for another arrangement or an unreachable desktop, `Unsaved` for the unsaved row). Done when: unit tests with fakes cover each of the four comparison kinds. Cheaper substitute: reading the shell on the UI thread.
+- [x] Add `DesktopPoller` in `src/Berth/Window/DesktopPoller.cs`: calls `Refresh` when started, every `Berth.VisiblePollSeconds` while started, and never overlaps two reads; `MainWindow` starts it on `IsVisibleChanged` to `true` and on `Activated`, and stops it when hidden. Done when: a unit test with a fake timer sees one read on start, one per tick, none after stop, and a second tick during a slow read skipped. Cheaper substitute: a timer that keeps reading the shell while the window is hidden (SPEC §4).
+- [x] Add `tests/Berth.Tests/Window/MainViewModelTests.cs` and `DesktopPollerTests.cs`. Done when: all pass, and the hidden-window test fails when the poller ignores `Stop`. Cheaper substitute: testing the view model only through the rendered window.
+- [x] Commit: `window: view model and desktop polling`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MainViewModelTests"` and `--filter-class "*DesktopPollerTests"` pass, and the poller test fails when a stopped poller still reads.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-21 | §1 | afd8b118a65ab06fc924bbdc996e79e36d1f9dc4
+> **Review:** `docs/reviews/d05-t01-s1.json`
 
 ## 2. Layouts pane
 
