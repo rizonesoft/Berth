@@ -2,7 +2,7 @@
 schema_version: 1
 id: command-line
 domain: 03-cli
-status: active
+status: done
 title: "TODO-01 -- Command line"
 depends_on: ["layout-core", "desktop-access"]
 ---
@@ -43,7 +43,7 @@ depends_on: ["layout-core", "desktop-access"]
 | 5 | §5 | The undo command | §4 | [x] |
 | 6 | §6 | The list command | §3, D01 T01 §17 | [x] |
 | 7 | §7 | Help, version and usage errors | §3 | [x] |
-| 8 | §8 | Process tests of every command and exit code | §2, §5, §6, §7 | [ ] |
+| 8 | §8 | Process tests of every command and exit code | §2, §5, §6, §7 | [x] |
 
 ## 1. Argument parser
 
@@ -252,6 +252,9 @@ The built executable, started for real, against the real desktop with a probe ic
 - [x] Commit: `cli: process tests of every command and exit code`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ProcessTests" --filter-class "*LayerRuleTests"` passes on the build machine with `0` skipped, and its refusal test fails when `restore` with no layout exits 0.
+
+> **Verified:** 2026-11-20 | §8 | 5f592bb72074b563a1ad2d1dfcd24845e6788b15
+> **Review:** `docs/reviews/d03-t01-s8.json`
 
 ## Verification
 

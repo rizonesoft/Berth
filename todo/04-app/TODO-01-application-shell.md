@@ -11,7 +11,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 
 > **Goal:** `berth.exe` with no arguments runs once per user as a tray app with its icon, tooltip and menu, an empty two-pane main window in the Windows theme, crash handling, and a way to render the window to a PNG so every later surface can be reviewed without a person looking.
 
-> **Current state:** Measured 2026-11-15. `Program.Main` routes commands to `CliRunner` (`D03 T01 §3`) and has no branch for "no arguments". No WPF or Windows Forms code exists. `design/tokens.json` holds the values, and `assets/icon/` the three `.ico` files.
+> **Current state:** Measured 2026-11-20. `D01 T01`, `D02 T01`, and `D03 T01` are `done`; `Program.Main` (`Program.Run`) routes all CLI commands through `CliRunner` and `Composition.Create` (`D03 T01 §1`-`§8`) and has no tray-app branch for no arguments yet. No WPF or Windows Forms code exists. `design/tokens.json` holds the values, and `assets/icon/` the three `.ico` files.
 
 ## Inputs
 
