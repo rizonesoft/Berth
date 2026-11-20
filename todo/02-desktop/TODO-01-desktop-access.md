@@ -45,7 +45,7 @@ depends_on: ["layout-core"]
 | 5 | §4 | Setting icon positions | §3 | [x] |
 | 6 | §5 | Auto arrange read and clear | §9 | [x] |
 | 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
-| 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [ ] |
+| 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [x] |
 | 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [ ] |
 | 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
 
@@ -298,6 +298,9 @@ A wrapper that lets Berth see and move only icons whose display name starts with
 - [x] Commit: `desktop: desktop scoped to icons with a name prefix`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ScopedDesktopIconsTests" --filter-class "*ReadIconsTests" --filter-class "*SetPositionsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when a nonmatching owner icon receives `GetItemPosition` or a move, when an out-of-scope/spoofed/removed/renamed position is forwarded, when a valid probe is dropped, when `beforeMove` fires out of order or is skipped on a reachable empty filtered batch, or when `TryTurnAutoArrangeOff` calls `inner`.
+
+> **Verified:** 2026-11-20 | §10 | e302fbf2438812807f2c2e0b07fc440c0d936d75
+> **Review:** `docs/reviews/d02-t01-s10.json`
 
 ## Verification
 
