@@ -47,6 +47,8 @@ depends_on: ["layout-core", "desktop-access"]
 
 ## 1. Argument parser
 
+> **Started:** 2026-11-20T14:42Z
+
 A small hand-written parser: the grammar is six commands and one option, which no library is needed for.
 
 **Phase:** 3
@@ -55,16 +57,16 @@ A small hand-written parser: the grammar is six commands and one option, which n
 
 **Build order:**
 
-1. Add `CliArguments` in `src/Berth/Cli/CliArguments.cs`. Done when: every SPEC §13 command parses.
-2. Add the usage errors. Done when: each bad input returns an error that names it.
+1. Add `CliCommand` and `CliArguments` in `src/Berth/Cli/CliArguments.cs` and record exact usage diagnostics and `--name=<name>` in `design/SPEC.md` §13. Done when: every SPEC §13 command and `--name` form parses strictly (lowercase exact match, empty string preserved as `""` distinct from `null`) and every invalid invocation returns `(None, null, <SPEC §13 diagnostic>)`.
+2. Add `tests/Berth.Tests/Cli/CliArgumentsTests.cs` covering all valid forms, empty vs missing `--name`, case/prefix/empty-first-arg rejections, and all six usage-error diagnostics. Done when: all pass with `0` skipped in Release.
 
-- [ ] Add `CliCommand` (`None`, `Save`, `Restore`, `Undo`, `List`, `Help`, `Version`) and `CliArguments(CliCommand Command, string? Name, string? Error)` with `CliArguments.Parse(string[] args)`: no arguments gives `None`; `save`, `restore`, `undo`, `list` (lowercase only), `--help`, `-h`, `/?` and `--version` give their commands. Done when: a test per form passes. Cheaper substitute: accepting any prefix or case, which makes a typo run a command.
-- [ ] Accept `--name <name>` and `--name=<name>` only after `save`, storing `Name`. Done when: tests cover both forms and a name with spaces passed as one argument. Cheaper substitute: joining the remaining arguments with spaces, which mangles quoting.
-- [ ] Return `Error` (and `Command` `None`) for: an unknown command (`unknown command "x"`), an unknown option (`unknown option "--x"`), `--name` with no value (`--name needs a value`), `--name` given twice, `--name` on a command other than `save`, and any extra argument after a complete command. Done when: a test per case asserts the message. Cheaper substitute: ignoring what is not understood.
-- [ ] Add `tests/Berth.Tests/Cli/CliArgumentsTests.cs`. Done when: all pass, and the unknown-command test fails when unknown words are treated as `None` (which would start the tray app, against SPEC §17). Cheaper substitute: testing only valid input.
-- [ ] Commit: `cli: argument parser`
+- [x] Add `CliCommand` (`None`, `Save`, `Restore`, `Undo`, `List`, `Help`, `Version`) and `CliArguments(CliCommand Command, string? Name, string? Error)` with `CliArguments.Parse(string[] args)` (`ArgumentNullException.ThrowIfNull(args)`): no arguments gives `(None, null, null)`; `save`, `restore`, `undo`, `list` (lowercase exact match only), `--help`, `-h`, `/?` and `--version` give their commands with `Name: null, Error: null`. **Corrected 2026-11-20:** added negative tests for wrong case (`Save`), prefix (`rest`), and empty first argument (`""`) so none can match or launch the tray app. Done when: a test per positive and negative form passes asserting the full `(Command, Name, Error)` record. Cheaper substitute: accepting any prefix or case, which makes a typo run a command.
+- [x] Accept `--name <name>` and `--name=<name>` only after `save`, storing `Name` verbatim (preserving an explicitly supplied empty value `""` distinct from `null` so §10 produces `Enter a name.`, while consuming the next token verbatim in `save --name --name Docked` so `Docked` triggers `unexpected argument "Docked"`), and document both forms and exact diagnostics in `design/SPEC.md` §13. **Corrected 2026-11-20:** clarified empty-value preservation (`save --name ""`, `save --name=`) vs missing argument (`save --name`), `save --name --name Docked` behavior, and spec update in `design/SPEC.md` §13. Done when: tests cover space/equals forms, spaces in one argument, empty-string preservation, missing value, and `save --name --name Docked`. Cheaper substitute: joining the remaining arguments with spaces or discarding empty values.
+- [x] Return `(None, null, <diagnostic>)` (sanitizing `<arg>` via `Messages.SingleLine`) for: unknown command (`unknown command "<arg>"`), unknown option (first arg starting with `-` or after a known command: `unknown option "<arg>"`), `--name` with no value (`--name needs a value`), duplicate `--name` (`--name may be given only once`), `--name` on any command other than `save` (`--name is only valid with save`), and any extra positional argument (`unexpected argument "<arg>"`). **Corrected 2026-11-20:** pinned exact SPEC §13 diagnostic wording for all six usage errors and first-arg `--x` vs post-command `--x` classification. Done when: a test per case asserts the full `(None, null, <exact message>)` record. Cheaper substitute: ignoring what is not understood.
+- [x] Add `tests/Berth.Tests/Cli/CliArgumentsTests.cs`. Done when: all pass with `0` skipped in Release, asserting both `[]` -> `(None, null, null)` and `["frobnicate"]` -> `(None, null, "unknown command \"frobnicate\"")` so dropping `Error` fails. Cheaper substitute: testing only valid input.
+- [x] Commit: `cli: argument parser`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*CliArgumentsTests"` passes, and fails when an unknown first argument parses as `None`.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*CliArgumentsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an unknown first argument drops `Error` or matches case-insensitively/by prefix.
 
 ## 2. Console behaviour proven with real processes
 
