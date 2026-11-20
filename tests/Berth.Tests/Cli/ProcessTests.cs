@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Berth.Cli;
 using Berth.Core;
@@ -20,10 +21,10 @@ public sealed class ProcessTests
         using var data = new TestData();
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
 
-        // 1) --version
+        // 1) --version (literal SPEC §13 string)
         BerthProcessResult version = BerthProcess.Run(data.Root, ["--version"]);
         Assert.Equal(0, version.ExitCode);
-        Assert.Equal($"Berth {AppInfo.Version}{Environment.NewLine}", version.StandardOutput);
+        Assert.Equal($"Berth 0.1.0{Environment.NewLine}", version.StandardOutput);
         Assert.Equal(string.Empty, version.StandardError);
 
         // 2) --help
@@ -73,7 +74,7 @@ public sealed class ProcessTests
         Assert.True(File.Exists(paths.LogFile), "Expected refusal to write a WARN line to local\\logs\\berth.log.");
         string[] logLines = File.ReadAllLines(paths.LogFile);
         string soleLine = Assert.Single(logLines);
-        Assert.EndsWith(" WARN This monitor arrangement has no saved layout.", soleLine, StringComparison.Ordinal);
+        AssertLogLine(soleLine, "WARN", "This monitor arrangement has no saved layout.");
 
         before.AssertUnchanged();
     }
@@ -88,17 +89,20 @@ public sealed class ProcessTests
         Directory.CreateDirectory(paths.DataRoot);
         File.WriteAllText(paths.LayoutsFolder, "not-a-directory");
 
+        // Independently obtain the OS reason for enumerating the regular-file fixture path.
+        IOException osError = Assert.ThrowsAny<IOException>(() => _ = Directory.GetFiles(paths.LayoutsFolder));
+        string expectedSentence = $"Berth could not read {paths.LayoutsFolder}: {osError.Message.TrimEnd('.', ' ')}.";
+
         BerthProcessResult result = BerthProcess.Run(data.Root, ["list"]);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardOutput);
-        Assert.StartsWith($"Berth could not read {paths.LayoutsFolder}: ", result.StandardError, StringComparison.Ordinal);
-        Assert.EndsWith($".{Environment.NewLine}", result.StandardError, StringComparison.Ordinal);
+        Assert.Equal(expectedSentence + Environment.NewLine, result.StandardError);
 
         Assert.True(File.Exists(paths.LogFile), "Expected folder-read failure to write a FAIL line to local\\logs\\berth.log.");
         string[] logLines = File.ReadAllLines(paths.LogFile);
         string soleLine = Assert.Single(logLines);
-        Assert.EndsWith($" FAIL {result.StandardError.TrimEnd()}", soleLine, StringComparison.Ordinal);
+        AssertLogLine(soleLine, "FAIL", expectedSentence);
 
         before.AssertUnchanged();
     }
@@ -199,20 +203,36 @@ public sealed class ProcessTests
                 $"* {layoutName}  {Formats.MonitorCount(savedLayout.Monitors.Length)}  1 icon  {Formats.ListDate(savedLayout.SavedAt, TimeZoneInfo.Local)}{Environment.NewLine}";
             Assert.Equal(expectedListLine, list.StandardOutput);
 
-            // Verify ordered log events: save (INFO), restore (INFO), undo (INFO), second undo (WARN), and NO entry from list.
+            // Verify ordered log events with strict SPEC §18 UTC timestamp, level, and complete message.
             Assert.True(File.Exists(paths.LogFile));
             string[] logLines = File.ReadAllLines(paths.LogFile);
             Assert.Equal(4, logLines.Length);
-            Assert.EndsWith($" INFO Saved 1 icon to \"{layoutName}\".", logLines[0], StringComparison.Ordinal);
-            Assert.EndsWith($" INFO Restored 1 icon from \"{layoutName}\".", logLines[1], StringComparison.Ordinal);
-            Assert.EndsWith(" INFO Put 1 icon back.", logLines[2], StringComparison.Ordinal);
-            Assert.EndsWith(" WARN There is nothing to undo.", logLines[3], StringComparison.Ordinal);
+            AssertLogLine(logLines[0], "INFO", $"Saved 1 icon to \"{layoutName}\".");
+            AssertLogLine(logLines[1], "INFO", $"Restored 1 icon from \"{layoutName}\".");
+            AssertLogLine(logLines[2], "INFO", "Put 1 icon back.");
+            AssertLogLine(logLines[3], "WARN", "There is nothing to undo.");
         }
 
         // Probe file must be gone after ProbeIcon.Dispose().
         Assert.False(File.Exists(probeFilePath), $"Probe file '{probeFilePath}' was not removed on disposal.");
 
         before.AssertUnchanged();
+    }
+
+    private static void AssertLogLine(string line, string expectedLevel, string expectedMessage)
+    {
+        Assert.True(line.Length > 21, $"Log line too short for SPEC §18 format: '{line}'.");
+        string timestamp = line[..20];
+        Assert.True(
+            DateTimeOffset.TryParseExact(
+                timestamp,
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal,
+                out _),
+            $"Invalid SPEC §18 UTC timestamp '{timestamp}' in log line '{line}'.");
+        Assert.Equal(' ', line[20]);
+        Assert.Equal($"{expectedLevel} {expectedMessage}", line[21..]);
     }
 
     private static IconPosition WaitForDistinctPosition(ScopedDesktopIcons scoped, IconPosition original, TimeSpan timeout)
@@ -263,43 +283,76 @@ public sealed class ProcessTests
             _local.AssertEqual(after._local);
         }
 
-        private sealed record FileEntry(string RelativePath, long Length, DateTime LastWriteUtc);
+        private sealed record FsEntry(string RelativePath, bool IsDirectory, bool IsReparsePoint, long Length, DateTime LastWriteUtc);
 
         private sealed class FolderSnapshot
         {
-            private readonly string _path;
             private readonly bool _exists;
-            private readonly List<FileEntry> _files;
+            private readonly DateTime _rootLastWriteUtc;
+            private readonly List<FsEntry> _entries;
 
-            private FolderSnapshot(string path, bool exists, List<FileEntry> files)
+            private FolderSnapshot(bool exists, DateTime rootLastWriteUtc, List<FsEntry> entries)
             {
-                _path = path;
                 _exists = exists;
-                _files = files;
+                _rootLastWriteUtc = rootLastWriteUtc;
+                _entries = entries;
             }
 
-            public static FolderSnapshot Capture(string path)
+            public static FolderSnapshot Capture(string root)
             {
-                if (!Directory.Exists(path))
+                if (!Directory.Exists(root))
                 {
-                    return new FolderSnapshot(path, exists: false, []);
+                    return new FolderSnapshot(exists: false, default, []);
                 }
 
-                var entries = new List<FileEntry>();
-                foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                var rootInfo = new DirectoryInfo(root);
+                var entries = new List<FsEntry>();
+                var pending = new Stack<DirectoryInfo>();
+                if ((rootInfo.Attributes & FileAttributes.ReparsePoint) == 0)
                 {
-                    var info = new FileInfo(file);
-                    entries.Add(new FileEntry(Path.GetRelativePath(path, file), info.Length, info.LastWriteTimeUtc));
+                    pending.Push(rootInfo);
+                }
+
+                while (pending.Count > 0)
+                {
+                    DirectoryInfo current = pending.Pop();
+                    foreach (FileSystemInfo item in current.EnumerateFileSystemInfos())
+                    {
+                        bool isReparse = (item.Attributes & FileAttributes.ReparsePoint) != 0;
+                        if (item is DirectoryInfo dir)
+                        {
+                            entries.Add(new FsEntry(
+                                Path.GetRelativePath(root, dir.FullName),
+                                IsDirectory: true,
+                                IsReparsePoint: isReparse,
+                                Length: 0,
+                                dir.LastWriteTimeUtc));
+                            if (!isReparse)
+                            {
+                                pending.Push(dir);
+                            }
+                        }
+                        else if (item is FileInfo file)
+                        {
+                            entries.Add(new FsEntry(
+                                Path.GetRelativePath(root, file.FullName),
+                                IsDirectory: false,
+                                IsReparsePoint: isReparse,
+                                file.Length,
+                                file.LastWriteTimeUtc));
+                        }
+                    }
                 }
 
                 entries.Sort(static (a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.RelativePath, b.RelativePath));
-                return new FolderSnapshot(path, exists: true, entries);
+                return new FolderSnapshot(exists: true, rootInfo.LastWriteTimeUtc, entries);
             }
 
             public void AssertEqual(FolderSnapshot other)
             {
                 Assert.Equal(_exists, other._exists);
-                Assert.Equal(_files, other._files);
+                Assert.Equal(_rootLastWriteUtc, other._rootLastWriteUtc);
+                Assert.Equal(_entries, other._entries);
             }
         }
     }
