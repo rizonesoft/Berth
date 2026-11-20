@@ -1212,6 +1212,7 @@ public sealed class InteropDeclarationTests
         Assert.Equal(0x00000001u, ShellConstants.SVGIO_SELECTION);
         Assert.Equal(0x00000002u, ShellConstants.SVGIO_ALLVIEW);
         Assert.Equal(0x00000080u, ShellConstants.SVSI_POSITIONITEM);
+        Assert.Equal(0x80000000u, ShellConstants.SVSI_NOSTATECHANGE);
         Assert.Equal(0x0000u, ShellConstants.SHGDN_NORMAL);
         Assert.Equal(0x8000u, ShellConstants.SHGDN_FORPARSING);
         Assert.Equal(0x00000001u, ShellConstants.FWF_AUTOARRANGE);

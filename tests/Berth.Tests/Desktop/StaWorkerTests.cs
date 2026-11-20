@@ -430,7 +430,7 @@ public sealed class UnitStaWorkerTests
             try
             {
                 Assert.Empty(icons.ReadIcons());
-                Assert.Throws<NotImplementedException>(() => icons.SetPositions(Array.Empty<IconPosition>()));
+                icons.SetPositions(Array.Empty<IconPosition>());
                 Assert.False(icons.AutoArrange);
                 Assert.False(icons.TryTurnAutoArrangeOff());
             }

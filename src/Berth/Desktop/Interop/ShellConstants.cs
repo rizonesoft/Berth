@@ -35,6 +35,9 @@ internal static class ShellConstants
     /// <summary>ShObjIdl_core.h (<c>_SVSIF</c>): https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_svsif.</summary>
     public const uint SVSI_POSITIONITEM = 0x00000080u;
 
+    /// <summary>ShObjIdl_core.h (<c>_SVSIF</c>): https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_svsif.</summary>
+    public const uint SVSI_NOSTATECHANGE = 0x80000000u;
+
     /// <summary>ShObjIdl_core.h (<c>_SHGDNF</c>): https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/ne-shobjidl_core-_shgdnf.</summary>
     public const uint SHGDN_NORMAL = 0x0000u;
 

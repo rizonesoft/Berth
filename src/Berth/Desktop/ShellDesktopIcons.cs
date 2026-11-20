@@ -88,8 +88,11 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     public void SetPositions(IReadOnlyList<IconPosition> icons)
     {
         ArgumentNullException.ThrowIfNull(icons);
-        RunMember(nameof(SetPositions), static () =>
-            throw new NotImplementedException("ShellDesktopIcons.SetPositions is implemented in D02 T01 §4."));
+        RunMemberWithView(nameof(SetPositions), desktop =>
+        {
+            SetPositionsOnView(desktop, icons);
+            return 0;
+        });
     }
 
     public bool AutoArrange =>
@@ -140,6 +143,121 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     }
 
     public void Dispose() => _worker.Dispose();
+
+    private void SetPositionsOnView(DesktopView desktop, IReadOnlyList<IconPosition> icons)
+    {
+        if (icons.Count == 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<MonitorInfo> monitors = _monitors.Read();
+        object? folderObj = null;
+        object? enumObj = null;
+        var allocatedPidls = new List<nint>();
+
+        try
+        {
+            Guid folderIid = typeof(IShellFolder).GUID;
+            desktop.View.GetFolder(in folderIid, out folderObj);
+            if (folderObj is null)
+            {
+                throw new DesktopUnavailableException("Desktop folder view returned a null IShellFolder.");
+            }
+
+            var folder = (IShellFolder)folderObj;
+
+            Guid enumIid = typeof(IEnumIDList).GUID;
+            desktop.View.Items(ShellConstants.SVGIO_ALLVIEW, in enumIid, out enumObj);
+            if (enumObj is null)
+            {
+                throw new DesktopUnavailableException("Desktop folder view returned a null IEnumIDList.");
+            }
+
+            var enumerator = (IEnumIDList)enumObj;
+            var pidlById = new Dictionary<string, nint>(StringComparer.OrdinalIgnoreCase);
+            var batch = new nint[1];
+
+            while (true)
+            {
+                batch[0] = nint.Zero;
+                int hr = enumerator.Next(1, batch, out uint fetched);
+                if (hr < 0)
+                {
+                    Exception? hrEx = Marshal.GetExceptionForHR(hr);
+                    throw hrEx is not null
+                        ? Unavailable(hrEx)
+                        : new DesktopUnavailableException($"IEnumIDList.Next failed (HRESULT 0x{hr:X8}).");
+                }
+
+                if (fetched == 0)
+                {
+                    break;
+                }
+
+                nint pidl = batch[0];
+                if (pidl == nint.Zero)
+                {
+                    throw new DesktopUnavailableException("Desktop icon enumeration returned a null item identifier list.");
+                }
+
+                allocatedPidls.Add(pidl);
+                folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
+                string id = DecodeStrRet(ref parsingRet, pidl, _freeCoTaskMem);
+                if (!string.IsNullOrEmpty(id))
+                {
+                    pidlById.TryAdd(id, pidl);
+                }
+            }
+
+            var matchedPidls = new List<nint>(icons.Count);
+            var matchedPoints = new List<NativePoint>(icons.Count);
+            var matchedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (IconPosition icon in icons)
+            {
+                if (!matchedIds.Add(icon.Id))
+                {
+                    continue;
+                }
+
+                if (!pidlById.TryGetValue(icon.Id, out nint pidl))
+                {
+                    continue;
+                }
+
+                (int viewX, int viewY) = DesktopCoordinates.ToView(icon.X, icon.Y, monitors);
+                matchedPidls.Add(pidl);
+                matchedPoints.Add(new NativePoint { X = viewX, Y = viewY });
+            }
+
+            if (matchedPidls.Count > 0)
+            {
+                desktop.View.SelectAndPositionItems(
+                    (uint)matchedPidls.Count,
+                    [.. matchedPidls],
+                    [.. matchedPoints],
+                    ShellConstants.SVSI_POSITIONITEM | ShellConstants.SVSI_NOSTATECHANGE);
+            }
+        }
+        finally
+        {
+            foreach (nint pidl in allocatedPidls)
+            {
+                _freeCoTaskMem(pidl);
+            }
+
+            if (enumObj is not null)
+            {
+                _releaseComObject(enumObj);
+            }
+
+            if (folderObj is not null)
+            {
+                _releaseComObject(folderObj);
+            }
+        }
+    }
 
     private IReadOnlyList<IconPosition> ReadIconsFromView(DesktopView desktop) =>
         ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject);
