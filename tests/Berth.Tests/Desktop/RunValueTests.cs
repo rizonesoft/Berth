@@ -94,6 +94,16 @@ public sealed class RunValueTests
         var runOn = new RunValue(@"Software\Berth.Tests\Fake", "Berth", SampleExe, unquotedRegistry);
         Assert.Throws<IOException>(() => runOn.Set(true));
 
+        // Case 1b: After Set(true), registry reads back a case-only changed path (IsOn would be true, but exact Ordinal read-back failed).
+        var caseChangedRegistry = new FakeRunRegistry
+        {
+            ReadBackExists = true,
+            ReadBackValue = $"\"{SampleExe.ToUpperInvariant()}\"",
+            ReadBackKind = RegistryValueKind.String,
+        };
+        var runCaseMismatch = new RunValue(@"Software\Berth.Tests\Fake", "Berth", SampleExe, caseChangedRegistry);
+        Assert.Throws<IOException>(() => runCaseMismatch.Set(true));
+
         // Case 2: After Set(false), a surviving value naming another executable remains (IsOn would be false, but delete failed).
         var survivingRegistry = new FakeRunRegistry
         {

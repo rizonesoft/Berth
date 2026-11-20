@@ -1,5 +1,8 @@
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
+using System.Text;
 using Microsoft.Win32;
 
 namespace Berth.Desktop;
@@ -17,8 +20,18 @@ internal interface IRunRegistry
     void DeleteValue(string keyPath, string valueName);
 }
 
-internal sealed class HkcuRunRegistry : IRunRegistry
+internal sealed partial class HkcuRunRegistry : IRunRegistry
 {
+    private const int ErrorSuccess = 0;
+    private const int ErrorFileNotFound = 2;
+    private const int ErrorMoreData = 234;
+    private const uint RegSz = 1;
+    private const uint RegExpandSz = 2;
+    private const uint RegBinary = 3;
+    private const uint RegDword = 4;
+    private const uint RegMultiSz = 7;
+    private const uint RegQword = 11;
+
     public static HkcuRunRegistry Instance { get; } = new();
 
     public bool TryReadValue(string keyPath, string valueName, out string? value, out RegistryValueKind kind)
@@ -31,17 +44,53 @@ internal sealed class HkcuRunRegistry : IRunRegistry
             return false;
         }
 
-        object? raw = key.GetValue(valueName, defaultValue: null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-        if (raw is null)
+        // Query type and data atomically in one RegQueryValueExW call so concurrent writers cannot mix type and payload,
+        // and distinguish ERROR_FILE_NOT_FOUND from real query errors.
+        IntPtr hKey = key.Handle.DangerousGetHandle();
+        int bufferBytes = 512;
+        for (int attempt = 0; attempt < 4; attempt++)
         {
-            value = null;
-            kind = RegistryValueKind.Unknown;
-            return false;
+            byte[] buffer = new byte[bufferBytes];
+            uint size = (uint)buffer.Length;
+            int result = RegQueryValueExW(hKey, valueName, IntPtr.Zero, out uint nativeType, buffer, ref size);
+            if (result == ErrorFileNotFound)
+            {
+                value = null;
+                kind = RegistryValueKind.Unknown;
+                return false;
+            }
+
+            if (result == ErrorMoreData)
+            {
+                bufferBytes = checked((int)size);
+                continue;
+            }
+
+            if (result != ErrorSuccess)
+            {
+                var win32 = new Win32Exception(result);
+                throw new IOException(win32.Message, win32);
+            }
+
+            kind = MapValueKind(nativeType);
+            if (nativeType is RegSz or RegExpandSz)
+            {
+                int charBytes = (int)size;
+                string decoded = charBytes >= 2
+                    ? Encoding.Unicode.GetString(buffer, 0, charBytes)
+                    : string.Empty;
+                int nullIndex = decoded.IndexOf('\0');
+                value = nullIndex >= 0 ? decoded[..nullIndex] : decoded;
+            }
+            else
+            {
+                value = null;
+            }
+
+            return true;
         }
 
-        kind = key.GetValueKind(valueName);
-        value = raw as string;
-        return true;
+        throw new IOException($"Could not read registry value '{valueName}' because its size kept changing.");
     }
 
     public void WriteStringValue(string keyPath, string valueName, string value)
@@ -56,6 +105,26 @@ internal sealed class HkcuRunRegistry : IRunRegistry
         using RegistryKey? key = Registry.CurrentUser.OpenSubKey(keyPath, writable: true);
         key?.DeleteValue(valueName, throwOnMissingValue: false);
     }
+
+    private static RegistryValueKind MapValueKind(uint nativeType) => nativeType switch
+    {
+        RegSz => RegistryValueKind.String,
+        RegExpandSz => RegistryValueKind.ExpandString,
+        RegBinary => RegistryValueKind.Binary,
+        RegDword => RegistryValueKind.DWord,
+        RegMultiSz => RegistryValueKind.MultiString,
+        RegQword => RegistryValueKind.QWord,
+        _ => RegistryValueKind.Unknown,
+    };
+
+    [LibraryImport("advapi32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int RegQueryValueExW(
+        IntPtr hKey,
+        string lpValueName,
+        IntPtr lpReserved,
+        out uint lpType,
+        [Out] byte[] lpData,
+        ref uint lpcbData);
 }
 
 /// <summary>
@@ -148,9 +217,9 @@ internal sealed class RunValue
                 _registry.WriteStringValue(_keyPath, _valueName, expected);
 
                 bool found = _registry.TryReadValue(_keyPath, _valueName, out string? readBack, out RegistryValueKind kind);
-                if (!found || kind != RegistryValueKind.String || !string.Equals(readBack, expected, StringComparison.OrdinalIgnoreCase))
+                if (!found || kind != RegistryValueKind.String || !string.Equals(readBack, expected, StringComparison.Ordinal))
                 {
-                    throw new IOException($"The registry value '{_valueName}' did not read back as the quoted executable path.");
+                    throw new IOException($"The registry value '{_valueName}' did not read back as the exact quoted executable path.");
                 }
             }
             else
