@@ -121,12 +121,31 @@ public sealed class ProbeIconUnitTests
         }
     }
 
+    [Fact]
+    public void ReadSelectionIdsThrowsWhenEnumeratedCountDoesNotMatchItemCount()
+    {
+        var mismatchView = new GridFixtureView(
+            flags: 0u,
+            spacing: new NativePoint { X = 80, Y = 80 },
+            defaultSpacing: new NativePoint { X = 80, Y = 80 },
+            selectedItemCount: 1);
+        using var shell = new ShellDesktopIcons(
+            openView: () => DesktopView.Open(() => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(mismatchView))), _ => { }),
+            monitors: new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)]));
+
+        Assert.Throws<InvalidOperationException>(() => ProbeIconTests.ReadSelectionIds(shell));
+    }
+
     private sealed class FixedMonitors(IReadOnlyList<MonitorInfo> monitors) : IMonitors
     {
         public IReadOnlyList<MonitorInfo> Read() => monitors;
     }
 
-    private sealed class GridFixtureView(uint flags, NativePoint spacing, NativePoint defaultSpacing) : IShellView, IFolderView, IFolderView2
+    private sealed class GridFixtureView(
+        uint flags,
+        NativePoint spacing,
+        NativePoint defaultSpacing,
+        int selectedItemCount = 0) : IShellView, IFolderView, IFolderView2
     {
         public void GetWindow(out nint phwnd) => phwnd = nint.Zero;
         public void ContextSensitiveHelp(bool fEnterMode) { }
@@ -143,10 +162,10 @@ public sealed class ProbeIconUnitTests
         public void GetItemObject(uint uItem, in Guid riid, out object ppv) => ppv = new object();
         public void GetCurrentViewMode(out uint viewMode) => viewMode = 0;
         public void SetCurrentViewMode(uint viewMode) { }
-        public void GetFolder(in Guid riid, out object ppv) => ppv = new object();
+        public void GetFolder(in Guid riid, out object ppv) => ppv = new EmptyShellFolder();
         public void Item(int iItemIndex, out nint ppidl) => ppidl = nint.Zero;
-        public void ItemCount(uint uFlags, out int pcItems) => pcItems = 0;
-        public void Items(uint uFlags, in Guid riid, out object ppv) => ppv = new object();
+        public void ItemCount(uint uFlags, out int pcItems) => pcItems = uFlags == ShellConstants.SVGIO_SELECTION ? selectedItemCount : 0;
+        public void Items(uint uFlags, in Guid riid, out object ppv) => ppv = new EmptyEnumIdList();
         public void GetSelectionMarkedItem(out int piItem) => piItem = -1;
         public void GetFocusedItem(out int piItem) => piItem = -1;
         public void GetItemPosition(nint pidl, out NativePoint ppt) => ppt = default;
@@ -164,6 +183,28 @@ public sealed class ProbeIconUnitTests
         public void SetText(int iType, string pwszText) { }
         public void SetCurrentFolderFlags(uint dwMask, uint dwFlags) { }
         public void GetCurrentFolderFlags(out uint pdwFlags) => pdwFlags = flags;
+    }
+
+    private sealed class EmptyShellFolder : IShellFolder
+    {
+        public void ParseDisplayName(nint hwnd, nint pbc, string pszDisplayName, nint pchEaten, out nint ppidl, nint pdwAttributes) => ppidl = nint.Zero;
+        public int EnumObjects(nint hwnd, uint grfFlags, out IEnumIDList? ppenumIDList) { ppenumIDList = new EmptyEnumIdList(); return ShellConstants.S_OK; }
+        public void BindToObject(nint pidl, nint pbc, in Guid riid, out object ppv) => ppv = this;
+        public void BindToStorage(nint pidl, nint pbc, in Guid riid, out object ppv) => ppv = this;
+        public int CompareIDs(nint lParam, nint pidl1, nint pidl2) => 0;
+        public void CreateViewObject(nint hwndOwner, in Guid riid, out object ppv) => ppv = this;
+        public void GetAttributesOf(uint cidl, nint[]? apidl, ref uint rgfInOut) { }
+        public void GetUIObjectOf(nint hwndOwner, uint cidl, nint[] apidl, in Guid riid, nint rgfReserved, out object ppv) => ppv = this;
+        public void GetDisplayNameOf(nint pidl, uint uFlags, out StrRet pName) => pName = default;
+        public void SetNameOf(nint hwnd, nint pidl, string pszName, uint uFlags, out nint ppidlOut) => ppidlOut = nint.Zero;
+    }
+
+    private sealed class EmptyEnumIdList : IEnumIDList
+    {
+        public int Next(uint celt, nint[] rgelt, out uint pceltFetched) { pceltFetched = 0; return ShellConstants.S_FALSE; }
+        public int Skip(uint celt) => ShellConstants.S_OK;
+        public void Reset() { }
+        public void Clone(out IEnumIDList ppenum) => ppenum = this;
     }
 
     private sealed class StubShellWindows(object dispatch) : IShellWindows
@@ -243,7 +284,6 @@ public sealed class ProbeIconTests
         {
             probeFilePath = probe.FilePath;
             IconPosition initial = probe.Icon;
-            HashSet<string> selectionBaseline = ReadSelectionIds(shell);
 
             // Part A: move probe in-bounds by at least max(200, spacingX * 2 + 1) alongside an unknown Id.
             int stepX = Math.Max(200, spacingX * 2 + 1);
@@ -251,6 +291,7 @@ public sealed class ProbeIconTests
             Assert.True(
                 Math.Abs(target1X - initial.X) >= stepX,
                 $"Target 1 X ({target1X}) did not achieve required separation {stepX} from initial X ({initial.X}).");
+            HashSet<string> selectionBeforeMove1 = ReadSelectionIds(shell);
             probe.ScopedDesktop.SetPositions(
             [
                 initial with { X = target1X, Y = target1Y },
@@ -272,7 +313,7 @@ public sealed class ProbeIconTests
                 IsWithinAcceptance(posA.X, posA.Y, target1X, target1Y, snapToGrid, spacingX, spacingY),
                 $"Probe landed at ({posA.X},{posA.Y}), outside expected ({target1X},{target1Y}) tolerance ({spacingX},{spacingY}).");
             Assert.True(
-                selectionBaseline.SetEquals(ReadSelectionIds(shell)),
+                selectionBeforeMove1.SetEquals(ReadSelectionIds(shell)),
                 "Desktop selection identities changed after Move 1.");
 
             // Part B: full LayoutService cycle (Save -> Move -> Restore -> Undo) using Explorer's reported positions.
@@ -297,6 +338,7 @@ public sealed class ProbeIconTests
             Assert.True(
                 Math.Abs(target2Y - posA.Y) >= stepY,
                 $"Target 2 Y ({target2Y}) did not achieve required separation {stepY} from posA Y ({posA.Y}).");
+            HashSet<string> selectionBeforeMove2 = ReadSelectionIds(shell);
             probe.ScopedDesktop.SetPositions([posA with { X = target2X, Y = target2Y }]);
 
             IconPosition posB = WaitForPosition(
@@ -313,10 +355,11 @@ public sealed class ProbeIconTests
                 IsWithinAcceptance(posB.X, posB.Y, posA.X, posA.Y, snapToGrid, spacingX, spacingY),
                 $"Move 2 landed at ({posB.X},{posB.Y}), still within posA ({posA.X},{posA.Y}) acceptance region.");
             Assert.True(
-                selectionBaseline.SetEquals(ReadSelectionIds(shell)),
+                selectionBeforeMove2.SetEquals(ReadSelectionIds(shell)),
                 "Desktop selection identities changed after Move 2.");
 
             // Restore: returns probe to exact Explorer-reported posA and writes undo.json with posB.
+            HashSet<string> selectionBeforeRestore = ReadSelectionIds(shell);
             OperationResult restoreResult = service.Restore();
             Assert.Equal(OperationKind.Restored, restoreResult.Kind);
             Assert.Equal(1, restoreResult.InPlace);
@@ -328,7 +371,7 @@ public sealed class ProbeIconTests
             IconPosition afterRestore = Assert.Single(probe.ScopedDesktop.ReadIcons());
             Assert.Equal((posA.X, posA.Y), (afterRestore.X, afterRestore.Y));
             Assert.True(
-                selectionBaseline.SetEquals(ReadSelectionIds(shell)),
+                selectionBeforeRestore.SetEquals(ReadSelectionIds(shell)),
                 "Desktop selection identities changed after Restore.");
 
             UndoSnapshot? undoSnapshot = System.Text.Json.JsonSerializer.Deserialize(
@@ -341,6 +384,7 @@ public sealed class ProbeIconTests
             Assert.Equal((posB.X, posB.Y), (undoIcon.X, undoIcon.Y));
 
             // Undo: returns probe to exact Explorer-reported posB and deletes undo.json.
+            HashSet<string> selectionBeforeUndo = ReadSelectionIds(shell);
             OperationResult undoResult = service.Undo();
             Assert.Equal(OperationKind.Undone, undoResult.Kind);
             Assert.Equal(1, undoResult.InPlace);
@@ -352,7 +396,7 @@ public sealed class ProbeIconTests
             IconPosition afterUndo = Assert.Single(probe.ScopedDesktop.ReadIcons());
             Assert.Equal((posB.X, posB.Y), (afterUndo.X, afterUndo.Y));
             Assert.True(
-                selectionBaseline.SetEquals(ReadSelectionIds(shell)),
+                selectionBeforeUndo.SetEquals(ReadSelectionIds(shell)),
                 "Desktop selection identities changed after Undo.");
         }
 
@@ -380,7 +424,7 @@ public sealed class ProbeIconTests
             return (snapToGrid, spacing.X, spacing.Y);
         });
 
-    private static HashSet<string> ReadSelectionIds(ShellDesktopIcons shell)
+    internal static HashSet<string> ReadSelectionIds(ShellDesktopIcons shell)
     {
         for (int attempt = 0; ; attempt++)
         {
@@ -391,6 +435,10 @@ public sealed class ProbeIconTests
             catch (COMException ex) when (attempt == 0 && ex.HResult == unchecked((int)0x80070490))
             {
                 // Transient selection change between ItemCount and Items: retry the full snapshot once.
+            }
+            catch (InvalidOperationException) when (attempt == 0)
+            {
+                // Transient selection count/enumeration mismatch: retry the full snapshot once.
             }
         }
     }
@@ -418,6 +466,7 @@ public sealed class ProbeIconTests
                 var enumerator = (IEnumIDList)enumObj!;
 
                 var batch = new nint[1];
+                int enumerated = 0;
                 while (true)
                 {
                     batch[0] = nint.Zero;
@@ -437,15 +486,24 @@ public sealed class ProbeIconTests
                     {
                         folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
                         string id = ShellDesktopIcons.DecodeStrRet(ref parsingRet, pidl, Marshal.FreeCoTaskMem);
-                        if (!string.IsNullOrEmpty(id))
+                        if (string.IsNullOrEmpty(id))
                         {
-                            ids.Add(id);
+                            throw new InvalidOperationException("Selected desktop icon returned an empty parsing name.");
                         }
+
+                        enumerated++;
+                        ids.Add(id);
                     }
                     finally
                     {
                         Marshal.FreeCoTaskMem(pidl);
                     }
+                }
+
+                if (enumerated != selectedCount || ids.Count != selectedCount)
+                {
+                    throw new InvalidOperationException(
+                        $"Desktop selection snapshot mismatch: ItemCount={selectedCount}, enumerated={enumerated}, uniqueIds={ids.Count}.");
                 }
 
                 return ids;
