@@ -46,7 +46,7 @@ depends_on: ["layout-core"]
 | 6 | §5 | Auto arrange read and clear | §9 | [x] |
 | 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
 | 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [x] |
-| 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [ ] |
+| 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [x] |
 | 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
 
 ## 1. Shell COM interface declarations
@@ -103,7 +103,7 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 ## 3. Reading every icon's identity and position
 
 > **Started:** 2026-11-20T11:24Z
-> **Deferred:** live-desktop read-back on a test-created probe icon (tests never read the owner's icons per `AGENTS.md` and foundation plan) -> XREF: D02 T01 §7
+> **Resolved:** live-desktop read-back on a test-created probe icon (tests never read the owner's icons per `AGENTS.md` and foundation plan) -> XREF: D02 T01 §7
 
 `ShellDesktopIcons.ReadIcons` returns each icon's parsing name, display name and position.
 
@@ -131,7 +131,7 @@ The chain from `ShellWindows` to the desktop's `IFolderView`, in one method with
 ## 4. Setting icon positions
 
 > **Started:** 2026-11-20T11:54Z
-> **Deferred:** live-desktop move and selection-preservation proof on a test-created probe icon (`AGENTS.md` forbids touching owner icons) -> XREF: D02 T01 §7
+> **Resolved:** live-desktop move and selection-preservation proof on a test-created probe icon (`AGENTS.md` forbids touching owner icons) -> XREF: D02 T01 §7
 
 `ShellDesktopIcons.SetPositions` moves the icons it is given and nothing else.
 
@@ -232,6 +232,9 @@ The one test that proves reading and writing against Windows itself, touching on
 - [x] Commit: `desktop: real-desktop round trip on a probe icon`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ProbeIcon*" --filter-class "*ScopedDesktopIconsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped on the build machine (with Auto Arrange off), leaves no probe file on the desktop, preserves `SVGIO_SELECTION` identities across every move/restore/undo, and proves via `ScopedDesktopIconsTests` that only the matching probe PIDL reaches `SelectAndPositionItems`.
+
+> **Verified:** 2026-11-20 | §7 | 29f6e36a82704b9eee19face04ea11f4575934cd
+> **Review:** `docs/reviews/d02-t01-s7.json`
 
 ## 8. One exception for an unreachable desktop
 

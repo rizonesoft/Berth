@@ -1,0 +1,84 @@
+{
+  "ref": "D02 T01 \u00a77",
+  "title": "Real-desktop round trip on a probe icon",
+  "implementation_sha": "29f6e36a82704b9eee19face04ea11f4575934cd",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s7.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *ProbeIcon* --filter-class *ScopedDesktopIconsTests --filter-class *LayerRuleTests (48 passed, 0 failed, 0 skipped)",
+    "CI build.yml + plan.yml at 29f6e36a8270 -> green (https://github.com/rizonesoft/Berth/actions/runs/44745140583, https://github.com/rizonesoft/Berth/actions/runs/44745140647)"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s7.md",
+    "verdict": "reconciled",
+    "candidate": "29f6e36a82704b9eee19face04ea11f4575934cd",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s7.md",
+    "candidate": "d3711871d68998ec0712043e10b4f6252758639f",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "d3711871d68998ec0712043e10b4f6252758639f",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
