@@ -157,13 +157,18 @@ public sealed partial class ConsoleBehaviourTests
                 $"Descendant PID {descendantPidOnTimeout} survived timeout tree-kill before Dispose.");
         }
 
+        int directPidOnDispose = -1;
         int descendantPidOnDispose = -1;
         using (var disposeParent = StartRawHelperForPid(helperExe, helperArgs, out descendantPidOnDispose))
         {
+            directPidOnDispose = disposeParent.Id;
+            Assert.True(directPidOnDispose > 0);
             Assert.True(descendantPidOnDispose > 0);
+            Assert.True(IsProcessAlive(directPidOnDispose));
             Assert.True(IsProcessAlive(descendantPidOnDispose));
         }
 
+        Assert.True(WaitForProcessExit(directPidOnDispose, TimeSpan.FromSeconds(5)), $"Direct PID {directPidOnDispose} survived Dispose tree-kill.");
         Assert.True(WaitForProcessExit(descendantPidOnDispose, TimeSpan.FromSeconds(5)), $"Descendant PID {descendantPidOnDispose} survived Dispose tree-kill.");
     }
 
@@ -214,39 +219,38 @@ public sealed partial class ConsoleBehaviourTests
             Assert.Contains("Berth " + AppInfo.Version, terminalOutput, StringComparison.Ordinal);
         }
 
-        // Negative control: a deliberately non-waiting launch (`start "" /b`) writes markerFile BEFORE the hold ends,
-        // while still proving berth.exe actually started (wrote nonWaitReport) and waiting for it to exit cleanly.
+        // Negative control: a deliberately non-waiting launch (`start "" /b`) inside a dedicated Job Object writes
+        // nonWaitMarker while berth.exe is still alive inside its 1500 ms hold, writes nonWaitReport, and exits 0;
+        // the Job Object retains ownership of every child process and terminates any survivor on failure or disposal.
         string nonWaitReport = Path.Combine(data.Root, "nowait-report.txt");
         string nonWaitMarker = Path.Combine(data.Root, "nowait-marker.txt");
-        var nonWaitInfo = new ProcessStartInfo
-        {
-            FileName = "cmd.exe",
-            Arguments = $"/c \"start \"\" /b \"{berthExe}\" --version > nul & echo done > \"{nonWaitMarker}\"\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        StripBerthEnv(nonWaitInfo);
-        nonWaitInfo.Environment["BERTH_DATA"] = data.Root;
-        nonWaitInfo.Environment["BERTH_TEST_REPORT"] = nonWaitReport;
-        nonWaitInfo.Environment["BERTH_TEST_HOLD_MS"] = "1500";
+        string nonWaitCmdLine = $"cmd.exe /c \"start \"\" /b \"{berthExe}\" --version > nul & echo done > \"{nonWaitMarker}\"\"";
+        using var job = JobTrackedProcess.StartHidden(
+            nonWaitCmdLine,
+            data.Root,
+            new Dictionary<string, string>
+            {
+                ["BERTH_TEST_REPORT"] = nonWaitReport,
+                ["BERTH_TEST_HOLD_MS"] = "1500",
+            });
 
         var nonWaitWatch = Stopwatch.StartNew();
-        using Process nonWaitCmd = Process.Start(nonWaitInfo) ?? throw new InvalidOperationException("Failed to start non-waiting cmd.exe.");
-        try
-        {
-            Assert.True(nonWaitCmd.WaitForExit(10_000));
-            nonWaitWatch.Stop();
-            Assert.True(File.Exists(nonWaitMarker), "Non-waiting control did not write marker.");
-            Assert.True(nonWaitWatch.Elapsed < TimeSpan.FromMilliseconds(1200), $"Non-waiting control unexpectedly waited {nonWaitWatch.Elapsed}.");
+        Assert.True(job.WaitForRootExit(TimeSpan.FromSeconds(10)), "Non-waiting cmd.exe did not exit in time.");
+        nonWaitWatch.Stop();
+        Assert.True(File.Exists(nonWaitMarker), "Non-waiting control did not write marker.");
+        Assert.True(nonWaitWatch.Elapsed < TimeSpan.FromMilliseconds(1200), $"Non-waiting control unexpectedly waited {nonWaitWatch.Elapsed}.");
 
-            // Confirm berth.exe actually launched and let its 1500 ms hold finish cleanly before TestData cleanup.
-            Assert.True(WaitForFile(nonWaitReport, TimeSpan.FromSeconds(5)), "Non-waiting control did not actually launch berth.exe.");
-            Thread.Sleep(1700);
-        }
-        finally
-        {
-            HelperProcess.Stop(nonWaitCmd, TimeSpan.FromSeconds(10), kill: true);
-        }
+        // Confirm berth.exe actually launched inside the job and observe it still alive AFTER the marker was written.
+        int berthChildPid = job.WaitForChildPid(TimeSpan.FromSeconds(5));
+        Assert.True(WaitForFile(nonWaitReport, TimeSpan.FromSeconds(5)), "Non-waiting control did not write BERTH_TEST_REPORT.");
+        using Process berthChild = Process.GetProcessById(berthChildPid);
+        nint berthChildHandle = berthChild.Handle;
+        Assert.False(berthChild.HasExited, "Non-waiting control's berth.exe child had already exited before its hold finished.");
+
+        // Wait for berth.exe to finish its hold and exit cleanly with code 0 before TestData disposal.
+        Assert.True(berthChild.WaitForExit(10_000), "Non-waiting control's berth.exe child did not exit within deadline.");
+        Assert.True(NativeMethods.GetExitCodeProcess(berthChildHandle, out uint childExitCode));
+        Assert.Equal(0u, childExitCode);
     }
 
     [Fact]
@@ -784,7 +788,7 @@ public sealed partial class ConsoleBehaviourTests
             }
         }
 
-        private static nint BuildEnvironmentBlock(string dataRoot, IReadOnlyDictionary<string, string> extraEnv)
+        internal static nint BuildEnvironmentBlock(string dataRoot, IReadOnlyDictionary<string, string> extraEnv)
         {
             var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
@@ -929,5 +933,183 @@ public sealed partial class ConsoleBehaviourTests
             string? lpCurrentDirectory,
             in StartupInfoExW lpStartupInfo,
             out ProcessInformation lpProcessInformation);
+
+        [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial nint CreateJobObjectW(nint lpJobAttributes, string? lpName);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool AssignProcessToJobObject(nint hJob, nint hProcess);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool QueryInformationJobObject(
+            nint hJob,
+            int jobObjectInformationClass,
+            nint lpJobObjectInformation,
+            uint cbJobObjectInformationLength,
+            out uint lpReturnLength);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool TerminateJobObject(nint hJob, uint uExitCode);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        internal static partial uint ResumeThread(nint hThread);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool TerminateProcess(nint hProcess, uint uExitCode);
+    }
+
+    private sealed class JobTrackedProcess : IDisposable
+    {
+        private const uint CreateNoWindow = 0x08000000u;
+        private const uint CreateSuspended = 0x00000004u;
+        private const uint CreateUnicodeEnvironment = 0x00000400u;
+        private const uint StartfUseShowWindow = 0x00000001u;
+        private const ushort SwHide = 0;
+        private const uint WaitObject0 = 0x00000000u;
+        private const int JobObjectBasicProcessIdList = 3;
+
+        private nint _jobHandle;
+        private nint _rootProcessHandle;
+        private readonly int _rootPid;
+
+        private JobTrackedProcess(nint jobHandle, nint rootProcessHandle, int rootPid)
+        {
+            _jobHandle = jobHandle;
+            _rootProcessHandle = rootProcessHandle;
+            _rootPid = rootPid;
+        }
+
+        public static JobTrackedProcess StartHidden(string commandLine, string dataRoot, Dictionary<string, string> extraEnv)
+        {
+            nint job = NativeMethods.CreateJobObjectW(0, null);
+            if (job == 0)
+            {
+                throw new InvalidOperationException($"CreateJobObjectW failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            }
+
+            nint envBlock = InteractiveCmdSession.BuildEnvironmentBlock(dataRoot, extraEnv);
+            nint hProcess = 0;
+            nint hThread = 0;
+            try
+            {
+                var startup = new StartupInfoW
+                {
+                    cb = Marshal.SizeOf<StartupInfoW>(),
+                    dwFlags = StartfUseShowWindow,
+                    wShowWindow = SwHide,
+                };
+
+                if (!NativeMethods.CreateProcessW(
+                    lpApplicationName: null,
+                    lpCommandLine: commandLine,
+                    lpProcessAttributes: 0,
+                    lpThreadAttributes: 0,
+                    bInheritHandles: false,
+                    dwCreationFlags: CreateNoWindow | CreateSuspended | CreateUnicodeEnvironment,
+                    lpEnvironment: envBlock,
+                    lpCurrentDirectory: null,
+                    in startup,
+                    out ProcessInformation pi))
+                {
+                    throw new InvalidOperationException($"CreateProcessW failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+                }
+
+                hProcess = pi.hProcess;
+                hThread = pi.hThread;
+
+                if (!NativeMethods.AssignProcessToJobObject(job, hProcess))
+                {
+                    throw new InvalidOperationException($"AssignProcessToJobObject failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+                }
+
+                if (NativeMethods.ResumeThread(hThread) == uint.MaxValue)
+                {
+                    throw new InvalidOperationException($"ResumeThread failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+                }
+
+                NativeMethods.CloseHandle(hThread);
+                hThread = 0;
+                nint transferredProcess = hProcess;
+                hProcess = 0;
+                nint transferredJob = job;
+                job = 0;
+                return new JobTrackedProcess(transferredJob, transferredProcess, (int)pi.dwProcessId);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(envBlock);
+                if (hThread != 0)
+                {
+                    NativeMethods.CloseHandle(hThread);
+                }
+
+                if (hProcess != 0)
+                {
+                    _ = NativeMethods.TerminateProcess(hProcess, 1);
+                    NativeMethods.CloseHandle(hProcess);
+                }
+
+                if (job != 0)
+                {
+                    _ = NativeMethods.TerminateJobObject(job, 1);
+                    NativeMethods.CloseHandle(job);
+                }
+            }
+        }
+
+        public bool WaitForRootExit(TimeSpan timeout) =>
+            NativeMethods.WaitForSingleObject(_rootProcessHandle, (uint)timeout.TotalMilliseconds) == WaitObject0;
+
+        public int WaitForChildPid(TimeSpan timeout)
+        {
+            var sw = Stopwatch.StartNew();
+            nint buffer = Marshal.AllocHGlobal(512);
+            try
+            {
+                while (sw.Elapsed < timeout)
+                {
+                    if (NativeMethods.QueryInformationJobObject(_jobHandle, JobObjectBasicProcessIdList, buffer, 512, out _))
+                    {
+                        uint count = (uint)Marshal.ReadInt32(buffer, 4);
+                        for (int i = 0; i < count; i++)
+                        {
+                            int pid = (int)Marshal.ReadIntPtr(buffer, 8 + (i * IntPtr.Size));
+                            if (pid > 0 && pid != _rootPid)
+                            {
+                                return pid;
+                            }
+                        }
+                    }
+
+                    Thread.Sleep(20);
+                }
+
+                throw new TimeoutException($"No child process appeared in Job Object within {timeout}.");
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_jobHandle != 0)
+            {
+                _ = NativeMethods.TerminateJobObject(_jobHandle, 1);
+                NativeMethods.CloseHandle(_jobHandle);
+                _jobHandle = 0;
+            }
+
+            if (_rootProcessHandle != 0)
+            {
+                NativeMethods.CloseHandle(_rootProcessHandle);
+                _rootProcessHandle = 0;
+            }
+        }
     }
 }
