@@ -42,7 +42,7 @@ depends_on: ["layout-core", "desktop-access"]
 | 4 | §4 | The restore command | §3 | [x] |
 | 5 | §5 | The undo command | §4 | [x] |
 | 6 | §6 | The list command | §3, D01 T01 §17 | [x] |
-| 7 | §7 | Help, version and usage errors | §3 | [ ] |
+| 7 | §7 | Help, version and usage errors | §3 | [x] |
 | 8 | §8 | Process tests of every command and exit code | §2, §5, §6, §7 | [ ] |
 
 ## 1. Argument parser
@@ -226,6 +226,9 @@ The usage text and what a mistake prints (SPEC §13, §17).
 - [x] Commit: `cli: help, version and usage errors`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UsageTests" --filter-class "*SaveCommandTests" --filter-class "*CliArgumentsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when `undo` or `berth save` is removed from `Usage.Text`.
+
+> **Verified:** 2026-11-20 | §7 | eaf879f815aff36697f1724bfe934a08f7a96bf2
+> **Review:** `docs/reviews/d03-t01-s7.json`
 
 ## 8. Process tests of every command and exit code
 
