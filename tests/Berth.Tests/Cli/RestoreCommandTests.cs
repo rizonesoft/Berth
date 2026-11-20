@@ -110,7 +110,7 @@ public sealed class RestoreCommandTests
     }
 
     [Fact]
-    public void RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3()
+    public async Task RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3()
     {
         // 1) Auto arrange is on.
         using (var data = new TestData())
@@ -183,22 +183,21 @@ public sealed class RestoreCommandTests
                 clock);
             Assert.True(service.Save().Done);
 
-            using var acquired = new ManualResetEventSlim(false);
-            using var release = new ManualResetEventSlim(false);
-            bool holderAcquired = false;
+            var acquired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             Exception? holderError = null;
             var holder = new Thread(() =>
             {
                 try
                 {
                     using var mutex = new Mutex(initiallyOwned: false, gate.MutexName);
-                    holderAcquired = mutex.WaitOne(TimeSpan.FromSeconds(5));
-                    acquired.Set();
-                    if (holderAcquired)
+                    bool gotIt = mutex.WaitOne(TimeSpan.FromSeconds(5));
+                    acquired.TrySetResult(gotIt);
+                    if (gotIt)
                     {
                         try
                         {
-                            release.Wait();
+                            release.Task.GetAwaiter().GetResult();
                         }
                         finally
                         {
@@ -209,7 +208,7 @@ public sealed class RestoreCommandTests
                 catch (Exception ex)
                 {
                     holderError = ex;
-                    acquired.Set();
+                    acquired.TrySetResult(false);
                 }
             })
             {
@@ -218,8 +217,7 @@ public sealed class RestoreCommandTests
             holder.Start();
             try
             {
-                Assert.True(acquired.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
-                Assert.Null(holderError);
+                bool holderAcquired = await acquired.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
                 Assert.True(holderAcquired, "Background thread failed to acquire the operation mutex.");
 
                 var output = new StringWriter();
@@ -233,9 +231,11 @@ public sealed class RestoreCommandTests
             }
             finally
             {
-                release.Set();
-                Assert.True(holder.Join(TimeSpan.FromSeconds(5)), "Mutex-holder thread did not exit before event disposal.");
+                release.TrySetResult();
+                holder.Join();
             }
+
+            Assert.Null(holderError);
         }
 
         // 5) Unreadable layout file (malformed JSON left untouched).
