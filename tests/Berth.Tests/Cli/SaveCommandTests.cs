@@ -316,7 +316,7 @@ public sealed class SaveCommandTests
     }
 
     [Fact]
-    public void ProgramRunCatchesTestReportWriteFailureInsideExceptionBoundary()
+    public void ProgramRunCatchesTestReportWriteFailureOnSaveWithEmptyStdoutAndLoggedError()
     {
         using var data = new TestData();
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
@@ -327,7 +327,7 @@ public sealed class SaveCommandTests
         var error = new StringWriter();
 
         int exitCode = global::Berth.Program.Run(
-            ["--version"],
+            ["save"],
             output,
             error,
             getenv: k => k switch
@@ -338,11 +338,13 @@ public sealed class SaveCommandTests
             });
 
         Assert.Equal(CliExit.Error, exitCode);
-        Assert.Equal($"Berth {AppInfo.Version}{Environment.NewLine}", output.ToString());
+        Assert.Equal(string.Empty, output.ToString());
         Assert.Equal($"Something went wrong: Access to the path '{existingDir}' is denied. The details are in the log.{Environment.NewLine}", error.ToString());
 
         Assert.True(File.Exists(paths.LogFile), "Expected log file to record the test-report write failure.");
         string logText = File.ReadAllText(paths.LogFile);
+        string[] logLines = logText.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        Assert.Single(logLines, l => l.Contains(" FAIL ", StringComparison.Ordinal));
         Assert.Contains("FAIL Something went wrong: Access to the path", logText, StringComparison.Ordinal);
         Assert.Contains(nameof(TestModeSwitches.Apply), logText, StringComparison.Ordinal);
     }

@@ -25,6 +25,7 @@ internal static class Program
         ArgumentNullException.ThrowIfNull(error);
 
         Func<string, string?> readEnv = getenv ?? Environment.GetEnvironmentVariable;
+        TimeProvider effectiveClock = clock ?? TimeProvider.System;
         BerthPaths? paths = null;
         Log? log = null;
         int exitCode;
@@ -32,6 +33,15 @@ internal static class Program
         try
         {
             CliArguments parsed = CliArguments.Parse(args);
+
+            // Apply SPEC §14 test-mode switches before publishing any command output so a failing test-report write
+            // never leaves a success line on stdout alongside an error exit code.
+            if (!string.IsNullOrWhiteSpace(readEnv("BERTH_DATA")))
+            {
+                paths = BerthPaths.FromEnvironment(readEnv, folder);
+                log = new Log(paths, effectiveClock);
+                TestModeSwitches.Apply(paths, readEnv);
+            }
 
             if (parsed.Error is not null)
             {
@@ -44,9 +54,8 @@ internal static class Program
             }
             else if (parsed.Command == CliCommand.Save)
             {
-                TimeProvider effectiveClock = clock ?? TimeProvider.System;
-                paths = BerthPaths.FromEnvironment(readEnv, folder);
-                log = new Log(paths, effectiveClock);
+                paths ??= BerthPaths.FromEnvironment(readEnv, folder);
+                log ??= new Log(paths, effectiveClock);
                 using Composition app = createComposition is not null
                     ? createComposition(paths, log)
                     : Composition.Create(paths, log, readEnv, effectiveClock);
@@ -56,17 +65,6 @@ internal static class Program
             else
             {
                 exitCode = CliExit.Usage;
-            }
-
-            if (paths is null && !string.IsNullOrWhiteSpace(readEnv("BERTH_DATA")))
-            {
-                paths = BerthPaths.FromEnvironment(readEnv, folder);
-                log ??= new Log(paths, clock ?? TimeProvider.System);
-            }
-
-            if (paths is not null)
-            {
-                TestModeSwitches.Apply(paths, readEnv);
             }
         }
         catch (Exception ex)
