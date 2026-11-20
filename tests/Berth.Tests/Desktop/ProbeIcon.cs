@@ -129,11 +129,6 @@ internal sealed class ProbeIcon : IDisposable
         const int maxAttempts = 5;
         for (int attempt = 1; ; attempt++)
         {
-            if (!File.Exists(filePath))
-            {
-                return;
-            }
-
             try
             {
                 File.Delete(filePath);

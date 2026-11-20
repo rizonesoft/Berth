@@ -94,6 +94,121 @@ public sealed class ProbeIconUnitTests
         Assert.InRange(targetX, 0, 599);
         Assert.True(Math.Abs(targetX - 300) >= 201, $"Expected separation >= 201, got targetX={targetX}.");
     }
+
+    [Fact]
+    public void ReadGridInfoDistinguishesSnapToGridOnAndOffWithUnrelatedFlagsAndSpacingFallback()
+    {
+        // Controlled desktop fixture with FWF_SNAPTOGRID (0x4) ON plus unrelated bits (including FWF_NOENUMREFRESH = 0x80000).
+        var snapOnView = new GridFixtureView(flags: 0x00080244u, spacing: new NativePoint { X = 100, Y = 110 }, defaultSpacing: new NativePoint { X = 75, Y = 75 });
+        using (var shellOn = new ShellDesktopIcons(
+            openView: () => DesktopView.Open(() => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(snapOnView))), _ => { }),
+            monitors: new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)])))
+        {
+            (bool snap, int sx, int sy) = ProbeIconTests.ReadGridInfo(shellOn);
+            Assert.True(snap);
+            Assert.Equal((100, 110), (sx, sy));
+        }
+
+        // Controlled desktop fixture with FWF_SNAPTOGRID (0x4) OFF (even when FWF_NOENUMREFRESH = 0x80000 is set) and zero GetSpacing -> falls back to GetDefaultSpacing.
+        var snapOffView = new GridFixtureView(flags: 0x00080240u, spacing: default, defaultSpacing: new NativePoint { X = 80, Y = 90 });
+        using (var shellOff = new ShellDesktopIcons(
+            openView: () => DesktopView.Open(() => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(snapOffView))), _ => { }),
+            monitors: new FixedMonitors([new(0, 0, 1920, 1080, 100, Primary: true)])))
+        {
+            (bool snap, int sx, int sy) = ProbeIconTests.ReadGridInfo(shellOff);
+            Assert.False(snap);
+            Assert.Equal((80, 90), (sx, sy));
+        }
+    }
+
+    private sealed class FixedMonitors(IReadOnlyList<MonitorInfo> monitors) : IMonitors
+    {
+        public IReadOnlyList<MonitorInfo> Read() => monitors;
+    }
+
+    private sealed class GridFixtureView(uint flags, NativePoint spacing, NativePoint defaultSpacing) : IShellView, IFolderView, IFolderView2
+    {
+        public void GetWindow(out nint phwnd) => phwnd = nint.Zero;
+        public void ContextSensitiveHelp(bool fEnterMode) { }
+        public int TranslateAccelerator(nint pmsg) => 0;
+        public void EnableModeless(bool fEnable) { }
+        public void UIActivate(uint uState) { }
+        public void Refresh() { }
+        public void CreateViewWindow(IShellView? psvPrevious, nint pfs, IShellBrowser? psb, nint prcView, out nint phWnd) => phWnd = nint.Zero;
+        public void DestroyViewWindow() { }
+        public void GetCurrentInfo(nint pfs) { }
+        public void AddPropertySheetPages(uint dwReserved, nint pfn, nint lparam) { }
+        public void SaveViewState() { }
+        public void SelectItem(nint pidlItem, uint uFlags) { }
+        public void GetItemObject(uint uItem, in Guid riid, out object ppv) => ppv = new object();
+        public void GetCurrentViewMode(out uint viewMode) => viewMode = 0;
+        public void SetCurrentViewMode(uint viewMode) { }
+        public void GetFolder(in Guid riid, out object ppv) => ppv = new object();
+        public void Item(int iItemIndex, out nint ppidl) => ppidl = nint.Zero;
+        public void ItemCount(uint uFlags, out int pcItems) => pcItems = 0;
+        public void Items(uint uFlags, in Guid riid, out object ppv) => ppv = new object();
+        public void GetSelectionMarkedItem(out int piItem) => piItem = -1;
+        public void GetFocusedItem(out int piItem) => piItem = -1;
+        public void GetItemPosition(nint pidl, out NativePoint ppt) => ppt = default;
+        public void GetSpacing(ref NativePoint ppt) => ppt = spacing;
+        public void GetDefaultSpacing(out NativePoint ppt) => ppt = defaultSpacing;
+        public int GetAutoArrange() => ShellConstants.S_FALSE;
+        public void SelectItem(int iItem, uint dwFlags) { }
+        public void SelectAndPositionItems(uint cidl, nint[] apidl, NativePoint[]? apt, uint dwFlags) { }
+        public void SetGroupBy(nint key, bool fAscending) { }
+        public void GetGroupBy(nint pkey, out bool pfAscending) => pfAscending = false;
+        public void SetViewProperty(nint pidl, nint propkey, nint propvar) { }
+        public void GetViewProperty(nint pidl, nint propkey, nint propvar) { }
+        public void SetTileViewProperties(nint pidl, string pszPropList) { }
+        public void SetExtendedTileViewProperties(nint pidl, string pszPropList) { }
+        public void SetText(int iType, string pwszText) { }
+        public void SetCurrentFolderFlags(uint dwMask, uint dwFlags) { }
+        public void GetCurrentFolderFlags(out uint pdwFlags) => pdwFlags = flags;
+    }
+
+    private sealed class StubShellWindows(object dispatch) : IShellWindows
+    {
+        public int get_Count() => 1;
+        public object? Item(object? index = null) => null;
+        public object _NewEnum() => throw new NotImplementedException();
+        public void Register(object? pid, int hwnd, int swClass, out int plCookie) => plCookie = 0;
+        public void RegisterPending(int lThreadId, ref object? pvarloc, ref object? pvarlocRoot, int swClass, out int plCookie) => plCookie = 0;
+        public void Revoke(int lCookie) { }
+        public void OnNavigate(int lCookie, ref object? pvarloc) { }
+        public void OnActivated(int lCookie, bool fActive) { }
+        public int FindWindowSW(ref object? pvarLoc, ref object? pvarLocRoot, int swClass, out int phwnd, int swfwOptions, out object? ppdispOut)
+        {
+            phwnd = 1;
+            ppdispOut = dispatch;
+            return ShellConstants.S_OK;
+        }
+        public void OnCreated(int lCookie, object? punk) { }
+        public void ProcessAttachDetach(bool fAttach) { }
+    }
+
+    private sealed class StubServiceProvider(object browser) : Berth.Desktop.Interop.IServiceProvider
+    {
+        public void QueryService(in Guid guidService, in Guid riid, out object? ppvObject) => ppvObject = browser;
+    }
+
+    private sealed class StubShellBrowser(IShellView view) : IShellBrowser
+    {
+        public void GetWindow(out nint phwnd) => phwnd = nint.Zero;
+        public void ContextSensitiveHelp(bool fEnterMode) { }
+        public void InsertMenusSB(nint hmenuShared, nint lpMenuWidths) { }
+        public void SetMenuSB(nint hmenuShared, nint holemenuRes, nint hwndActiveObject) { }
+        public void RemoveMenusSB(nint hmenuShared) { }
+        public void SetStatusTextSB(string? pszStatusText) { }
+        public void EnableModelessSB(bool fEnable) { }
+        public int TranslateAcceleratorSB(nint pmsg, ushort wID) => 0;
+        public void BrowseObject(nint pidl, uint wFlags) { }
+        public void GetViewStateStream(uint grfMode, out object? ppStrm) => ppStrm = null;
+        public void GetControlWindow(uint id, out nint phwnd) => phwnd = nint.Zero;
+        public void SendControlMsg(uint id, uint uMsg, nuint wParam, nint lParam, out nint pret) => pret = nint.Zero;
+        public void QueryActiveShellView(out IShellView ppshv) => ppshv = view;
+        public void OnViewWindowActive(IShellView? pshv) { }
+        public void SetToolbarItems(nint lpButtons, uint nButtons, uint uFlags) { }
+    }
 }
 
 [Collection(DesktopCollectionDefinition.Name)]
@@ -131,7 +246,7 @@ public sealed class ProbeIconTests
             HashSet<string> selectionBaseline = ReadSelectionIds(shell);
 
             // Part A: move probe in-bounds by at least max(200, spacingX * 2 + 1) alongside an unknown Id.
-            int stepX = snapToGrid ? Math.Max(200, spacingX * 2 + 1) : 200;
+            int stepX = Math.Max(200, spacingX * 2 + 1);
             (int target1X, int target1Y) = ChooseInBoundsTarget(initial.X, initial.Y, stepX, 0, currentMonitors);
             Assert.True(
                 Math.Abs(target1X - initial.X) >= stepX,
@@ -177,7 +292,7 @@ public sealed class ProbeIconTests
             Assert.Equal((posA.X, posA.Y), (savedIcon.X, savedIcon.Y));
 
             // Move probe to a distinct second in-bounds position outside posA's acceptance region.
-            int stepY = snapToGrid ? Math.Max(200, spacingY * 2 + 1) : 200;
+            int stepY = Math.Max(200, spacingY * 2 + 1);
             (int target2X, int target2Y) = ChooseInBoundsTarget(posA.X, posA.Y, 0, stepY, currentMonitors);
             Assert.True(
                 Math.Abs(target2Y - posA.Y) >= stepY,
@@ -244,7 +359,7 @@ public sealed class ProbeIconTests
         Assert.False(File.Exists(probeFilePath), "ProbeIcon.Dispose left the probe file on the desktop.");
     }
 
-    private static (bool SnapToGrid, int SpacingX, int SpacingY) ReadGridInfo(ShellDesktopIcons shell) =>
+    internal static (bool SnapToGrid, int SpacingX, int SpacingY) ReadGridInfo(ShellDesktopIcons shell) =>
         shell.RunWithView(desktop =>
         {
             bool snapToGrid = false;
@@ -265,7 +380,22 @@ public sealed class ProbeIconTests
             return (snapToGrid, spacing.X, spacing.Y);
         });
 
-    private static HashSet<string> ReadSelectionIds(ShellDesktopIcons shell) =>
+    private static HashSet<string> ReadSelectionIds(ShellDesktopIcons shell)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return ReadSelectionIdsOnce(shell);
+            }
+            catch (COMException ex) when (attempt == 0 && ex.HResult == unchecked((int)0x80070490))
+            {
+                // Transient selection change between ItemCount and Items: retry the full snapshot once.
+            }
+        }
+    }
+
+    private static HashSet<string> ReadSelectionIdsOnce(ShellDesktopIcons shell) =>
         shell.RunWithView(desktop =>
         {
             object? folderObj = null;
@@ -284,15 +414,7 @@ public sealed class ProbeIconTests
                 var folder = (IShellFolder)folderObj!;
 
                 Guid enumIid = typeof(IEnumIDList).GUID;
-                try
-                {
-                    desktop.View.Items(ShellConstants.SVGIO_SELECTION, in enumIid, out enumObj);
-                }
-                catch (COMException ex) when (ex.HResult == unchecked((int)0x80070490))
-                {
-                    return ids;
-                }
-
+                desktop.View.Items(ShellConstants.SVGIO_SELECTION, in enumIid, out enumObj);
                 var enumerator = (IEnumIDList)enumObj!;
 
                 var batch = new nint[1];
