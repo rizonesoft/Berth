@@ -416,7 +416,9 @@ public sealed class UnitStaWorkerTests
     {
         var calls = new List<(string Member, int ThreadId, ApartmentState Apartment)>();
         using var icons = new ShellDesktopIcons(
-            DesktopView.Open,
+            () => DesktopView.Open(
+                () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(new StubShellView()))),
+                _ => { }),
             member => calls.Add((member, Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState())));
 
         int expectedWorkerId = icons.RunOnWorker(() => Environment.CurrentManagedThreadId);
@@ -428,8 +430,8 @@ public sealed class UnitStaWorkerTests
             {
                 Assert.Throws<NotImplementedException>(() => icons.ReadIcons());
                 Assert.Throws<NotImplementedException>(() => icons.SetPositions(Array.Empty<IconPosition>()));
-                Assert.Throws<NotImplementedException>(() => _ = icons.AutoArrange);
-                Assert.Throws<NotImplementedException>(() => icons.TryTurnAutoArrangeOff());
+                Assert.False(icons.AutoArrange);
+                Assert.False(icons.TryTurnAutoArrangeOff());
             }
             catch (Exception ex)
             {

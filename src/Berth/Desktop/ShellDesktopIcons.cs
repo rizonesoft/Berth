@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using Berth.Core;
 using Berth.Core.Model;
+using Berth.Desktop.Interop;
 
 namespace Berth.Desktop;
 
@@ -38,12 +40,56 @@ internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
     }
 
     public bool AutoArrange =>
-        RunMember<bool>(nameof(AutoArrange), static () =>
-            throw new NotImplementedException("ShellDesktopIcons.AutoArrange is implemented in D02 T01 §5."));
+        RunMemberWithView(nameof(AutoArrange), static desktop => ReadAutoArrange(desktop.View, desktop.View2));
 
     public bool TryTurnAutoArrangeOff() =>
-        RunMember<bool>(nameof(TryTurnAutoArrangeOff), static () =>
-            throw new NotImplementedException("ShellDesktopIcons.TryTurnAutoArrangeOff is implemented in D02 T01 §5."));
+        RunMemberWithView(nameof(TryTurnAutoArrangeOff), ClearAutoArrange);
+
+    internal static bool ReadAutoArrange(IFolderView view, IFolderView2? view2)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (view2 is not null)
+        {
+            view2.GetCurrentFolderFlags(out uint flags);
+            return (flags & ShellConstants.FWF_AUTOARRANGE) != 0;
+        }
+
+        int hr = view.GetAutoArrange();
+        if (hr == ShellConstants.S_OK)
+        {
+            return true;
+        }
+
+        if (hr == ShellConstants.S_FALSE)
+        {
+            return false;
+        }
+
+        if (hr < 0)
+        {
+            Exception? hrException = Marshal.GetExceptionForHR(hr);
+            throw hrException is not null
+                ? new DesktopUnavailableException("The Windows desktop folder view could not be reached.", hrException)
+                : new DesktopUnavailableException(
+                    $"Could not read desktop auto arrange state (GetAutoArrange returned 0x{hr:X8}).");
+        }
+
+        throw new DesktopUnavailableException(
+            $"Could not read desktop auto arrange state (GetAutoArrange returned 0x{hr:X8}).");
+    }
+
+    private static bool ClearAutoArrange(DesktopView desktop)
+    {
+        IFolderView2? view2 = desktop.View2;
+        if (view2 is null)
+        {
+            return false;
+        }
+
+        view2.SetCurrentFolderFlags(ShellConstants.FWF_AUTOARRANGE, 0);
+        view2.GetCurrentFolderFlags(out uint flags);
+        return (flags & ShellConstants.FWF_AUTOARRANGE) == 0;
+    }
 
     internal T RunOnWorker<T>(Func<T> work)
     {
@@ -63,6 +109,33 @@ internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
 
     public void Dispose() => _worker.Dispose();
 
+    private T RunMemberWithView<T>(string memberName, Func<DesktopView, T> work) =>
+        _worker.Run(() =>
+        {
+            _onMemberExecuted?.Invoke(memberName);
+            using DesktopView view = _openView();
+            try
+            {
+                return work(view);
+            }
+            catch (COMException ex)
+            {
+                throw Unavailable(ex);
+            }
+            catch (InvalidCastException ex)
+            {
+                throw Unavailable(ex);
+            }
+            catch (InvalidComObjectException ex)
+            {
+                throw Unavailable(ex);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw Unavailable(ex);
+            }
+        });
+
     private T RunMember<T>(string memberName, Func<T> work) =>
         _worker.Run(() =>
         {
@@ -76,4 +149,7 @@ internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
             _onMemberExecuted?.Invoke(memberName);
             work();
         });
+
+    private static DesktopUnavailableException Unavailable(Exception inner) =>
+        new("The Windows desktop folder view could not be reached.", inner);
 }
