@@ -1,0 +1,85 @@
+{
+  "ref": "D05 T01 \u00a72",
+  "title": "Layouts pane",
+  "implementation_sha": "4fd528d7bb2d8dff5a94243f48adb0ce3030567a",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s2.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "LayoutsPaneTests+MainViewModelTests+WindowRendererTests+render-window.ps1+design-lint.py+Opus5.5-PASS:pass"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s2.md",
+    "verdict": "filed",
+    "candidate": "4fd528d7bb2d8dff5a94243f48adb0ce3030567a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D05 T01 \u00a714"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s2.md",
+    "candidate": "438b9ea04be59bbc63c6595674c70ac5b68f9ed3",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "438b9ea04be59bbc63c6595674c70ac5b68f9ed3",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}

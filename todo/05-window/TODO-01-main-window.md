@@ -38,7 +38,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Window view model and desktop polling | D04 T01 §9, D01 T01 §16, D02 T01 §8 | [x] |
-| 2 | §2 | Layouts pane | §1, D04 T01 §11 | [ ] |
+| 2 | §2 | Layouts pane | §1, D04 T01 §11 | [x] |
 | 3 | §3 | Detail header and action buttons | §2 | [ ] |
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [ ] |
 | 5 | §5 | Marker states, selection and readout | §4 | [ ] |
@@ -97,17 +97,20 @@ The left pane: heading, one row per layout, the Active badge and the selection (
 1. Add `LayoutsPane.xaml` in `src/Berth/Window/`. Done when: rows render from `MainViewModel.Rows`.
 2. Render the SPEC §19 states. Done when: five PNGs exist in light and dark.
 
-- [ ] Add `src/Berth/Window/LayoutsPane.xaml` (a `UserControl`) with the heading `Layouts` in the `bodyStrong` style and a `ListBox` bound to `Rows` and `Selected`, hosted in `MainWindow.LayoutsHost`. Done when: a test on the app fixture with three rows finds three `ListBoxItem`s and the heading text. Cheaper substitute: a `StackPanel` of buttons, which loses arrow-key selection (SPEC §5).
-- [ ] Give each row the name (`bodyStrong`), the subtitle (`caption`, `Berth.TextSecondary`), and for `IsActive` the badge `Active` (`Berth.ActiveBadgeFill`, `Berth.ActiveBadgeText`, radius `Berth.RadiusBadge`, `caption` at weight 600). Done when: a test finds the badge element only in the active row and its text is `Active`. Cheaper substitute: colouring the active row's name, which is colour alone (SPEC §1).
-- [ ] Draw the selected row with the theme's list selection plus a 3 px marker on its left edge in the theme's accent brush. Done when: a test selects the second row and finds the marker visible only there. Cheaper substitute: a custom selection colour that ignores the Windows accent (SPEC §1 "Fluent controls stay Fluent").
-- [ ] Do not list a layout whose file is unreadable; expose `MainViewModel.Unreadable` for the notice of §7. Done when: a test with one corrupt file sees it absent from the rows and present in `Unreadable`. Cheaper substitute: a row that crashes when selected.
-- [ ] Add render tests (trait `Render`) writing `layouts-none`, `layouts-one`, `layouts-several`, `layouts-active-saved` and `layouts-active-unsaved` in light and dark to `build/renders/` (SPEC §19 "Layouts pane"). Done when: `pwsh scripts/render-window.ps1` writes the ten files and each differs from the empty frame. Cheaper substitute: rendering only the mockup's state.
-- [ ] Add `tests/Berth.Tests/Window/LayoutsPaneTests.cs`. Done when: all pass, and the badge test fails when the badge is shown on every row. Cheaper substitute: none needed.
-- [ ] Commit: `window: layouts pane`
+- [x] Add `src/Berth/Window/LayoutsPane.xaml` (a `UserControl`) with the heading `Layouts` in the `bodyStrong` style and a `ListBox` bound to `Rows` and `Selected`, hosted in `MainWindow.LayoutsHost`. Done when: a test on the app fixture with three rows finds three `ListBoxItem`s and the heading text. Cheaper substitute: a `StackPanel` of buttons, which loses arrow-key selection (SPEC §5).
+- [x] Give each row the name (`bodyStrong`), the subtitle (`caption`, `Berth.TextSecondary`), and for `IsActive` the badge `Active` (`Berth.ActiveBadgeFill`, `Berth.ActiveBadgeText`, radius `Berth.RadiusBadge`, `caption` at weight 600). Done when: a test finds the badge element only in the active row and its text is `Active`. Cheaper substitute: colouring the active row's name, which is colour alone (SPEC §1).
+- [x] Draw the selected row with the theme's list selection plus a 3 px marker on its left edge in the theme's accent brush. Done when: a test selects the second row and finds the marker visible only there. Cheaper substitute: a custom selection colour that ignores the Windows accent (SPEC §1 "Fluent controls stay Fluent").
+- [x] Do not list a layout whose file is unreadable; expose `MainViewModel.Unreadable` for the notice of §7. Done when: a test with one corrupt file sees it absent from the rows and present in `Unreadable`. Cheaper substitute: a row that crashes when selected.
+- [x] Add render tests (trait `Render`) writing `layouts-none`, `layouts-one`, `layouts-several`, `layouts-active-saved` and `layouts-active-unsaved` in light and dark to `build/renders/` (SPEC §19 "Layouts pane"). Done when: `pwsh scripts/render-window.ps1` writes the ten files and each differs from the empty frame. Cheaper substitute: rendering only the mockup's state.
+- [x] Add `tests/Berth.Tests/Window/LayoutsPaneTests.cs`. Done when: all pass, and the badge test fails when the badge is shown on every row. Cheaper substitute: none needed.
+- [x] Commit: `window: layouts pane`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutsPaneTests"` passes, and fails when the Active badge appears on a row that is not active.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-21 | §2 | 4fd528d7bb2d8dff5a94243f48adb0ce3030567a
+> **Review:** `docs/reviews/d05-t01-s2.json`
 
 ## 3. Detail header and action buttons
 
