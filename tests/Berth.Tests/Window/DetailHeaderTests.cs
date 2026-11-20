@@ -289,6 +289,7 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
                     saveToolTip: null);
                 Assert.False(window!.DetailHeaderControl.RestoreButton.IsEnabled);
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.RestoreButton));
+                Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.SaveButton));
                 Assert.Equal("Auto arrange icons is on.", window!.DetailHeaderControl.RestoreButton.ToolTip);
                 Assert.True(window!.DetailHeaderControl.SaveButton.IsEnabled);
                 InvokeButton(window!.DetailHeaderControl.SaveButton);
@@ -299,6 +300,7 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
                 Assert.False(vm.Detail.IsBusy);
                 Assert.False(window!.DetailHeaderControl.RestoreButton.IsEnabled);
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.RestoreButton));
+                Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.SaveButton));
                 Assert.Equal("Auto arrange icons is on.", window!.DetailHeaderControl.RestoreButton.ToolTip);
                 Assert.True(window!.DetailHeaderControl.SaveButton.IsEnabled);
             });
@@ -349,26 +351,20 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
 
         // Start a poll while no layout is saved; pause it right before ApplySnapshot.
         var saveWroteFile = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        LayoutService gatedSaveService = new(
-            desktop,
-            monitors,
-            store,
-            paths,
-            new OperationLock(paths, TimeSpan.FromSeconds(5)),
-            new Log(paths, new FixedClock(FixedNow)),
-            new FixedClock(FixedNow))
-        {
-            BeforeWrite = () => saveWroteFile.TrySetResult(),
-        };
 
         Task stalePoll = vm.RefreshAsync();
         await pollCapturedPreSave.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        // Start Save while stalePoll is held open; wait until Save reaches write before releasing stalePoll so
-        // stalePoll cannot consume _pendingSelectedKey with its old unsaved row.
+        // Start Save while stalePoll is held open; wait until Save has completely finished writing the layout file
+        // before releasing stalePoll so stalePoll cannot consume _pendingSelectedKey with its old unsaved row.
         Task<OperationResult?> saveTask = vm.Detail.RunOperationAsync(
             WindowOperationKind.Save,
-            () => gatedSaveService.Save(),
+            () =>
+            {
+                OperationResult res = service.Save();
+                saveWroteFile.TrySetResult();
+                return res;
+            },
             res => res.Done ? res.ArrangementKey : null);
         await saveWroteFile.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
@@ -410,14 +406,60 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
         Assert.True(saveRes.Done);
         Assert.False(vmB2.Detail.IsBusy);
 
-        // Now connect B (MonSingle, which has saved layout "Beta") and run a stable refresh:
-        // retained ArrangementKey of A must select A as Other instead of active Beta!
+        // Now connect B (MonSingle, which has saved layout "Beta") and temporarily move A's file aside so B becomes
+        // selected (_lastKnownSelectedKey = B); then restore A's file and refresh -> retained _pendingSelectedKey for A
+        // must still override B and select A as Other!
         flipMonitors.SwitchToSecond();
-        await vmB2.RefreshAsync();
         string keyA = ArrangementKey.From([MonDualA]);
+        string layoutAPath = pathsB.LayoutFile(keyA);
+        string parkedPath = layoutAPath + ".parked";
+        File.Move(layoutAPath, parkedPath);
+        await vmB2.RefreshAsync();
+        Assert.Equal("Beta", vmB2.Selected?.Name);
+
+        File.Move(parkedPath, layoutAPath);
+        await vmB2.RefreshAsync();
         Assert.Equal(keyA, vmB2.Selected?.Key);
         Assert.Equal(DetailKind.Other, vmB2.Detail.Kind);
         Assert.Equal("1 monitor", vmB2.Detail.Title);
+    }
+
+    [Fact]
+    public async Task RefreshPropagatesFailureAndAllowsSubsequentPoll()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        var monitors = new FakeMonitors(MonSingle);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 10, 20));
+        LayoutService service = CreateService(paths, store, desktop, monitors);
+
+        int attempts = 0;
+        var vm = new MainViewModel(
+            store,
+            desktop,
+            monitors,
+            new FixedClock(FixedNow),
+            marshalToUiAsync: action =>
+            {
+                if (Interlocked.Increment(ref attempts) == 1)
+                {
+                    throw new InvalidOperationException("Simulated UI marshal failure.");
+                }
+
+                appFixture.Invoke(action);
+                return Task.CompletedTask;
+            },
+            service: service,
+            timeZone: TimeZoneInfo.Utc);
+
+        InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => vm.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Contains("Simulated UI marshal failure", ex.Message, StringComparison.Ordinal);
+
+        // Next poll must NOT be wedged and must succeed cleanly.
+        await vm.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(DetailKind.Unsaved, vm.Detail.Kind);
     }
 
     [Fact]
@@ -501,9 +543,10 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
         var trayFinished = new TaskCompletionSource<OperationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         Berth.App.TrayMenu? trayMenu = null;
         MainWindow? window = null;
+        MainViewModel? prodVm = null;
         try
         {
-            (window, trayMenu) = appFixture.Invoke(() =>
+            (window, trayMenu, prodVm) = appFixture.Invoke(() =>
             {
                 var menu = new Berth.App.TrayMenu(
                     service,
@@ -513,12 +556,28 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
                     settingsStore,
                     log,
                     (action, _) => System.Windows.Application.Current.Dispatcher.BeginInvoke(action));
-                var w = new MainWindow { DataContext = vm };
-                MeasureAndArrange(w);
-                menu.OperationBusyChanged += busy => vm.Detail.SetExternalBusy(busy);
+                var composition = Berth.App.Composition.ForTest(
+                    paths,
+                    log,
+                    monitors,
+                    desktop,
+                    store,
+                    new OperationLock(paths, TimeSpan.FromSeconds(5)),
+                    service);
+                MainWindow w = Berth.App.TrayApp.CreateProductionMainWindow(
+                    (Berth.App.BerthApplication)System.Windows.Application.Current,
+                    settingsStore,
+                    composition,
+                    monitors,
+                    new FixedClock(FixedNow),
+                    menu);
+                var boundVm = Assert.IsType<MainViewModel>(w.DataContext);
                 menu.OperationFinished += res => trayFinished.TrySetResult(res);
-                return (w, menu);
+                return (w, menu, boundVm);
             });
+
+            await prodVm!.RefreshAsync();
+            appFixture.Invoke(() => MeasureAndArrange(window!));
 
             desktop.ArmGate();
             appFixture.Invoke(() => trayMenu!.Strip.Items[0].PerformClick()); // "Save layout" from tray
@@ -527,7 +586,7 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
             appFixture.Invoke(() =>
             {
                 DetailHeader header = window!.DetailHeaderControl;
-                Assert.True(vm.Detail.IsBusy);
+                Assert.True(prodVm.Detail.IsBusy);
                 Assert.False(header.RestoreButton.IsEnabled);
                 Assert.False(header.SaveButton.IsEnabled);
                 Assert.False(header.MoreButton.IsEnabled);
@@ -539,7 +598,7 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
             appFixture.Invoke(() =>
             {
                 DetailHeader header = window!.DetailHeaderControl;
-                Assert.False(vm.Detail.IsBusy);
+                Assert.False(prodVm.Detail.IsBusy);
                 Assert.True(header.RestoreButton.IsEnabled);
                 Assert.True(header.SaveButton.IsEnabled);
                 Assert.True(header.MoreButton.IsEnabled);

@@ -171,7 +171,15 @@ internal sealed class MainViewModel : ObservableObject
 
             if (existing is not null)
             {
-                await existing.ConfigureAwait(false);
+                try
+                {
+                    await existing.ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // A prior poll failure must not block the post-operation refresh.
+                }
+
                 continue;
             }
 
@@ -192,6 +200,7 @@ internal sealed class MainViewModel : ObservableObject
 
     private async Task RunRefreshCoreAsync(TaskCompletionSource gate)
     {
+        Exception? failure = null;
         try
         {
             RefreshSnapshot? snapshot = await Task.Run(CaptureSnapshot).ConfigureAwait(false);
@@ -199,6 +208,10 @@ internal sealed class MainViewModel : ObservableObject
             {
                 await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
             }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
         }
         finally
         {
@@ -210,7 +223,14 @@ internal sealed class MainViewModel : ObservableObject
                 }
             }
 
-            gate.TrySetResult();
+            if (failure is not null)
+            {
+                gate.TrySetException(failure);
+            }
+            else
+            {
+                gate.TrySetResult();
+            }
         }
     }
 
