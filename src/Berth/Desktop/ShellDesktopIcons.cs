@@ -45,7 +45,7 @@ internal sealed class ShellDesktopIcons : IDesktopIcons, IDisposable
     public bool TryTurnAutoArrangeOff() =>
         RunMemberWithView(nameof(TryTurnAutoArrangeOff), ClearAutoArrange);
 
-    internal static bool ReadAutoArrange(IFolderView view, IFolderView2? view2)
+    private static bool ReadAutoArrange(IFolderView view, IFolderView2? view2)
     {
         ArgumentNullException.ThrowIfNull(view);
         if (view2 is not null)

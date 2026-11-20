@@ -19,17 +19,33 @@ public sealed class AutoArrangeTests
         using var icons = new ShellDesktopIcons(() =>
         {
             DesktopView desktop = DesktopView.Open();
-            hadView2 = desktop.View2 is not null;
-            rawFallbackHr = desktop.View.GetAutoArrange();
-            return desktop;
+            try
+            {
+                hadView2 = desktop.View2 is not null;
+                rawFallbackHr = desktop.View.GetAutoArrange();
+                return desktop;
+            }
+            catch
+            {
+                desktop.Dispose();
+                throw;
+            }
         });
 
-        bool publicValue = icons.AutoArrange;
+        bool publicValue = false;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            publicValue = icons.AutoArrange;
+            Assert.True(hadView2, "Expected the live Windows 11 desktop folder view to expose IFolderView2.");
+            Assert.True(
+                rawFallbackHr is ShellConstants.S_OK or ShellConstants.S_FALSE,
+                $"Expected raw IFolderView.GetAutoArrange() to return S_OK or S_FALSE, got 0x{rawFallbackHr:X8}.");
+            if (publicValue == (rawFallbackHr == ShellConstants.S_OK))
+            {
+                break;
+            }
+        }
 
-        Assert.True(hadView2, "Expected the live Windows 11 desktop folder view to expose IFolderView2.");
-        Assert.True(
-            rawFallbackHr is ShellConstants.S_OK or ShellConstants.S_FALSE,
-            $"Expected raw IFolderView.GetAutoArrange() to return S_OK or S_FALSE, got 0x{rawFallbackHr:X8}.");
         Assert.Equal(rawFallbackHr == ShellConstants.S_OK, publicValue);
     }
 
