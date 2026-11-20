@@ -90,7 +90,18 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         ArgumentNullException.ThrowIfNull(icons);
         RunMemberWithView(nameof(SetPositions), desktop =>
         {
-            SetPositionsOnView(desktop, icons);
+            SetPositionsOnView(desktop, icons, beforeMove: null);
+            return 0;
+        });
+    }
+
+    public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove)
+    {
+        ArgumentNullException.ThrowIfNull(icons);
+        ArgumentNullException.ThrowIfNull(beforeMove);
+        RunMemberWithView(nameof(SetPositions), desktop =>
+        {
+            SetPositionsOnView(desktop, icons, beforeMove);
             return 0;
         });
     }
@@ -144,10 +155,11 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
     public void Dispose() => _worker.Dispose();
 
-    private void SetPositionsOnView(DesktopView desktop, IReadOnlyList<IconPosition> icons)
+    private void SetPositionsOnView(DesktopView desktop, IReadOnlyList<IconPosition> icons, Action? beforeMove)
     {
         if (icons.Count == 0)
         {
+            beforeMove?.Invoke();
             return;
         }
 
@@ -232,6 +244,8 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 matchedPidls.Add(pidl);
                 matchedPoints.Add(new NativePoint { X = viewX, Y = viewY });
             }
+
+            beforeMove?.Invoke();
 
             if (matchedPidls.Count > 0)
             {

@@ -20,6 +20,17 @@ internal interface IDesktopIcons
     /// <exception cref="DesktopUnavailableException">The desktop cannot be reached.</exception>
     void SetPositions(IReadOnlyList<IconPosition> icons);
 
+    /// <summary>
+    /// As <see cref="SetPositions(IReadOnlyList{IconPosition})"/>, running <paramref name="beforeMove"/> only after
+    /// all matched positions have been validated and converted, immediately before any icon is moved.
+    /// </summary>
+    void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove)
+    {
+        ArgumentNullException.ThrowIfNull(beforeMove);
+        beforeMove();
+        SetPositions(icons);
+    }
+
     /// <summary>Whether the desktop arranges its icons automatically.</summary>
     /// <exception cref="DesktopUnavailableException">The desktop cannot be reached.</exception>
     bool AutoArrange { get; }

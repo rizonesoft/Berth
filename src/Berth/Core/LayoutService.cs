@@ -248,14 +248,23 @@ internal sealed class LayoutService(
             return OperationResult.Failed(FailureKind.Unexpected, path: null, message, layout.Name, new InvalidOperationException(message));
         }
 
-        // The way back is staged beside undo.json, then put in its place just before anything moves, so `berth undo`
-        // in another process has it, and an abort before the move leaves the earlier undo exactly as it was.
+        // The way back is staged beside undo.json, then moved into place from SetPositions's beforeMove callback
+        // immediately before Explorer moves any icon — after coordinate validation succeeds and with no rollback needed.
         string staged = paths.UndoFile + ".next";
-        byte[]? previousUndoBytes = null;
+        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
+        IconPosition[] wanted = [.. layout.Icons.Where(saved => live.ContainsKey(saved.Id))];
+        OperationResult? abortResult = null;
         try
         {
-            BerthPaths.EnsureFolderFor(paths.UndoFile);
-            JsonFile.Write(staged, undo, BerthJson.Default.UndoSnapshot);
+            try
+            {
+                BerthPaths.EnsureFolderFor(paths.UndoFile);
+                JsonFile.Write(staged, undo, BerthJson.Default.UndoSnapshot);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message, layout.Name);
+            }
 
             // A change after the snapshot was taken: nothing has moved; stop rather than place another arrangement's icons.
             if (!StillThe(key))
@@ -263,39 +272,57 @@ internal sealed class LayoutService(
                 return OperationResult.Failed(FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
             }
 
-            if (File.Exists(paths.UndoFile))
+            try
             {
-                previousUndoBytes = File.ReadAllBytes(paths.UndoFile);
-            }
+                desktop.SetPositions(wanted, () =>
+                {
+                    if (!StillThe(key))
+                    {
+                        abortResult = OperationResult.Failed(
+                            FailureKind.DisplaysChanged, path: null, Messages.DisplaysChangedDuringRestore, layout.Name);
+                        throw new AbortBeforeMoveException();
+                    }
 
-            File.Move(staged, paths.UndoFile, overwrite: true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message, layout.Name);
+                    try
+                    {
+                        File.Move(staged, paths.UndoFile, overwrite: true);
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    {
+                        abortResult = OperationResult.Failed(FailureKind.WriteFailed, paths.UndoFile, error.Message, layout.Name);
+                        throw new AbortBeforeMoveException();
+                    }
+                });
+            }
+            catch (AbortBeforeMoveException)
+            {
+                return abortResult!;
+            }
+            catch (OverflowException overflow)
+            {
+                // Coordinate conversion failed before beforeMove ran, so undo.json was never replaced and no icon moved.
+                return OperationResult.Failed(FailureKind.Unexpected, path: null, overflow.Message, layout.Name, overflow);
+            }
+            catch (DesktopUnavailableException)
+            {
+                // Some icons may have moved and none can be counted: the snapshot stays if committed, so undo still works.
+                return OperationResult.Failed(
+                    FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringRestore, layout.Name);
+            }
         }
         finally
         {
             DeleteIfThere(staged);
         }
 
-        IReadOnlyDictionary<string, IconPosition> live = LayoutComparison.ById(icons);
-        IconPosition[] wanted = [.. layout.Icons.Where(saved => live.ContainsKey(saved.Id))];
         IReadOnlyList<IconPosition> after;
         try
         {
-            desktop.SetPositions(wanted);
             after = desktop.ReadIcons();
-        }
-        catch (OverflowException overflow)
-        {
-            // Coordinate conversion failed before SelectAndPositionItems ran, so no icon moved: put the previous undo back.
-            RestorePreviousUndo(previousUndoBytes);
-            return OperationResult.Failed(FailureKind.Unexpected, path: null, overflow.Message, layout.Name, overflow);
         }
         catch (DesktopUnavailableException)
         {
-            // Some icons may have moved and none can be counted: the snapshot stays, so undo still works.
+            // Icons were moved and cannot be counted: the snapshot stays, so undo still works.
             return OperationResult.Failed(
                 FailureKind.DesktopUnavailable, path: null, Messages.DesktopLostDuringRestore, layout.Name);
         }
@@ -662,29 +689,7 @@ internal sealed class LayoutService(
     }
 
     /// <summary>Whether the monitors still give <paramref name="key"/>; an unreachable desktop counts as a change.</summary>
-    private void RestorePreviousUndo(byte[]? previousUndoBytes)
-    {
-        if (previousUndoBytes is null)
-        {
-            DeleteIfThere(paths.UndoFile);
-            return;
-        }
-
-        string rollback = paths.UndoFile + ".rollback";
-        try
-        {
-            File.WriteAllBytes(rollback, previousUndoBytes);
-            File.Move(rollback, paths.UndoFile, overwrite: true);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            // Best-effort rollback; leave original failure to surface.
-        }
-        finally
-        {
-            DeleteIfThere(rollback);
-        }
-    }
+    private sealed class AbortBeforeMoveException : Exception;
 
     private static IconPosition? FindOutOfRangePosition(
         IReadOnlyList<IconPosition> requested,
