@@ -75,6 +75,8 @@ The state behind the window, testable with fakes and no window: the rows, the se
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MainViewModelTests"` and `--filter-class "*DesktopPollerTests"` pass, and the poller test fails when a stopped poller still reads.
 
+> **Started:** 2026-11-20
+
 ## 2. Layouts pane
 
 The left pane: heading, one row per layout, the Active badge and the selection (SPEC §5).

@@ -18,12 +18,14 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
     private readonly IMonitors? _monitors;
     private readonly Log? _log;
     private readonly IWindowBoundsInterop _boundsInterop;
+    private readonly MainViewModel? _viewModel;
+    private readonly DesktopPoller? _poller;
     private readonly double _defaultWidthDips;
     private readonly double _defaultHeightDips;
     private bool _hasInitializedPlacement;
 
     public MainWindow()
-        : this(settingsStore: null, monitors: null, log: null, boundsInterop: null)
+        : this(settingsStore: null, monitors: null, log: null, boundsInterop: null, viewModel: null, poller: null)
     {
     }
 
@@ -31,14 +33,23 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
         SettingsStore? settingsStore,
         IMonitors? monitors,
         Log? log,
-        IWindowBoundsInterop? boundsInterop = null)
+        IWindowBoundsInterop? boundsInterop = null,
+        MainViewModel? viewModel = null,
+        DesktopPoller? poller = null)
     {
         _settingsStore = settingsStore;
         _monitors = monitors;
         _log = log;
         _boundsInterop = boundsInterop ?? NativeWindowBoundsInterop.Instance;
+        _viewModel = viewModel;
+        _poller = poller;
 
         InitializeComponent();
+
+        if (_viewModel is not null)
+        {
+            DataContext = _viewModel;
+        }
 
         _defaultWidthDips = ResolveTokenDimension("Berth.WindowDefaultWidth", Width);
         _defaultHeightDips = ResolveTokenDimension("Berth.WindowDefaultHeight", Height);
@@ -47,7 +58,17 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
         }
+
+        if (_poller is not null)
+        {
+            IsVisibleChanged += OnWindowIsVisibleChanged;
+            Activated += OnWindowActivated;
+        }
     }
+
+    internal MainViewModel? ViewModel => _viewModel;
+
+    internal DesktopPoller? Poller => _poller;
 
     /// <summary>When <see langword="true"/>, closing the window actually closes it instead of hiding to the tray.</summary>
     internal bool AllowClose { get; set; }
@@ -90,8 +111,36 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
     /// <summary>Allows the window to close and closes it as part of application shutdown.</summary>
     public void CloseForShutdown()
     {
+        if (_poller is not null)
+        {
+            IsVisibleChanged -= OnWindowIsVisibleChanged;
+            Activated -= OnWindowActivated;
+            _poller.Stop();
+            _poller.Dispose();
+        }
+
         AllowClose = true;
         Close();
+    }
+
+    private void OnWindowIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+        {
+            _poller?.Start();
+        }
+        else
+        {
+            _poller?.Stop();
+        }
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        if (IsVisible)
+        {
+            _poller?.TriggerNow();
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)

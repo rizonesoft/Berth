@@ -165,7 +165,41 @@ internal static class TrayApp
                 MarshalToUi);
 
             Func<IMainWindow> effectiveCreateMainWindow = createMainWindow
-                ?? (() => new MainWindow(settingsStore, effectiveMonitors, effectiveComposition.Log));
+                ?? (() =>
+                {
+                    var viewModel = new MainViewModel(
+                        effectiveComposition.Store,
+                        effectiveComposition.Desktop,
+                        effectiveMonitors,
+                        effectiveClock,
+                        marshalToUiAsync: action =>
+                        {
+                            if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+                            {
+                                return Task.CompletedTask;
+                            }
+
+                            if (app.Dispatcher.CheckAccess())
+                            {
+                                action();
+                                return Task.CompletedTask;
+                            }
+
+                            return app.Dispatcher.InvokeAsync(action).Task;
+                        });
+                    double pollSeconds = app.TryFindResource("Berth.VisiblePollSeconds") is double s && s > 0d ? s : 5d;
+                    var poller = new DesktopPoller(
+                        viewModel.RefreshAsync,
+                        new DispatcherPollerTimer(app.Dispatcher),
+                        TimeSpan.FromSeconds(pollSeconds));
+                    return new MainWindow(
+                        settingsStore,
+                        effectiveMonitors,
+                        effectiveComposition.Log,
+                        boundsInterop: null,
+                        viewModel: viewModel,
+                        poller: poller);
+                });
             IMainWindow? mainWindow = null;
             bool firstWindowOpenedNotified = false;
             bool exitRequested = false;
