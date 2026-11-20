@@ -284,6 +284,48 @@ public sealed class UnavailableTests
         Assert.Same(accessDenied, Assert.Throws<UnauthorizedAccessException>(() => scoped.SetPositions([], () => throw accessDenied)));
         Assert.Same(accessDenied, Assert.Throws<UnauthorizedAccessException>(() => scoped.SetPositions(matched, () => throw accessDenied)));
         Assert.Equal(0, healthyView.SelectAndPositionCalls);
+
+        // Matched beforeMove throws UnauthorizedAccessException AND releasing the enumerator throws InvalidComObjectException:
+        // exact beforeMove exception reaches caller, no placement occurs, and enum, folder, and view each receive 1 release attempt.
+        {
+            var enumReleaseError = new InvalidComObjectException("Enumerator RCW separated");
+            int enumReleases = 0;
+            int folderReleases = 0;
+            int outerViewReleases = 0;
+            var viewWithCleanupFail = new HealthyFolderView([(@"C:\Desktop\Probe.txt", "berth-test-1", 10, 20)]);
+            using var cleanupShell = new ShellDesktopIcons(
+                openView: () => DesktopView.Open(
+                    () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(viewWithCleanupFail))),
+                    obj =>
+                    {
+                        if (ReferenceEquals(obj, viewWithCleanupFail))
+                        {
+                            outerViewReleases++;
+                        }
+                    }),
+                monitors: monitors,
+                releaseComObject: obj =>
+                {
+                    if (obj is IEnumIDList)
+                    {
+                        enumReleases++;
+                        throw enumReleaseError;
+                    }
+
+                    if (obj is IShellFolder)
+                    {
+                        folderReleases++;
+                    }
+                });
+
+            Assert.Same(
+                accessDenied,
+                Assert.Throws<UnauthorizedAccessException>(() => cleanupShell.SetPositions(matched, () => throw accessDenied)));
+            Assert.Equal(0, viewWithCleanupFail.SelectAndPositionCalls);
+            Assert.Equal(1, enumReleases);
+            Assert.Equal(1, folderReleases);
+            Assert.Equal(1, outerViewReleases);
+        }
     }
 
     [Fact]

@@ -202,6 +202,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         object? folderObj = null;
         object? enumObj = null;
         var allocatedPidls = new List<nint>();
+        bool bodyCompleted = false;
 
         try
         {
@@ -311,6 +312,8 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                     [.. matchedPoints],
                     ShellConstants.SVSI_POSITIONITEM | ShellConstants.SVSI_NOSTATECHANGE);
             }
+
+            bodyCompleted = true;
         }
         finally
         {
@@ -319,15 +322,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 _freeCoTaskMem(pidl);
             }
 
-            if (enumObj is not null)
-            {
-                _releaseComObject(enumObj);
-            }
-
-            if (folderObj is not null)
-            {
-                _releaseComObject(folderObj);
-            }
+            ReleaseComPair(enumObj, folderObj, _releaseComObject, suppressMappedShellErrors: !bodyCompleted);
         }
     }
 
@@ -343,6 +338,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         IReadOnlyList<MonitorInfo> monitors = _monitors.Read();
         object? folderObj = null;
         object? enumObj = null;
+        bool bodyCompleted = false;
 
         try
         {
@@ -437,19 +433,53 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 }
             }
 
-            return Deduplicate(raw, _warn);
+            IReadOnlyList<IconPosition> result = Deduplicate(raw, _warn);
+            bodyCompleted = true;
+            return result;
         }
         finally
         {
-            if (enumObj is not null)
-            {
-                releaseComObject(enumObj);
-            }
+            ReleaseComPair(enumObj, folderObj, releaseComObject, suppressMappedShellErrors: !bodyCompleted);
+        }
+    }
 
-            if (folderObj is not null)
-            {
-                releaseComObject(folderObj);
-            }
+    private static void ReleaseComPair(
+        object? first,
+        object? second,
+        Action<object> release,
+        bool suppressMappedShellErrors)
+    {
+        Exception? cleanupError = null;
+        ReleaseOne(first, release, suppressMappedShellErrors, ref cleanupError);
+        ReleaseOne(second, release, suppressMappedShellErrors, ref cleanupError);
+        if (cleanupError is not null)
+        {
+            ExceptionDispatchInfo.Capture(cleanupError).Throw();
+        }
+    }
+
+    private static void ReleaseOne(
+        object? instance,
+        Action<object> release,
+        bool suppressMappedShellErrors,
+        ref Exception? cleanupError)
+    {
+        if (instance is null)
+        {
+            return;
+        }
+
+        try
+        {
+            release(instance);
+        }
+        catch (Exception ex) when (suppressMappedShellErrors && IsMappedShellException(ex))
+        {
+            // Preserve the exception already in flight and still release remaining COM objects.
+        }
+        catch (Exception ex) when (cleanupError is null)
+        {
+            cleanupError = ex;
         }
     }
 
