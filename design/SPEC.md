@@ -182,7 +182,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 | 2 | Wrong usage: an unknown command or option, a missing or invalid `--name` |
 | 3 | Refused: auto arrange is on, no layout for this arrangement, nothing to undo, or the desktop cannot be reached |
 
-- The executable is a console program whose manifest sets the console allocation policy to detached, so starting it from the Start menu, a shortcut or the `Run` key opens no console window, while a command typed in a terminal prints there and the terminal waits for it. Only recent Windows 11 builds honour that policy: Berth's stated minimum is Windows 11 version 24H2, and `D03 T01 §2` proves the behaviour on the build machine and records the lowest build it was shown on.
+- The executable is a console program whose manifest sets the console allocation policy to detached, so starting it from the Start menu, a shortcut or the `Run` key opens no console window, while a command typed in a terminal prints there and the terminal waits for it. Only recent Windows 11 builds honour that policy: Berth's stated minimum is Windows 11 version 24H2, shown on build 26300 (`10.0.26300.0`), 2026-11-20 (`D03 T01 §2`).
 
 ## 14. Storage
 
