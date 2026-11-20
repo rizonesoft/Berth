@@ -120,29 +120,46 @@ public sealed class SingleInstanceTests
     }
 
     [Fact]
-    public async Task ConcurrentDisposeDuringClaimStartupLeavesNameAndPipeAvailableToReplacement()
+    public void ConcurrentDisposeDuringClaimStartupLeavesNameAndPipeAvailableToReplacement()
     {
         string name = UniqueName();
         var instance = new SingleInstance(name);
-        using var disposeStarted = new ManualResetEventSlim(false);
-        Task? disposeTask = null;
+        using var enteringDisposeLock = new ManualResetEventSlim(false);
+        using var disposeFinished = new ManualResetEventSlim(false);
+        instance.BeforeDisposeLock = () => enteringDisposeLock.Set();
+        Thread? disposeThread = null;
 
         bool claimed = instance.TryClaim(beforePipeBind: () =>
         {
-            // Launch Dispose() while TryClaim() holds _lifecycleLock after acquiring the mutex and before binding the pipe.
-            disposeTask = Task.Run(() =>
+            // Launch Dispose() on a dedicated thread while TryClaim() holds _lifecycleLock.
+            disposeThread = new Thread(() =>
             {
-                disposeStarted.Set();
                 instance.Dispose();
-            });
-            Assert.True(disposeStarted.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
-            // Give the concurrent Dispose() call a brief moment to block on _lifecycleLock.
-            Thread.Sleep(30);
+                disposeFinished.Set();
+            })
+            {
+                IsBackground = true,
+            };
+            disposeThread.Start();
+
+            Assert.True(enteringDisposeLock.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+            // Wait deterministically until disposeThread is actually blocked waiting on _lifecycleLock.
+            DateTime waitDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+            while ((disposeThread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) == 0 && DateTime.UtcNow < waitDeadline)
+            {
+                Thread.Yield();
+            }
+
+            Assert.True(
+                (disposeThread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0,
+                "Dispose thread did not block on _lifecycleLock while TryClaim held it.");
+            Assert.False(disposeFinished.IsSet, "Dispose must not complete while TryClaim holds _lifecycleLock.");
         });
 
         Assert.True(claimed);
-        Assert.NotNull(disposeTask);
-        await disposeTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        Assert.NotNull(disposeThread);
+        Assert.True(disposeFinished.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Concurrent Dispose() did not finish cleanly.");
+        disposeThread.Join();
 
         // After serialized Dispose() finishes, a replacement must claim both mutex and pipe and receive activations.
         using var replacement = new SingleInstance(name);

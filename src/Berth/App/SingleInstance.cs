@@ -81,6 +81,9 @@ internal sealed class SingleInstance : IDisposable
     /// <summary>Test hook raised after an activation arrives with no subscriber attached and is stored as pending.</summary>
     internal event Action? PendingActivationRecorded;
 
+    /// <summary>Test hook invoked immediately before <see cref="Dispose"/> enters the lifecycle lock.</summary>
+    internal Action? BeforeDisposeLock { get; set; }
+
     /// <summary>
     /// Raised on a thread-pool worker when a second instance sends <c>activate</c>. If an activation arrived before
     /// the first subscriber attached, that subscriber is invoked once on a thread-pool worker on subscription.
@@ -305,6 +308,7 @@ internal sealed class SingleInstance : IDisposable
         Thread? mutexThread;
         ManualResetEventSlim? releaseMutex;
 
+        BeforeDisposeLock?.Invoke();
         lock (_lifecycleLock)
         {
             if (_disposed)
