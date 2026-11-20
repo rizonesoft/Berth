@@ -123,15 +123,29 @@ class BuildTokensTests(unittest.TestCase):
         self.assertEqual(shared_keys, expected_shared)
         self.assertEqual(shared_keys & light_keys, set())
 
-        # Verify all 17 High Contrast colour bindings match SPEC §2.
+        # Verify all 17 High Contrast colour bindings independently of HIGH_CONTRAST_MAP (SPEC §2).
+        expected_hc_bindings = {
+            "Berth.MapBackground": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
+            "Berth.MapGrid": "{DynamicResource {x:Static SystemColors.GrayTextColorKey}}",
+            "Berth.MapBorder": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MonitorFill": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
+            "Berth.MonitorStroke": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MarkerInPlace": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MarkerMoved": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MarkerMissing": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MarkerNeutral": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.MarkerSelected": "{DynamicResource {x:Static SystemColors.HighlightColorKey}}",
+            "Berth.ActiveBadgeFill": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.ActiveBadgeText": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
+            "Berth.TextSecondary": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.NoticeWarningFill": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
+            "Berth.NoticeWarningBorder": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.NoticeErrorFill": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
+            "Berth.NoticeErrorBorder": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+        }
         hc_root = ET.fromstring(out["Tokens.HighContrast.xaml"])
         hc_bindings = {el.attrib[KEY_ATTR]: el.attrib["Color"] for el in hc_root}
-        for key, sys_key in build_tokens.HIGH_CONTRAST_MAP.items():
-            res_key = f"Berth.{build_tokens.pascal(key)}"
-            self.assertEqual(
-                hc_bindings[res_key],
-                f"{{DynamicResource {{x:Static SystemColors.{sys_key}}}}}",
-            )
+        self.assertEqual(hc_bindings, expected_hc_bindings)
 
     def test_check_is_read_only_newline_tolerant_and_reports_edited_and_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,6 +183,12 @@ class BuildTokensTests(unittest.TestCase):
     def test_overlap_between_shared_and_color_keys_raises(self) -> None:
         tokens = json.loads(TOKENS_JSON.read_text(encoding="utf-8"))
         tokens["size"]["monitorStroke"] = 1.5
+        with self.assertRaises(ValueError):
+            build_tokens.generate_dictionaries(tokens)
+
+    def test_duplicate_keys_within_shared_raises(self) -> None:
+        tokens = json.loads(TOKENS_JSON.read_text(encoding="utf-8"))
+        tokens["size"]["visiblePollSeconds"] = 10
         with self.assertRaises(ValueError):
             build_tokens.generate_dictionaries(tokens)
 

@@ -1,11 +1,16 @@
 using System.IO;
 using System.Runtime.ExceptionServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Xml;
+using System.Xml.Linq;
 using WpfApplication = System.Windows.Application;
+using WpfColor = System.Windows.Media.Color;
+using WpfColorConverter = System.Windows.Media.ColorConverter;
 using WpfFontFamily = System.Windows.Media.FontFamily;
 using WpfSystemColors = System.Windows.SystemColors;
 
@@ -16,6 +21,7 @@ public sealed partial class TokenKeysTests
     private static readonly string RepoRoot = FindRepoRoot();
     private static readonly string SrcRoot = Path.Combine(RepoRoot, "src", "Berth");
     private static readonly string ThemeDir = Path.Combine(SrcRoot, "Theme");
+    private static readonly string TokensJsonPath = Path.Combine(RepoRoot, "design", "tokens.json");
     private static readonly string[] DictionaryFiles =
     [
         "Tokens.Light.xaml",
@@ -27,12 +33,12 @@ public sealed partial class TokenKeysTests
     [GeneratedRegex(@"\{(?:StaticResource|DynamicResource)\s+(?:ResourceKey=)?(Berth\.[A-Za-z0-9_.]+)\s*\}", RegexOptions.CultureInvariant)]
     private static partial Regex MarkupResourceRefRegex();
 
-    [GeneratedRegex(@"ResourceKey=""(Berth\.[A-Za-z0-9_.]+)""", RegexOptions.CultureInvariant)]
-    private static partial Regex ElementResourceRefRegex();
-
     [Fact]
-    public void GeneratedDictionariesLoadLooselyAndCompiledWithMatchingColorKeysAndDisjointSharedKeys()
+    public void GeneratedDictionariesLoadLooselyAndCompiledWithEveryValueVerified()
     {
+        using JsonDocument tokensDoc = JsonDocument.Parse(File.ReadAllText(TokensJsonPath));
+        JsonElement root = tokensDoc.RootElement;
+
         RunOnSta(() =>
         {
             ResourceDictionary lightLoose = LoadLoose("Tokens.Light.xaml");
@@ -50,7 +56,7 @@ public sealed partial class TokenKeysTests
             Assert.Equal(lightKeys, hcKeys);
             Assert.Empty(sharedKeys.Intersect(lightKeys));
 
-            // Compiled component URIs must also load and yield usable values.
+            // Compiled component URIs must also load and yield usable values for EVERY token.
             ResourceDictionary lightCompiled = LoadCompiled("Tokens.Light.xaml");
             ResourceDictionary darkCompiled = LoadCompiled("Tokens.Dark.xaml");
             ResourceDictionary hcCompiled = LoadCompiled("Tokens.HighContrast.xaml");
@@ -61,15 +67,52 @@ public sealed partial class TokenKeysTests
             Assert.Equal(hcKeys, KeysOf(hcCompiled));
             Assert.Equal(sharedKeys, KeysOf(sharedCompiled));
 
+            // Verify every compiled Light, Dark, and HighContrast brush value.
+            foreach (JsonProperty prop in root.GetProperty("color").GetProperty("light").EnumerateObject())
+            {
+                string key = "Berth." + Pascal(prop.Name);
+                var expected = (WpfColor)WpfColorConverter.ConvertFromString(prop.Value.GetString()!)!;
+                var brush = Assert.IsType<SolidColorBrush>(lightCompiled[key]);
+                Assert.Equal(expected, brush.Color);
+                Assert.IsType<SolidColorBrush>(hcCompiled[key]);
+            }
+
+            foreach (JsonProperty prop in root.GetProperty("color").GetProperty("dark").EnumerateObject())
+            {
+                string key = "Berth." + Pascal(prop.Name);
+                var expected = (WpfColor)WpfColorConverter.ConvertFromString(prop.Value.GetString()!)!;
+                var brush = Assert.IsType<SolidColorBrush>(darkCompiled[key]);
+                Assert.Equal(expected, brush.Color);
+            }
+
+            // Verify every compiled Shared size, radius, and timing value.
+            foreach (JsonProperty prop in root.GetProperty("size").EnumerateObject())
+            {
+                string key = "Berth." + Pascal(prop.Name);
+                Assert.Equal(prop.Value.GetDouble(), Assert.IsType<double>(sharedCompiled[key]));
+            }
+
+            foreach (JsonProperty prop in root.GetProperty("radius").EnumerateObject())
+            {
+                string key = "Berth.Radius" + Pascal(prop.Name);
+                var radius = Assert.IsType<CornerRadius>(sharedCompiled[key]);
+                double expected = prop.Value.GetDouble();
+                Assert.Equal(new CornerRadius(expected), radius);
+            }
+
+            foreach (JsonProperty prop in root.GetProperty("timing").EnumerateObject())
+            {
+                string key = "Berth." + Pascal(prop.Name);
+                Assert.Equal(prop.Value.GetDouble(), Assert.IsType<double>(sharedCompiled[key]));
+            }
+
             // Merging Shared + Light must return a SolidColorBrush for Berth.MonitorStroke and a Double (1.5) for Berth.MonitorStrokeThickness.
             var merged = new ResourceDictionary();
             merged.MergedDictionaries.Add(sharedCompiled);
             merged.MergedDictionaries.Add(lightCompiled);
 
-            var strokeBrush = Assert.IsType<SolidColorBrush>(merged["Berth.MonitorStroke"]);
-            Assert.NotNull(strokeBrush);
-            var strokeThickness = Assert.IsType<double>(merged["Berth.MonitorStrokeThickness"]);
-            Assert.Equal(1.5, strokeThickness);
+            Assert.IsType<SolidColorBrush>(merged["Berth.MonitorStroke"]);
+            Assert.Equal(1.5, Assert.IsType<double>(merged["Berth.MonitorStrokeThickness"]));
 
             // Verify all three font family resources and all six TextBlock type styles.
             Assert.Equal("Segoe UI Variable Text, Segoe UI", Assert.IsType<WpfFontFamily>(sharedCompiled["Berth.Type.Family"]).Source);
@@ -134,7 +177,7 @@ public sealed partial class TokenKeysTests
     }
 
     [Fact]
-    public void MissingKeyScannerDetectsUnknownBerthKey()
+    public void MissingKeyScannerDetectsMarkupAndSingleQuotedElementsWhileIgnoringXmlComments()
     {
         HashSet<string> knownKeys = GetAllGeneratedKeys();
         string tempDir = Path.Combine(Path.GetTempPath(), "berth-token-keys-" + Guid.NewGuid().ToString("N"));
@@ -146,14 +189,21 @@ public sealed partial class TokenKeysTests
                 sample,
                 """
                 <UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                    <!-- <Border Background="{DynamicResource Berth.CommentedOutKey}" /> -->
                     <Border Background="{DynamicResource Berth.NoSuchKey}"
-                            BorderBrush="{StaticResource Berth.MarkerInPlace}" />
+                            BorderBrush="{StaticResource Berth.MarkerInPlace}">
+                        <Border.Tag>
+                            <DynamicResource ResourceKey='Berth.SingleQuotedMissing' />
+                        </Border.Tag>
+                    </Border>
                 </UserControl>
                 """);
 
             List<string> missing = FindMissingKeys(tempDir, knownKeys);
-            string sole = Assert.Single(missing);
-            Assert.Contains("Berth.NoSuchKey", sole, StringComparison.Ordinal);
+            Assert.Equal(2, missing.Count);
+            Assert.Contains(missing, m => m.Contains("Berth.NoSuchKey", StringComparison.Ordinal));
+            Assert.Contains(missing, m => m.Contains("Berth.SingleQuotedMissing", StringComparison.Ordinal));
+            Assert.DoesNotContain(missing, m => m.Contains("Berth.CommentedOutKey", StringComparison.Ordinal));
         }
         finally
         {
@@ -184,28 +234,40 @@ public sealed partial class TokenKeysTests
                 continue;
             }
 
-            string text = File.ReadAllText(file);
-            foreach (Match match in MarkupResourceRefRegex().Matches(text))
+            string rel = Path.GetRelativePath(sourceRoot, file);
+            XDocument doc = XDocument.Parse(File.ReadAllText(file), LoadOptions.SetLineInfo);
+            foreach (XElement element in doc.Descendants())
             {
-                string key = match.Groups[1].Value;
-                if (!knownKeys.Contains(key))
+                if (element.Name.LocalName is "StaticResource" or "DynamicResource")
                 {
-                    missing.Add($"{Path.GetRelativePath(sourceRoot, file)}: {key}");
+                    XAttribute? keyAttr = element.Attribute("ResourceKey");
+                    if (keyAttr is not null && keyAttr.Value.StartsWith("Berth.", StringComparison.Ordinal) && !knownKeys.Contains(keyAttr.Value))
+                    {
+                        int line = ((IXmlLineInfo)keyAttr).HasLineInfo() ? ((IXmlLineInfo)keyAttr).LineNumber : 0;
+                        missing.Add($"{rel}:{line}: {keyAttr.Value}");
+                    }
                 }
-            }
 
-            foreach (Match match in ElementResourceRefRegex().Matches(text))
-            {
-                string key = match.Groups[1].Value;
-                if (!knownKeys.Contains(key))
+                foreach (XAttribute attr in element.Attributes())
                 {
-                    missing.Add($"{Path.GetRelativePath(sourceRoot, file)}: {key}");
+                    foreach (Match match in MarkupResourceRefRegex().Matches(attr.Value))
+                    {
+                        string key = match.Groups[1].Value;
+                        if (!knownKeys.Contains(key))
+                        {
+                            int line = ((IXmlLineInfo)attr).HasLineInfo() ? ((IXmlLineInfo)attr).LineNumber : 0;
+                            missing.Add($"{rel}:{line}: {key}");
+                        }
+                    }
                 }
             }
         }
 
         return missing;
     }
+
+    private static string Pascal(string name) =>
+        char.ToUpperInvariant(name[0]) + name[1..];
 
     private static ResourceDictionary LoadLoose(string fileName)
     {

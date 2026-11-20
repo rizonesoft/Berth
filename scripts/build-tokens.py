@@ -195,12 +195,24 @@ def generate_dictionaries(
             f"Light and dark colour key sets differ: only in light={only_light}, only in dark={only_dark}"
         )
 
-    shared_keys = (
-        {f"Berth.{pascal(k)}" for k in tokens["size"]}
-        | {f"Berth.Radius{pascal(k)}" for k in tokens["radius"]}
-        | {f"Berth.{pascal(k)}" for k in tokens["timing"]}
-        | {f"Berth.Type.{pascal(k)}" for k in tokens["type"]}
+    shared_key_list = (
+        [f"Berth.{pascal(k)}" for k in tokens["size"]]
+        + [f"Berth.Radius{pascal(k)}" for k in tokens["radius"]]
+        + [f"Berth.{pascal(k)}" for k in tokens["timing"]]
+        + [f"Berth.Type.{pascal(k)}" for k in tokens["type"]]
     )
+    seen_shared: set[str] = set()
+    dup_shared: list[str] = []
+    for key in shared_key_list:
+        if key in seen_shared:
+            dup_shared.append(key)
+        seen_shared.add(key)
+    if dup_shared:
+        raise ValueError(
+            f"Shared dictionary defines duplicate resource key(s): {', '.join(sorted(set(dup_shared)))}"
+        )
+
+    shared_keys = seen_shared
     color_resource_keys = {f"Berth.{pascal(k)}" for k in light_keys}
     overlap = sorted(shared_keys & color_resource_keys)
     if overlap:

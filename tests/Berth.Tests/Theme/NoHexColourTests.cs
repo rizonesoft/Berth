@@ -1,5 +1,8 @@
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace Berth.Tests.Theme;
 
@@ -16,15 +19,11 @@ public sealed partial class NoHexColourTests
         Path.Combine("Theme", "Tokens.Shared.xaml"),
     };
 
-    // Match double- or single-quoted string/attribute literals so we inspect their contents for hex colours.
-    [GeneratedRegex("""(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""", RegexOptions.CultureInvariant)]
-    private static partial Regex QuotedLiteralRegex();
-
     // Explicit 3-, 4-, 6-, and 8-hex-digit alternatives with boundaries so 5- and 7-digit runs are not matched.
     [GeneratedRegex(@"(?<![0-9A-Fa-f#])#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{3})(?![0-9A-Fa-f])", RegexOptions.CultureInvariant)]
     private static partial Regex HexColourRegex();
 
-    [GeneratedRegex(@"\bColor\.From(?:A?Rgb|ScRgb)\s*\(", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bColor\.From(?:Argb|Rgb|ScRgb)\s*\(", RegexOptions.CultureInvariant)]
     private static partial Regex ColorFromCallRegex();
 
     [Fact]
@@ -35,14 +34,14 @@ public sealed partial class NoHexColourTests
     }
 
     [Theory]
-    [InlineData("\"#ABC\"", true)]
-    [InlineData("\"#ABCD\"", true)]
-    [InlineData("\"#AABBCC\"", true)]
-    [InlineData("\"#AABBCCDD\"", true)]
-    [InlineData("\"#12345\"", false)]
-    [InlineData("\"#1234567\"", false)]
-    [InlineData("\"#12\"", false)]
-    [InlineData("\"#123456789\"", false)]
+    [InlineData("#ABC", true)]
+    [InlineData("#ABCD", true)]
+    [InlineData("#AABBCC", true)]
+    [InlineData("#AABBCCDD", true)]
+    [InlineData("#12345", false)]
+    [InlineData("#1234567", false)]
+    [InlineData("#12", false)]
+    [InlineData("#123456789", false)]
     public void HexMatcherAcceptsExactlyThreeFourSixAndEightDigitLiterals(string literal, bool expectedMatch)
     {
         bool matched = HexColourRegex().IsMatch(literal);
@@ -50,7 +49,7 @@ public sealed partial class NoHexColourTests
     }
 
     [Fact]
-    public void DiscoveryPathFlagsXamlHexAndCSharpColorFromRgbWhileExemptingGeneratedTokenFiles()
+    public void DiscoveryPathFlagsXamlHexMultilineAndCSharpFromRgbFromArgbWhileIgnoringCommentsAndExemptFiles()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "berth-no-hex-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(tempDir, "Theme"));
@@ -60,32 +59,60 @@ public sealed partial class NoHexColourTests
             // Exempt generated token file should not trigger a violation.
             File.WriteAllText(
                 Path.Combine(tempDir, "Theme", "Tokens.Light.xaml"),
-                """<SolidColorBrush Color="#FFFFFF" />""");
+                """<SolidColorBrush xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Color="#FFFFFF" />""");
 
             // Non-generated file inside Theme/ must still be scanned.
             File.WriteAllText(
                 Path.Combine(tempDir, "Theme", "Extra.xaml"),
-                """<Border Background="#00FF00" />""");
+                """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="#00FF00" />""");
 
-            // Bad XAML attribute in Window/.
+            // Multiline XAML attribute value must be detected.
             File.WriteAllText(
-                Path.Combine(tempDir, "Window", "Bad.xaml"),
-                """<Border Background="#FF0000" />""");
+                Path.Combine(tempDir, "Window", "MultilineBad.xaml"),
+                "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Background=\"\n#FF0000\" />\n");
 
-            // Bad C# Color.FromRgb call.
+            // Commented-out XAML must not trigger a violation.
             File.WriteAllText(
-                Path.Combine(tempDir, "Window", "Bad.cs"),
+                Path.Combine(tempDir, "Window", "Commented.xaml"),
+                """
+                <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+                    <!-- <Border Background="#FF0000" /> -->
+                </Border>
+                """);
+
+            // Bad C# Color.FromRgb and Color.FromArgb calls.
+            File.WriteAllText(
+                Path.Combine(tempDir, "Window", "BadRgb.cs"),
                 """
                 using System.Windows.Media;
-                class Bad { static Color C => Color.FromRgb(1, 2, 3); }
+                class BadRgb { static Color C => Color.FromRgb(1, 2, 3); }
+                """);
+
+            File.WriteAllText(
+                Path.Combine(tempDir, "Window", "BadArgb.cs"),
+                """
+                using System.Windows.Media;
+                class BadArgb { static Color C => Color.FromArgb(255, 1, 2, 3); }
+                """);
+
+            // C# comments mentioning Color.FromRgb or hex literals must not trigger a violation.
+            File.WriteAllText(
+                Path.Combine(tempDir, "Window", "CommentOnly.cs"),
+                """
+                // Never call Color.FromRgb(1, 2, 3) or Color.FromArgb(255, 1, 2, 3) or use "#FF0000".
+                /* Color.FromScRgb(1, 1, 1, 1) "#AABBCC" */
+                class CommentOnly { }
                 """);
 
             List<string> violations = FindViolations(tempDir);
-            Assert.Equal(3, violations.Count);
+            Assert.Equal(4, violations.Count);
             Assert.Contains(violations, v => v.Contains("Extra.xaml", StringComparison.Ordinal));
-            Assert.Contains(violations, v => v.Contains("Bad.xaml", StringComparison.Ordinal));
-            Assert.Contains(violations, v => v.Contains("Bad.cs", StringComparison.Ordinal));
+            Assert.Contains(violations, v => v.Contains("MultilineBad.xaml", StringComparison.Ordinal));
+            Assert.Contains(violations, v => v.Contains("BadRgb.cs", StringComparison.Ordinal));
+            Assert.Contains(violations, v => v.Contains("BadArgb.cs", StringComparison.Ordinal));
             Assert.DoesNotContain(violations, v => v.Contains("Tokens.Light.xaml", StringComparison.Ordinal));
+            Assert.DoesNotContain(violations, v => v.Contains("Commented.xaml", StringComparison.Ordinal));
+            Assert.DoesNotContain(violations, v => v.Contains("CommentOnly.cs", StringComparison.Ordinal));
         }
         finally
         {
@@ -111,27 +138,219 @@ public sealed partial class NoHexColourTests
                 continue;
             }
 
-            string[] lines = File.ReadAllLines(file);
-            for (int i = 0; i < lines.Length; i++)
+            string text = File.ReadAllText(file);
+            if (ext.Equals(".xaml", StringComparison.OrdinalIgnoreCase))
             {
-                string line = lines[i];
-                if (ColorFromCallRegex().IsMatch(line))
-                {
-                    violations.Add($"{rel}:{i + 1}: Color.From* call");
-                }
-
-                foreach (Match quoted in QuotedLiteralRegex().Matches(line))
-                {
-                    Match hex = HexColourRegex().Match(quoted.Value);
-                    if (hex.Success)
-                    {
-                        violations.Add($"{rel}:{i + 1}: hex colour literal {hex.Value}");
-                    }
-                }
+                ScanXaml(rel, text, violations);
+            }
+            else
+            {
+                ScanCSharp(rel, text, violations);
             }
         }
 
         return violations;
+    }
+
+    private static void ScanXaml(string rel, string text, List<string> violations)
+    {
+        XDocument doc = XDocument.Parse(text, LoadOptions.SetLineInfo);
+        foreach (XElement element in doc.Descendants())
+        {
+            foreach (XAttribute attr in element.Attributes())
+            {
+                Match hex = HexColourRegex().Match(attr.Value);
+                if (hex.Success)
+                {
+                    int line = ((IXmlLineInfo)attr).HasLineInfo() ? ((IXmlLineInfo)attr).LineNumber : 0;
+                    violations.Add($"{rel}:{line}: hex colour literal {hex.Value}");
+                }
+            }
+        }
+    }
+
+    private static void ScanCSharp(string rel, string text, List<string> violations)
+    {
+        // Lex C# into non-comment code (for Color.From* calls) and string literals (for hex colour literals),
+        // skipping // and /* */ comments while tracking line numbers.
+        var codeBuilder = new StringBuilder(text.Length);
+        int line = 1;
+        int i = 0;
+        while (i < text.Length)
+        {
+            char c = text[i];
+            if (c == '\n')
+            {
+                line++;
+                codeBuilder.Append('\n');
+                i++;
+                continue;
+            }
+
+            // Line comment
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+            {
+                i += 2;
+                while (i < text.Length && text[i] != '\n')
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            // Block comment
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
+            {
+                i += 2;
+                while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/'))
+                {
+                    if (text[i] == '\n')
+                    {
+                        line++;
+                        codeBuilder.Append('\n');
+                    }
+
+                    i++;
+                }
+
+                i = Math.Min(i + 2, text.Length);
+                continue;
+            }
+
+            // Verbatim string @"..."
+            if (c == '@' && i + 1 < text.Length && text[i + 1] == '"')
+            {
+                int startLine = line;
+                i += 2;
+                int start = i;
+                while (i < text.Length)
+                {
+                    if (text[i] == '\n')
+                    {
+                        line++;
+                    }
+                    else if (text[i] == '"')
+                    {
+                        if (i + 1 < text.Length && text[i + 1] == '"')
+                        {
+                            i += 2;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    i++;
+                }
+
+                CheckLiteralForHex(rel, startLine, text[start..i], violations);
+                codeBuilder.Append("\"\"");
+                i = Math.Min(i + 1, text.Length);
+                continue;
+            }
+
+            // Raw string """...""" or regular string "..."
+            if (c == '"')
+            {
+                int startLine = line;
+                int quoteCount = 0;
+                while (i + quoteCount < text.Length && text[i + quoteCount] == '"')
+                {
+                    quoteCount++;
+                }
+
+                if (quoteCount >= 3)
+                {
+                    i += quoteCount;
+                    int start = i;
+                    string closing = new('"', quoteCount);
+                    int end = text.IndexOf(closing, i, StringComparison.Ordinal);
+                    if (end < 0)
+                    {
+                        end = text.Length;
+                    }
+
+                    string content = text[start..end];
+                    foreach (char ch in content)
+                    {
+                        if (ch == '\n')
+                        {
+                            line++;
+                        }
+                    }
+
+                    CheckLiteralForHex(rel, startLine, content, violations);
+                    codeBuilder.Append("\"\"");
+                    i = Math.Min(end + quoteCount, text.Length);
+                    continue;
+                }
+
+                i++;
+                int regularStart = i;
+                while (i < text.Length && text[i] != '"')
+                {
+                    if (text[i] == '\\' && i + 1 < text.Length)
+                    {
+                        i += 2;
+                        continue;
+                    }
+
+                    if (text[i] == '\n')
+                    {
+                        line++;
+                    }
+
+                    i++;
+                }
+
+                CheckLiteralForHex(rel, startLine, text[regularStart..i], violations);
+                codeBuilder.Append("\"\"");
+                i = Math.Min(i + 1, text.Length);
+                continue;
+            }
+
+            // Char literal '...'
+            if (c == '\'')
+            {
+                i++;
+                while (i < text.Length && text[i] != '\'')
+                {
+                    if (text[i] == '\\' && i + 1 < text.Length)
+                    {
+                        i += 2;
+                        continue;
+                    }
+
+                    i++;
+                }
+
+                codeBuilder.Append("''");
+                i = Math.Min(i + 1, text.Length);
+                continue;
+            }
+
+            codeBuilder.Append(c);
+            i++;
+        }
+
+        string[] codeLines = codeBuilder.ToString().Split('\n');
+        for (int idx = 0; idx < codeLines.Length; idx++)
+        {
+            if (ColorFromCallRegex().IsMatch(codeLines[idx]))
+            {
+                violations.Add($"{rel}:{idx + 1}: Color.From* call");
+            }
+        }
+    }
+
+    private static void CheckLiteralForHex(string rel, int line, string literalContent, List<string> violations)
+    {
+        Match hex = HexColourRegex().Match(literalContent);
+        if (hex.Success)
+        {
+            violations.Add($"{rel}:{line}: hex colour literal {hex.Value}");
+        }
     }
 
     private static bool IsBuildOutput(string rel)
