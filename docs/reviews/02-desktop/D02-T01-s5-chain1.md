@@ -104,3 +104,23 @@ COMPLETION: gaps
 
 
 - Filed: D99 T01 §4 (real Explorer on/off/on auto arrange round trip on a disposable Windows 11 desktop; cannot run unattended on the owner's desktop per `AGENTS.md`)
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-20T10:41:05Z
+- Candidate: eb4b419c3147acc510727010eeb738beec9acb6e
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 9
+- Digest: c5810748856d420e
+
+1. **open (P1)**. The completion review requires one passing real Explorer on/off/on round trip on a disposable Windows 11 desktop (`docs/reviews/02-desktop/D02-T01-s5.md:98`). The supplied gate passed 74 tests and explicitly skipped `OptInRoundTripTurnsAutoArrangeOffReadsBackAndRestores`. The writer recorded `- Filed:` at `docs/reviews/02-desktop/D02-T01-s5.md:106`. The repair contains neither a passing run nor an `- Implemented:` entry.
+2. **New finding (P1)**. The repair changes the reviewed section by marking that proof `Deferred` at `todo/02-desktop/TODO-01-desktop-access.md:150`. The operator section resolves, but its row at `todo/99-manual/TODO-01-operator-steps.md:39` makes it depend on §5 finishing first. That creates a circular acceptance condition. Restore the original §5 contract and record the passing disposable-desktop run under §5 before stamping it.
+
+LENS adversarial: clean  
+LENS integration: clean  
+LENS plan-delivery: findings  
+LENS record: findings  
+HIGHEST: P1  
+RECONCILIATION: gaps
