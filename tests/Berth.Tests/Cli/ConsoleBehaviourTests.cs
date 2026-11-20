@@ -184,17 +184,22 @@ public sealed partial class ConsoleBehaviourTests
         string nonzeroMarker = Path.Combine(data.Root, "pty-nonzero.txt");
 
         // Positive proof: drive a real interactive cmd.exe (/q /v:on) inside a hidden Windows ConPTY pseudoconsole.
-        // berth.exe inherits that terminal (console=1), prints "Berth 0.1.0" directly to the terminal, holds 1500 ms
-        // blocking the next command, and delayed !ERRORLEVEL! captures both 0 and nonzero (2) exit codes.
+        // Run the nonzero control first so --version is the last Berth invocation before exit (proving cmd.exe exits 0).
         using (var pty = InteractiveCmdSession.Start(
             data.Root,
             new Dictionary<string, string>
             {
-                ["BERTH_TEST_REPORT"] = reportFile,
-                ["BERTH_TEST_HOLD_MS"] = "1500",
+                ["BERTH_TEST_HOLD_MS"] = "0",
             }))
         {
-            pty.SendLine($"\"{berthExe}\" --version & echo EXIT=!ERRORLEVEL!> \"{markerFile}\"");
+            // Verify !ERRORLEVEL! genuinely captures a nonzero exit code from berth.exe (unknown arg -> exit 2).
+            pty.SendLine($"\"{berthExe}\" --unknown & echo EXIT=!ERRORLEVEL!> \"{nonzeroMarker}\"");
+            Assert.True(WaitForFile(nonzeroMarker, TimeSpan.FromSeconds(10)), "Interactive cmd.exe did not write nonzero marker.");
+            Assert.Equal("EXIT=2", File.ReadAllText(nonzeroMarker).Trim());
+
+            // Now run --version with BERTH_TEST_REPORT and BERTH_TEST_HOLD_MS=1500 so berth.exe inherits the ConPTY
+            // terminal (console=1), prints "Berth 0.1.0" directly there, and holds the prompt >= 1400 ms before exit 0.
+            pty.SendLine($"set \"BERTH_TEST_REPORT={reportFile}\" & set \"BERTH_TEST_HOLD_MS=1500\" & \"{berthExe}\" --version & echo EXIT=!ERRORLEVEL!> \"{markerFile}\"");
 
             // Wait for BERTH_TEST_REPORT (written BEFORE the 1500 ms hold) to witness Berth alive inside its hold.
             Assert.True(WaitForFile(reportFile, TimeSpan.FromSeconds(10)), "Berth did not write BERTH_TEST_REPORT in interactive terminal.");
@@ -209,11 +214,6 @@ public sealed partial class ConsoleBehaviourTests
             afterReport.Stop();
             Assert.True(afterReport.Elapsed >= TimeSpan.FromMilliseconds(1400), $"Interactive cmd.exe returned too quickly after report: {afterReport.Elapsed}.");
             Assert.Equal("EXIT=0", File.ReadAllText(markerFile).Trim());
-
-            // Verify !ERRORLEVEL! genuinely captures a nonzero exit code from berth.exe (unknown arg -> exit 2).
-            pty.SendLine($"set BERTH_TEST_HOLD_MS=0 & \"{berthExe}\" --unknown & echo EXIT=!ERRORLEVEL!> \"{nonzeroMarker}\"");
-            Assert.True(WaitForFile(nonzeroMarker, TimeSpan.FromSeconds(10)), "Interactive cmd.exe did not write nonzero marker.");
-            Assert.Equal("EXIT=2", File.ReadAllText(nonzeroMarker).Trim());
 
             string terminalOutput = pty.ExitAndReadAll(TimeSpan.FromSeconds(10));
             Assert.Contains("Berth " + AppInfo.Version, terminalOutput, StringComparison.Ordinal);
@@ -747,6 +747,8 @@ public sealed partial class ConsoleBehaviourTests
             SendLine("exit");
             uint wait = NativeMethods.WaitForSingleObject(_hProcess, (uint)timeout.TotalMilliseconds);
             Assert.True(wait == WaitObject0, "Interactive cmd.exe did not exit cleanly after 'exit'.");
+            Assert.True(NativeMethods.GetExitCodeProcess(_hProcess, out uint shellExitCode), "Failed to read interactive cmd.exe exit code.");
+            Assert.Equal(0u, shellExitCode);
 
             // Closing the pseudoconsole once closes the output pipe so ReadToEnd completes deterministically.
             ClosePtyOnce();
