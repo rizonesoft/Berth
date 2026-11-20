@@ -1,0 +1,83 @@
+{
+  "ref": "D03 T01 \u00a74",
+  "title": "The restore command",
+  "implementation_sha": "ef12e9afd67c59d262710551079c324a7290b91a",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/03-cli/D03-T01-s4.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *RestoreCommandTests --filter-class *SaveCommandTests --filter-class *LayerRuleTests (53/53 passed, 0 skipped)"
+  ],
+  "completion": {
+    "report": "docs/reviews/03-cli/D03-T01-s4.md",
+    "verdict": "reconciled",
+    "candidate": "ef12e9afd67c59d262710551079c324a7290b91a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/03-cli/D03-T01-s4.md",
+    "candidate": "85c71e7dc943b8900d0af68edd58b6caeb57b62c",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "85c71e7dc943b8900d0af68edd58b6caeb57b62c",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
