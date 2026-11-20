@@ -2,7 +2,7 @@
 schema_version: 1
 id: desktop-access
 domain: 02-desktop
-status: active
+status: done
 title: "TODO-01 -- Desktop access"
 depends_on: ["layout-core"]
 ---
@@ -47,7 +47,7 @@ depends_on: ["layout-core"]
 | 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
 | 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [x] |
 | 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [x] |
-| 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
+| 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [x] |
 
 ## 1. Shell COM interface declarations
 
@@ -260,6 +260,9 @@ Explorer restarting, a locked session or a COM failure all surface as `DesktopUn
 - [x] Commit: `desktop: one exception for an unreachable desktop`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*UnavailableTests" --filter-class "*DesktopViewTests" --filter-class "*RestoreTests" --filter-class "*UndoTests" --filter-class "*LayerRuleTests"` passes with `0` skipped and a positive executed test count in `UnavailableTests`, and fails when `DesktopView.Open` or any `ShellDesktopIcons` member lets a shell exception or null view escape or when pre-`beforeMove` unavailability in `Restore`/`Undo` reports placement failure.
+
+> **Verified:** 2026-11-20 | §8 | 6954cb1bb3c85e39eaba5c1b7f83309140e667f8
+> **Review:** `docs/reviews/d02-t01-s8.json`
 
 ## 9. STA worker that owns every shell call
 

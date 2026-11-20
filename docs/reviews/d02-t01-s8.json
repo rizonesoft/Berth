@@ -1,0 +1,85 @@
+{
+  "ref": "D02 T01 \u00a78",
+  "title": "One exception for an unreachable desktop",
+  "implementation_sha": "6954cb1bb3c85e39eaba5c1b7f83309140e667f8",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s8.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *UnavailableTests --filter-class *DesktopViewTests --filter-class *RestoreTests --filter-class *UndoTests --filter-class *LayerRuleTests (112 passed, 0 failed, 0 skipped, 5/5 in UnavailableTests)",
+    "pwsh scripts/check-all.ps1 (7/7 steps passed, 719 passed, 0 failed, 1 opt-in skipped)",
+    "CI build.yml + plan.yml at 6954cb1bb3c8 -> green (https://github.com/rizonesoft/Berth/actions/runs/44753520460, https://github.com/rizonesoft/Berth/actions/runs/44753520513)"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s8.md",
+    "verdict": "reconciled",
+    "candidate": "6954cb1bb3c85e39eaba5c1b7f83309140e667f8",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s8.md",
+    "candidate": "2c6fb3b4d89725213a11d1110dec3785c46097ba",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "2c6fb3b4d89725213a11d1110dec3785c46097ba",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
