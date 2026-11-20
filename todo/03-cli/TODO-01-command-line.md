@@ -36,7 +36,7 @@ depends_on: ["layout-core", "desktop-access"]
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Argument parser | D00 T01 §3 | [ ] |
+| 1 | §1 | Argument parser | D00 T01 §3 | [x] |
 | 2 | §2 | Console behaviour proven with real processes | D00 T01 §2 | [ ] |
 | 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [ ] |
 | 4 | §4 | The restore command | §3 | [ ] |
@@ -67,6 +67,9 @@ A small hand-written parser: the grammar is six commands and one option, which n
 - [x] Commit: `cli: argument parser`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*CliArgumentsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an unknown first argument drops `Error` or matches case-insensitively/by prefix.
+
+> **Verified:** 2026-11-20 | §1 | 70947bdbe38e2102deb605ecbcc8a95d9010ac6a
+> **Review:** `docs/reviews/d03-t01-s1.json`
 
 ## 2. Console behaviour proven with real processes
 

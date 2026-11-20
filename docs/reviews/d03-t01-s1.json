@@ -1,0 +1,84 @@
+{
+  "ref": "D03 T01 \u00a71",
+  "title": "Argument parser",
+  "implementation_sha": "70947bdbe38e2102deb605ecbcc8a95d9010ac6a",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/03-cli/D03-T01-s1.md",
+      "verdict": "clean"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *CliArgumentsTests --filter-class *LayerRuleTests (51 passed, 0 failed, 0 skipped)",
+    "CI build.yml + plan.yml at 70947bdbe38e -> green (https://github.com/rizonesoft/Berth/actions/runs/44757037937, https://github.com/rizonesoft/Berth/actions/runs/44757037753)"
+  ],
+  "completion": {
+    "report": "docs/reviews/03-cli/D03-T01-s1.md",
+    "verdict": "complete",
+    "candidate": "70947bdbe38e2102deb605ecbcc8a95d9010ac6a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/03-cli/D03-T01-s1.md",
+    "candidate": "8a332f93011a455c4b25c1669770df8ab949cd93",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "8a332f93011a455c4b25c1669770df8ab949cd93",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
