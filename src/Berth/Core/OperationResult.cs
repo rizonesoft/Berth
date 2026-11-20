@@ -63,6 +63,9 @@ internal sealed record OperationResult
 
     public string? LayoutName { get; init; }
 
+    /// <summary>The arrangement key written by a <see cref="OperationKind.Saved"/> operation, when known.</summary>
+    public string? ArrangementKey { get; init; }
+
     public int Total { get; init; }
 
     public int InPlace { get; init; }
@@ -96,8 +99,8 @@ internal sealed record OperationResult
     /// <summary>Whether it did what was asked (not refused, not failed).</summary>
     public bool Done => Kind is not (OperationKind.Refused or OperationKind.Failed);
 
-    public static OperationResult Saved(string name, int total, bool replacedEarlierSave) =>
-        new(OperationKind.Saved) { LayoutName = name, Total = total, ReplacedEarlierSave = replacedEarlierSave };
+    public static OperationResult Saved(string name, int total, bool replacedEarlierSave, string? arrangementKey = null) =>
+        new(OperationKind.Saved) { LayoutName = name, Total = total, ReplacedEarlierSave = replacedEarlierSave, ArrangementKey = arrangementKey };
 
     public static OperationResult Restored(string name, int total, int inPlace, int notPlaced, int missing, string? origin = null) =>
         new(notPlaced > 0 ? OperationKind.Failed : OperationKind.Restored)

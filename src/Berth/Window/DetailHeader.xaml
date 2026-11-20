@@ -1,0 +1,96 @@
+<UserControl x:Class="Berth.Window.DetailHeader"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <Border Padding="{DynamicResource Berth.Space.DetailHeader}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleText"
+                               Text="{Binding Title}"
+                               Style="{DynamicResource Berth.Type.Title}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Title}" />
+
+                    <TextBlock x:Name="SubtitleText"
+                               Margin="{DynamicResource Berth.Space.SubtitleTop}"
+                               Text="{Binding Subtitle}"
+                               Style="{DynamicResource Berth.Type.Caption}"
+                               Foreground="{DynamicResource Berth.TextSecondary}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel x:Name="ActionsPanel"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="{DynamicResource Berth.Space.ControlGapLeft}">
+                    <Button x:Name="RestoreButton"
+                            Content="Restore"
+                            MinHeight="{DynamicResource Berth.ControlHeight}"
+                            Command="{Binding RestoreCommand}"
+                            IsEnabled="{Binding CanRestore}"
+                            ToolTip="{Binding RestoreToolTip}"
+                            Visibility="{Binding ShowRestore, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="Restore" />
+
+                    <Button x:Name="SaveButton"
+                            Content="Save current layout"
+                            Style="{DynamicResource AccentButtonStyle}"
+                            MinHeight="{DynamicResource Berth.ControlHeight}"
+                            Margin="{DynamicResource Berth.Space.ControlGapLeft}"
+                            Command="{Binding SaveCommand}"
+                            IsEnabled="{Binding CanSave}"
+                            ToolTip="{Binding SaveToolTip}"
+                            Visibility="{Binding ShowSave, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="Save current layout" />
+
+                    <Button x:Name="MoreButton"
+                            Content="&#xE712;"
+                            FontFamily="{DynamicResource Berth.Type.FamilyIcons}"
+                            MinWidth="{DynamicResource Berth.ControlHeight}"
+                            MinHeight="{DynamicResource Berth.ControlHeight}"
+                            Margin="{DynamicResource Berth.Space.ControlGapLeft}"
+                            IsEnabled="{Binding CanMore}"
+                            Visibility="{Binding ShowMore, Converter={StaticResource BoolToVisibility}}"
+                            ToolTip="More options"
+                            AutomationProperties.Name="More options"
+                            Click="OnMoreButtonClick">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="MoreMenu">
+                                <MenuItem x:Name="RenameMenuItem" Header="Rename" />
+                                <MenuItem x:Name="RevertMenuItem"
+                                          Header="Revert to previous save"
+                                          IsEnabled="{Binding HasPreviousSave}" />
+                                <MenuItem x:Name="DeleteMenuItem" Header="Delete" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock x:Name="OtherArrangementText"
+                       Grid.Row="1"
+                       Margin="{DynamicResource Berth.Space.ItemGapTop}"
+                       Text="{Binding OtherArrangementLine}"
+                       Style="{DynamicResource Berth.Type.Body}"
+                       Foreground="{DynamicResource Berth.TextSecondary}"
+                       TextWrapping="Wrap"
+                       Visibility="{Binding ShowOtherArrangementLine, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </Border>
+</UserControl>

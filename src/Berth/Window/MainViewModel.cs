@@ -19,11 +19,13 @@ internal sealed class MainViewModel : ObservableObject
     private readonly IMonitors _monitors;
     private readonly TimeProvider _clock;
     private readonly Func<Action, Task> _marshalToUiAsync;
+    private readonly object _refreshGate = new();
 
-    private int _refreshInFlight;
+    private Task? _activeRefreshTask;
     private bool _isApplyingSnapshot;
     private LayoutRow? _selected;
     private string? _lastKnownSelectedKey;
+    private string? _pendingSelectedKey;
     private DesktopState _desktopState;
     private LayoutComparison? _comparison;
     private ComparisonKind _comparisonKind;
@@ -35,7 +37,9 @@ internal sealed class MainViewModel : ObservableObject
         IDesktopIcons desktop,
         IMonitors monitors,
         TimeProvider clock,
-        Func<Action, Task>? marshalToUiAsync = null)
+        Func<Action, Task>? marshalToUiAsync = null,
+        LayoutService? service = null,
+        TimeZoneInfo? timeZone = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(desktop);
@@ -52,7 +56,10 @@ internal sealed class MainViewModel : ObservableObject
             return Task.CompletedTask;
         });
         _desktopState = DesktopState.Empty(clock.GetUtcNow());
+        Detail = new DetailViewModel(this, service, clock, timeZone);
     }
+
+    public DetailViewModel Detail { get; }
 
     public ObservableCollection<LayoutRow> Rows { get; } = [];
 
@@ -90,6 +97,10 @@ internal sealed class MainViewModel : ObservableObject
                 if (value is not null)
                 {
                     _lastKnownSelectedKey = value.Key;
+                    if (!_isApplyingSnapshot)
+                    {
+                        _pendingSelectedKey = null;
+                    }
                 }
                 else if (!_isApplyingSnapshot)
                 {
@@ -113,17 +124,71 @@ internal sealed class MainViewModel : ObservableObject
         private set => Set(ref _comparisonKind, value);
     }
 
+    internal Task MarshalToUiAsync(Action action) => _marshalToUiAsync(action);
+
     /// <summary>
     /// Reads monitors, desktop icons, auto-arrange state, and saved layouts off the UI thread, then applies rows,
     /// selection, and comparison on the UI thread. Overlapping calls return immediately without starting a second read.
     /// </summary>
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
     {
-        if (Interlocked.CompareExchange(ref _refreshInFlight, 1, 0) != 0)
+        Task refreshTask;
+        lock (_refreshGate)
         {
-            return;
+            if (_activeRefreshTask is not null)
+            {
+                return Task.CompletedTask;
+            }
+
+            refreshTask = RunRefreshCoreAsync();
+            _activeRefreshTask = refreshTask;
         }
 
+        return refreshTask;
+    }
+
+    /// <summary>
+    /// Waits for any in-flight poll to finish, then runs a fresh capture guaranteed to start after an operation's write.
+    /// When <paramref name="selectKey"/> is given, remembers that arrangement key until a usable snapshot selects it.
+    /// </summary>
+    public async Task RefreshAfterOperationAsync(string? selectKey = null)
+    {
+        if (selectKey is not null)
+        {
+            await _marshalToUiAsync(() =>
+            {
+                _pendingSelectedKey = selectKey;
+                _lastKnownSelectedKey = selectKey;
+            }).ConfigureAwait(false);
+        }
+
+        while (true)
+        {
+            Task? existing;
+            Task? started = null;
+            lock (_refreshGate)
+            {
+                existing = _activeRefreshTask;
+                if (existing is null)
+                {
+                    started = RunRefreshCoreAsync();
+                    _activeRefreshTask = started;
+                }
+            }
+
+            if (existing is not null)
+            {
+                await existing.ConfigureAwait(false);
+                continue;
+            }
+
+            await started!.ConfigureAwait(false);
+            return;
+        }
+    }
+
+    private async Task RunRefreshCoreAsync()
+    {
         try
         {
             RefreshSnapshot? snapshot = await Task.Run(CaptureSnapshot).ConfigureAwait(false);
@@ -134,7 +199,10 @@ internal sealed class MainViewModel : ObservableObject
         }
         finally
         {
-            Volatile.Write(ref _refreshInFlight, 0);
+            lock (_refreshGate)
+            {
+                _activeRefreshTask = null;
+            }
         }
     }
 
@@ -247,8 +315,8 @@ internal sealed class MainViewModel : ObservableObject
     private void ApplySnapshot(RefreshSnapshot snapshot)
     {
         // Capture the live selection at UI-application time so user selection changes during an async read win,
-        // and preserve _lastKnownSelectedKey across transient folder-read failures.
-        string? preferredKey = _selected?.Key ?? _lastKnownSelectedKey;
+        // while a post-operation target key takes priority until a usable snapshot contains that row.
+        string? preferredKey = _pendingSelectedKey ?? _selected?.Key ?? _lastKnownSelectedKey;
 
         Desktop = snapshot.Desktop;
         Unreadable = snapshot.Unreadable;
@@ -275,6 +343,13 @@ internal sealed class MainViewModel : ObservableObject
         }
 
         LayoutRow? nextSelected = ChooseSelection(nextRows, preferredKey);
+        if (_pendingSelectedKey is not null
+            && nextSelected is not null
+            && string.Equals(nextSelected.Key, _pendingSelectedKey, StringComparison.Ordinal))
+        {
+            _pendingSelectedKey = null;
+        }
+
         if (snapshot.StoreReadError is not null && nextSelected is null)
         {
             // Transient folder-read failure: clear Selected while keeping _lastKnownSelectedKey for recovery.
@@ -289,7 +364,15 @@ internal sealed class MainViewModel : ObservableObject
         bool selectionChanged = !EqualityComparer<LayoutRow?>.Default.Equals(_selected, nextSelected);
         if (selectionChanged)
         {
-            Selected = nextSelected;
+            _isApplyingSnapshot = true;
+            try
+            {
+                Selected = nextSelected;
+            }
+            finally
+            {
+                _isApplyingSnapshot = false;
+            }
         }
         else
         {

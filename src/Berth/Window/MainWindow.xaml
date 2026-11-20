@@ -31,6 +31,31 @@
 
         <ContentControl x:Name="DetailHost"
                         Grid.Column="2"
-                        Focusable="False" />
+                        Focusable="False">
+            <Grid x:Name="DetailGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <local:DetailHeader x:Name="DetailHeaderControl"
+                                    Grid.Row="0"
+                                    DataContext="{Binding Detail}" />
+
+                <ContentControl x:Name="NoticesHost"
+                                Grid.Row="1"
+                                Focusable="False" />
+
+                <ContentControl x:Name="MapHost"
+                                Grid.Row="2"
+                                Focusable="False" />
+
+                <ContentControl x:Name="StatusHost"
+                                Grid.Row="3"
+                                Focusable="False" />
+            </Grid>
+        </ContentControl>
     </Grid>
 </Window>

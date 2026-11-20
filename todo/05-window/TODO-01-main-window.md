@@ -140,6 +140,8 @@ The right pane's header: title, the monitors line, and Restore, Save current lay
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*DetailHeaderTests"` passes, and fails when "Restore" is shown for a layout saved for another arrangement.
 
+> **Started:** 2026-11-21
+
 ## 4. Position map: monitors and markers
 
 The map panel: the grid, each monitor to scale with its label, and one marker per saved icon (SPEC §7, bullets one to three).

@@ -29,7 +29,15 @@ try {
         'layouts-active-saved-light.png',
         'layouts-active-saved-dark.png',
         'layouts-active-unsaved-light.png',
-        'layouts-active-unsaved-dark.png'
+        'layouts-active-unsaved-dark.png',
+        'header-active-light.png',
+        'header-active-dark.png',
+        'header-unsaved-light.png',
+        'header-unsaved-dark.png',
+        'header-other-light.png',
+        'header-other-dark.png',
+        'header-busy-light.png',
+        'header-busy-dark.png'
     )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name

@@ -48,6 +48,7 @@
     <FontFamily x:Key="Berth.Type.Family">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="Berth.Type.FamilyDisplay">Segoe UI Variable Display, Segoe UI</FontFamily>
     <FontFamily x:Key="Berth.Type.FamilyMono">Cascadia Mono, Consolas</FontFamily>
+    <FontFamily x:Key="Berth.Type.FamilyIcons">Segoe Fluent Icons</FontFamily>
     <Style x:Key="Berth.Type.Caption" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource Berth.Type.Family}" />
         <Setter Property="FontSize" Value="12" />

@@ -117,6 +117,7 @@ class BuildTokensTests(unittest.TestCase):
         expected_shared = (
             {f"Berth.{build_tokens.pascal(k)}" for k in tokens["size"]}
             | {f"Berth.Radius{build_tokens.pascal(k)}" for k in tokens["radius"]}
+            | {f"Berth.Space.{build_tokens.pascal(k)}" for k in tokens.get("spacing", {})}
             | {f"Berth.{build_tokens.pascal(k)}" for k in tokens["timing"]}
             | {f"Berth.Type.{build_tokens.pascal(k)}" for k in tokens["type"]}
         )

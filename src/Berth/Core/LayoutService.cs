@@ -173,7 +173,7 @@ internal sealed class LayoutService(
             return OperationResult.Failed(FailureKind.WriteFailed, file, error.Message, layoutName);
         }
 
-        return OperationResult.Saved(layoutName, icons.Count, replacedEarlierSave: snapshot.Layout is not null);
+        return OperationResult.Saved(layoutName, icons.Count, replacedEarlierSave: snapshot.Layout is not null, arrangementKey: key);
     }
 
     private OperationResult RestoreLocked(string? origin)

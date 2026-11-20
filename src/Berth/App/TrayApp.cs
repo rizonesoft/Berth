@@ -290,7 +290,8 @@ internal static class TrayApp
                 }
 
                 return app.Dispatcher.InvokeAsync(action).Task;
-            });
+            },
+            service: composition.Service);
 
         double pollSeconds = app.TryFindResource("Berth.VisiblePollSeconds") is double s && s > 0d ? s : 5d;
         var poller = new DesktopPoller(
