@@ -312,6 +312,26 @@ public sealed class MainViewModelTests
         Assert.Equal(0, collectionEvents);
     }
 
+    [Fact]
+    public async Task AbaMonitorShiftDuringIconConversionDiscardsMixedComparison()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonA], "LayoutA", new IconPosition("id-1", "One", 100, 200));
+
+        // Outer monitor reads see MonA before and after, while the desktop coordinate conversion used MonB (A -> B -> A).
+        var outerMonitors = new FakeMonitors(MonA);
+        var abaDesktop = new MismatchedMonitorDesktop(
+            innerMonitors: [MonB],
+            icons: [new IconPosition("id-1", "One", 999, 888)]);
+        var vm = new MainViewModel(store, abaDesktop, outerMonitors, new FixedClock(FixedNow));
+
+        await vm.RefreshAsync();
+        Assert.Empty(vm.Rows);
+        Assert.Null(vm.Comparison);
+    }
+
     private static void SaveLayout(LayoutStore store, MonitorInfo[] monitors, string name, params IconPosition[] icons)
     {
         IconPosition[] effectiveIcons = icons.Length > 0 ? icons : [new IconPosition("id-default", "Default", 10, 20)];
@@ -358,6 +378,17 @@ public sealed class MainViewModelTests
         public void SetPositions(IReadOnlyList<IconPosition> icons) => inner.SetPositions(icons);
         public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove) => inner.SetPositions(icons, beforeMove);
         public bool TryTurnAutoArrangeOff() => inner.TryTurnAutoArrangeOff();
+    }
+
+    private sealed class MismatchedMonitorDesktop(IReadOnlyList<MonitorInfo> innerMonitors, IReadOnlyList<IconPosition> icons) : IDesktopIcons
+    {
+        public bool AutoArrange => false;
+        public IReadOnlyList<IconPosition> ReadIcons() => icons;
+        public (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsWithMonitors(IMonitors monitors) =>
+            (innerMonitors, icons);
+        public void SetPositions(IReadOnlyList<IconPosition> requested) { }
+        public void SetPositions(IReadOnlyList<IconPosition> requested, Action beforeMove) { }
+        public bool TryTurnAutoArrangeOff() => true;
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : TimeProvider

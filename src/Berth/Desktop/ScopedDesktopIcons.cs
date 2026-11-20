@@ -43,6 +43,26 @@ internal sealed class ScopedDesktopIcons : IDesktopIcons
         return scoped;
     }
 
+    public (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsWithMonitors(IMonitors monitors)
+    {
+        if (_inner is ShellDesktopIcons shell)
+        {
+            return shell.ReadIconsWithMonitors(_prefix);
+        }
+
+        (IReadOnlyList<MonitorInfo> snapshotMonitors, IReadOnlyList<IconPosition> all) = _inner.ReadIconsWithMonitors(monitors);
+        var scoped = new List<IconPosition>();
+        foreach (IconPosition icon in all)
+        {
+            if (MatchesPrefix(icon.Name))
+            {
+                scoped.Add(icon);
+            }
+        }
+
+        return (snapshotMonitors, scoped);
+    }
+
     public void SetPositions(IReadOnlyList<IconPosition> icons)
     {
         ArgumentNullException.ThrowIfNull(icons);

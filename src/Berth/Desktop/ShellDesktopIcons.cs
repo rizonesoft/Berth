@@ -86,11 +86,22 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     public IReadOnlyList<IconPosition> ReadIcons() =>
         RunMemberWithView(nameof(ReadIcons), ReadIconsFromView);
 
+    public (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsWithMonitors(IMonitors monitors) =>
+        RunMemberWithView(nameof(ReadIcons), desktop =>
+            ReadIconsFromViewWithMonitors(desktop, _freeCoTaskMem, _releaseComObject, namePrefix: null));
+
     internal IReadOnlyList<IconPosition> ReadIcons(string namePrefix)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(namePrefix);
         return RunMemberWithView(nameof(ReadIcons), desktop =>
             ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject, namePrefix));
+    }
+
+    internal (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsWithMonitors(string namePrefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(namePrefix);
+        return RunMemberWithView(nameof(ReadIcons), desktop =>
+            ReadIconsFromViewWithMonitors(desktop, _freeCoTaskMem, _releaseComObject, namePrefix));
     }
 
     public void SetPositions(IReadOnlyList<IconPosition> icons)
@@ -327,9 +338,16 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     }
 
     private IReadOnlyList<IconPosition> ReadIconsFromView(DesktopView desktop) =>
-        ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject, namePrefix: null);
+        ReadIconsFromViewWithMonitors(desktop, _freeCoTaskMem, _releaseComObject, namePrefix: null).Icons;
 
     private IReadOnlyList<IconPosition> ReadIconsFromView(
+        DesktopView desktop,
+        Action<nint> freeCoTaskMem,
+        Action<object> releaseComObject,
+        string? namePrefix = null) =>
+        ReadIconsFromViewWithMonitors(desktop, freeCoTaskMem, releaseComObject, namePrefix).Icons;
+
+    private (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsFromViewWithMonitors(
         DesktopView desktop,
         Action<nint> freeCoTaskMem,
         Action<object> releaseComObject,
@@ -435,7 +453,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
             IReadOnlyList<IconPosition> result = Deduplicate(raw, _warn);
             bodyCompleted = true;
-            return result;
+            return (monitors, result);
         }
         finally
         {

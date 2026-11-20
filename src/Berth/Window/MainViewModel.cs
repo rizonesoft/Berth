@@ -163,9 +163,10 @@ internal sealed class MainViewModel : ObservableObject
 
             currentKey = monitorsAvailable ? ArrangementKey.From(monitors) : null;
 
+            IReadOnlyList<MonitorInfo> iconMonitors = [];
             try
             {
-                icons = _desktop.ReadIcons();
+                (iconMonitors, icons) = _desktop.ReadIconsWithMonitors(_monitors);
                 autoArrange = _desktop.AutoArrange;
                 desktopUnavailable = false;
             }
@@ -183,6 +184,7 @@ internal sealed class MainViewModel : ObservableObject
                 break;
             }
 
+            string? iconKey = iconMonitors.Count > 0 ? ArrangementKey.From(iconMonitors) : null;
             string? afterKey;
             try
             {
@@ -194,7 +196,8 @@ internal sealed class MainViewModel : ObservableObject
                 afterKey = null;
             }
 
-            if (string.Equals(currentKey, afterKey, StringComparison.Ordinal))
+            if (string.Equals(currentKey, iconKey, StringComparison.Ordinal)
+                && string.Equals(iconKey, afterKey, StringComparison.Ordinal))
             {
                 stable = true;
                 break;

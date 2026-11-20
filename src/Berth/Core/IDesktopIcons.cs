@@ -13,6 +13,17 @@ internal interface IDesktopIcons
     IReadOnlyList<IconPosition> ReadIcons();
 
     /// <summary>
+    /// Reads every icon on the desktop together with the exact monitor snapshot used to convert its coordinates, so
+    /// callers can detect an A -> B -> A monitor shift that occurs mid-read.
+    /// </summary>
+    /// <exception cref="DesktopUnavailableException">The desktop cannot be reached.</exception>
+    (IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<IconPosition> Icons) ReadIconsWithMonitors(IMonitors monitors)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+        return (monitors.Read(), ReadIcons());
+    }
+
+    /// <summary>
     /// Moves each icon in <paramref name="icons"/> whose <see cref="IconPosition.Id"/> is on the desktop (parsing
     /// names compared ignoring case) to its position. An icon that is not on the desktop is ignored, and Windows may
     /// adjust a position; callers read the icons again to learn where they landed.
