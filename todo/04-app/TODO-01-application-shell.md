@@ -37,7 +37,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [ ] |
+| 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [x] |
 | 2 | §2 | Single instance and activation | §1 | [ ] |
 | 3 | §3 | Crash handling | §1 | [ ] |
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [ ] |
@@ -72,6 +72,9 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 - [x] Commit: `app: entry routing and the first-run rule`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*StartupPlanTests" --filter-class "*StartupPlanProcessTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when `OpenWindow` is `true` on a later run.
+
+> **Verified:** 2026-11-20 | §1 | 0ec65644822a24aa9d13b2b18947977aab91b80e
+> **Review:** `docs/reviews/d04-t01-s1.json`
 
 ## 2. Single instance and activation
 
