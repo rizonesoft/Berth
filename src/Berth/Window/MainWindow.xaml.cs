@@ -40,8 +40,8 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
 
         InitializeComponent();
 
-        _defaultWidthDips = double.IsFinite(Width) && Width > 0d ? Width : 980d;
-        _defaultHeightDips = double.IsFinite(Height) && Height > 0d ? Height : 640d;
+        _defaultWidthDips = ResolveTokenDimension("Berth.WindowDefaultWidth", Width);
+        _defaultHeightDips = ResolveTokenDimension("Berth.WindowDefaultHeight", Height);
 
         if (_settingsStore is not null || _monitors is not null)
         {
@@ -172,7 +172,14 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
             WindowPlacement? fallback = ComputePrimaryFallback(currentMonitors);
             if (fallback is not null)
             {
-                _ = _boundsInterop.TrySetWindowRect(hwnd, fallback);
+                if (WindowState == WindowState.Normal)
+                {
+                    _ = _boundsInterop.TrySetWindowRect(hwnd, fallback);
+                }
+                else
+                {
+                    _ = _boundsInterop.TrySetNormalPlacement(hwnd, fallback);
+                }
             }
         }
     }
@@ -223,14 +230,35 @@ internal sealed partial class MainWindow : System.Windows.Window, IMainWindow
 
     private WindowPlacement? ComputePrimaryFallback(IReadOnlyList<MonitorInfo> currentMonitors)
     {
-        WindowPlacement? primaryWorkArea = _boundsInterop.TryGetPrimaryWorkArea(out WindowPlacement work)
-            ? work
-            : null;
+        WindowPlacement? primaryWorkArea = null;
+        double? primaryScale = null;
+        if (_boundsInterop.TryGetPrimaryWorkArea(out WindowPlacement work, out double scale))
+        {
+            primaryWorkArea = work;
+            primaryScale = scale;
+        }
+
         return WindowPlacementRule.CenterOnPrimary(
             currentMonitors,
             primaryWorkArea,
             _defaultWidthDips,
-            _defaultHeightDips);
+            _defaultHeightDips,
+            primaryScale);
+    }
+
+    private double ResolveTokenDimension(string resourceKey, double fallbackPropertyValue)
+    {
+        if (TryFindResource(resourceKey) is double tokenValue && double.IsFinite(tokenValue) && tokenValue > 0d)
+        {
+            return tokenValue;
+        }
+
+        if (double.IsFinite(fallbackPropertyValue) && fallbackPropertyValue > 0d)
+        {
+            return fallbackPropertyValue;
+        }
+
+        throw new InvalidOperationException($"Missing positive numeric window dimension token '{resourceKey}'.");
     }
 
     private bool TryActivate() => ActivateOverride is not null ? ActivateOverride() : Activate();

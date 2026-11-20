@@ -116,7 +116,7 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         IReadOnlyList<MonitorInfo> currentMonitors = monitors.Read();
         MonitorInfo primary = currentMonitors.FirstOrDefault(m => m.Primary) ?? currentMonitors[0];
 
-        Assert.True(NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement primaryWork));
+        Assert.True(NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement primaryWork, out _));
 
         // 1. Stored valid placement scaled to primary monitor DPI -> GetWindowRect matches.
         double primaryScale = primary.Scale > 0 ? primary.Scale / 100.0 : 1.0;
@@ -191,7 +191,7 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         var store = new SettingsStore(paths);
         var log = new Log(paths, TimeProvider.System);
         var monitors = new SystemMonitors();
-        Assert.True(NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement primaryWork));
+        Assert.True(NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement primaryWork, out _));
 
         var initial = new WindowPlacement(primaryWork.X + 70, primaryWork.Y + 50, 1000, 660);
         store.Save(Settings.Default with { Window = initial, RestoreAutomatically = false });
@@ -243,7 +243,9 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         var fakeInterop = new FakeWindowBoundsInterop
         {
             PrimaryWorkArea = new WindowPlacement(0, 0, 1920, 1040),
+            PrimaryScale = 1.0,
             CurrentRect = secondaryPlacement,
+            NormalRect = secondaryPlacement,
         };
 
         appFixture.Invoke(() =>
@@ -259,13 +261,46 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
                 win.BringToFront();
                 Assert.Equal(setsBeforeVisibleBring, fakeInterop.SetCalls);
 
-                // Hide on secondary, then undock (remove secondary monitor), then reopen via BringToFront().
+                // Hide on secondary while maximized, undock (remove secondary monitor), then reopen via BringToFront().
+                // Must repair NormalRect via TrySetNormalPlacement so restoring lands on primary!
+                win.WindowState = WindowState.Maximized;
                 win.Close();
                 fakeMonitors.Monitors = [primary];
                 win.BringToFront();
 
                 WindowPlacement expectedPrimary = WindowPlacementRule.CenterOnPrimary([primary], fakeInterop.PrimaryWorkArea, 980d, 640d)!;
-                Assert.Equal(expectedPrimary, fakeInterop.LastSetRect);
+                Assert.Equal(expectedPrimary, fakeInterop.LastSetNormalRect);
+                Assert.Equal(expectedPrimary, fakeInterop.NormalRect);
+            }
+            finally
+            {
+                win.CloseForShutdown();
+            }
+        });
+    }
+
+    [Fact]
+    public void FailedMonitorEnumerationUsesNativePrimaryWorkAreaAndDpiScale()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new SettingsStore(paths);
+        var log = new Log(paths, TimeProvider.System);
+        var unavailableMonitors = new FakeMonitors { Unavailable = true };
+        var fakeInterop = new FakeWindowBoundsInterop
+        {
+            PrimaryWorkArea = new WindowPlacement(0, 0, 2880, 1560),
+            PrimaryScale = 1.5,
+        };
+
+        appFixture.Invoke(() =>
+        {
+            var win = new MainWindow(store, unavailableMonitors, log, fakeInterop);
+            try
+            {
+                win.Show();
+                // 980x640 DIPs at 150% = 1470x960 px centered in (0, 0, 2880, 1560) -> (705, 300, 1470, 960).
+                Assert.Equal(new WindowPlacement(705, 300, 1470, 960), fakeInterop.LastSetRect);
             }
             finally
             {
@@ -378,15 +413,20 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
 
         Assert.Equal("0", report["exitCode"]);
-        Assert.False(string.IsNullOrEmpty(report["observed"]));
+        Assert.Equal("True", report["setSucceeded"]);
+        Assert.Equal(report["target"], report["observed"]);
         Assert.Equal(report["observed"] + ",True", report["saved"]);
+        Assert.Equal(report["observed"], report["reopenedFresh"]);
     }
 
     private sealed class FakeWindowBoundsInterop : IWindowBoundsInterop
     {
         public WindowPlacement? PrimaryWorkArea { get; set; }
+        public double PrimaryScale { get; set; } = 1.0;
         public WindowPlacement? CurrentRect { get; set; }
+        public WindowPlacement? NormalRect { get; set; }
         public WindowPlacement? LastSetRect { get; private set; }
+        public WindowPlacement? LastSetNormalRect { get; private set; }
         public int SetCalls { get; private set; }
         public bool FailSetWindowRect { get; set; }
         public bool FailGetNormalPlacement { get; set; }
@@ -405,9 +445,9 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
 
         public bool TryGetNormalPlacement(IntPtr hwnd, out WindowPlacement screenRect)
         {
-            if (!FailGetNormalPlacement && CurrentRect is not null)
+            if (!FailGetNormalPlacement && NormalRect is not null)
             {
-                screenRect = CurrentRect;
+                screenRect = NormalRect;
                 return true;
             }
 
@@ -428,15 +468,30 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
             return true;
         }
 
-        public bool TryGetPrimaryWorkArea(out WindowPlacement workArea)
+        public bool TrySetNormalPlacement(IntPtr hwnd, WindowPlacement screenRect)
+        {
+            SetCalls++;
+            if (FailSetWindowRect)
+            {
+                return false;
+            }
+
+            LastSetNormalRect = screenRect;
+            NormalRect = screenRect;
+            return true;
+        }
+
+        public bool TryGetPrimaryWorkArea(out WindowPlacement workArea, out double scale)
         {
             if (PrimaryWorkArea is not null)
             {
                 workArea = PrimaryWorkArea;
+                scale = PrimaryScale;
                 return true;
             }
 
             workArea = null!;
+            scale = 1.0;
             return false;
         }
     }

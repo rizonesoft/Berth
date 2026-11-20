@@ -81,13 +81,15 @@ internal static class WindowPlacementRule
 
     /// <summary>
     /// Computes the default centred placement in physical pixels on the primary monitor's work area (falling back to
-    /// the primary <see cref="MonitorInfo"/> bounds when <paramref name="primaryWorkArea"/> is unavailable).
+    /// the primary <see cref="MonitorInfo"/> bounds when <paramref name="primaryWorkArea"/> is unavailable, and using
+    /// <paramref name="primaryScaleOverride"/> when monitor enumeration is unavailable).
     /// </summary>
     public static WindowPlacement? CenterOnPrimary(
         IReadOnlyList<MonitorInfo>? monitors,
         WindowPlacement? primaryWorkArea,
         double defaultWidthDips,
-        double defaultHeightDips)
+        double defaultHeightDips,
+        double? primaryScaleOverride = null)
     {
         MonitorInfo? primary = monitors is { Count: > 0 }
             ? monitors.FirstOrDefault(m => m.Primary) ?? monitors[0]
@@ -101,7 +103,11 @@ internal static class WindowPlacementRule
             return null;
         }
 
-        double scale = primary is not null && primary.Scale > 0 ? primary.Scale / 100.0 : 1.0;
+        double scale = primary is not null && primary.Scale > 0
+            ? primary.Scale / 100.0
+            : primaryScaleOverride is { } nativeScale && double.IsFinite(nativeScale) && nativeScale > 0d
+                ? nativeScale
+                : 1.0;
         int width = Math.Max(1, (int)Math.Round(defaultWidthDips * scale));
         int height = Math.Max(1, (int)Math.Round(defaultHeightDips * scale));
 

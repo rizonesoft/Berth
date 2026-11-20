@@ -63,7 +63,8 @@ internal static class TrayApp
         Func<string, string?>? getenv = null,
         Composition? composition = null,
         Action<TrayMenu>? onTrayMenuCreated = null,
-        Func<IMainWindow>? createMainWindow = null)
+        Func<IMainWindow>? createMainWindow = null,
+        Action? onInstanceActivatedHandled = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -214,7 +215,13 @@ internal static class TrayApp
             void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) =>
                 HandleUserPreferenceChanged(effectiveTheme, e.Category);
 
-            void OnInstanceActivated() => MarshalToUi(OpenMainWindow, onAborted: null);
+            void OnInstanceActivated() => MarshalToUi(
+                () =>
+                {
+                    OpenMainWindow();
+                    onInstanceActivatedHandled?.Invoke();
+                },
+                onAborted: onInstanceActivatedHandled);
 
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             try

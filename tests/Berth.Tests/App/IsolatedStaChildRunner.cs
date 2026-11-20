@@ -664,6 +664,7 @@ internal static class IsolatedStaChildRunner
         bool secondClaimed = true;
         SecondaryOutcome secondOutcome = SecondaryOutcome.Refused;
         string workerError = string.Empty;
+        using var activationHandled = new ManualResetEventSlim(false);
 
         int exitCode = TrayApp.RunWithInstance(
             openWindow: true,
@@ -686,6 +687,7 @@ internal static class IsolatedStaChildRunner
                 capturedWindow = new Berth.Window.MainWindow();
                 return capturedWindow;
             },
+            onInstanceActivatedHandled: () => activationHandled.Set(),
             onAppStartup: app =>
             {
                 if (capturedWindow is null || capturedIcon is null || capturedMenu is null)
@@ -714,7 +716,7 @@ internal static class IsolatedStaChildRunner
                                 .Invoke(capturedIcon.NotifyIcon, [new System.Windows.Forms.MouseEventArgs(System.Windows.Forms.MouseButtons.Left, 1, 0, 0, 0)]);
                         });
 
-                        // Trigger a second-instance pipe activation and record its exact outcome.
+                        // Trigger a second-instance pipe activation and wait deterministically for the primary UI handler to finish.
                         using var second = new SingleInstance(instanceName);
                         secondClaimed = second.TryClaim();
                         if (!secondClaimed)
@@ -722,12 +724,12 @@ internal static class IsolatedStaChildRunner
                             secondOutcome = second.RunSecondary();
                         }
 
-                        // Wait at Background priority so any Normal-priority BeginInvoke queued by SingleInstance.Activated
-                        // has already executed on the primary UI dispatcher before sampling IsVisible.
-                        Thread.Sleep(50);
-                        app.Dispatcher.Invoke(
-                            () => visibleAfterDrainActivation = capturedWindow.IsVisible,
-                            DispatcherPriority.Background);
+                        if (!activationHandled.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Primary UI dispatcher did not complete the activation handler in time.");
+                        }
+
+                        app.Dispatcher.Invoke(() => visibleAfterDrainActivation = capturedWindow.IsVisible);
                     }
                     catch (Exception ex)
                     {
@@ -769,8 +771,11 @@ internal static class IsolatedStaChildRunner
         var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
 
         TrayMenu? capturedMenu = null;
+        string targetRectLine = string.Empty;
         string savedRectLine = string.Empty;
         string observedRectLine = string.Empty;
+        string reopenedFreshRectLine = string.Empty;
+        bool setSucceeded = false;
 
         int exitCode = TrayApp.RunWithInstance(
             openWindow: true,
@@ -799,9 +804,16 @@ internal static class IsolatedStaChildRunner
                         return;
                     }
 
+                    Berth.Window.NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement primaryWork, out double scale);
+                    var moved = new WindowPlacement(
+                        primaryWork.X + 110,
+                        primaryWork.Y + 95,
+                        (int)Math.Round(1020 * scale),
+                        (int)Math.Round(680 * scale));
+                    targetRectLine = $"{moved.X},{moved.Y},{moved.Width},{moved.Height}";
+
                     IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
-                    var moved = new WindowPlacement(140, 120, 1020, 680);
-                    _ = Berth.Window.NativeWindowBoundsInterop.Instance.TrySetWindowRect(hwnd, moved);
+                    setSucceeded = Berth.Window.NativeWindowBoundsInterop.Instance.TrySetWindowRect(hwnd, moved);
                     if (Berth.Window.NativeWindowBoundsInterop.Instance.TryGetWindowRect(hwnd, out WindowPlacement observed))
                     {
                         observedRectLine = $"{observed.X},{observed.Y},{observed.Width},{observed.Height}";
@@ -811,7 +823,7 @@ internal static class IsolatedStaChildRunner
                     var freshStore = new SettingsStore(paths);
                     _ = freshStore.Update(s => s with { RestoreAutomatically = true });
 
-                    // Hide the window (saves placement), then reopen through tray menu and exit.
+                    // Hide the window (saves placement).
                     win.Close();
                     SettingsLoad afterHide = freshStore.Load();
                     if (afterHide.Value.Window is { } saved)
@@ -819,7 +831,22 @@ internal static class IsolatedStaChildRunner
                         savedRectLine = $"{saved.X},{saved.Y},{saved.Width},{saved.Height},{afterHide.Value.RestoreAutomatically}";
                     }
 
-                    capturedMenu.OpenItem.PerformClick();
+                    // Open a fresh window against the same data root to prove restoration from disk.
+                    var reopened = new Berth.Window.MainWindow(freshStore, monitors, log);
+                    try
+                    {
+                        reopened.Show();
+                        IntPtr reopenedHwnd = new System.Windows.Interop.WindowInteropHelper(reopened).Handle;
+                        if (Berth.Window.NativeWindowBoundsInterop.Instance.TryGetWindowRect(reopenedHwnd, out WindowPlacement restored))
+                        {
+                            reopenedFreshRectLine = $"{restored.X},{restored.Y},{restored.Width},{restored.Height}";
+                        }
+                    }
+                    finally
+                    {
+                        reopened.CloseForShutdown();
+                    }
+
                     capturedMenu.ExitItem.PerformClick();
                 }
                 catch
@@ -831,8 +858,11 @@ internal static class IsolatedStaChildRunner
         File.WriteAllLines(
             reportFile,
             [
+                $"setSucceeded={setSucceeded}",
+                $"target={targetRectLine}",
                 $"observed={observedRectLine}",
                 $"saved={savedRectLine}",
+                $"reopenedFresh={reopenedFreshRectLine}",
                 $"exitCode={exitCode}",
             ]);
 
