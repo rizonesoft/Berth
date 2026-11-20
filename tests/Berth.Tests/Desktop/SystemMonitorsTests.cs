@@ -224,6 +224,57 @@ public sealed class UnitSystemMonitorsTests
             });
 
         Assert.Throws<DesktopUnavailableException>(() => new SystemMonitors(persistentApi).Read());
+
+        int absentReads = 0;
+        var absentConvergingApi = new FakeNativeMonitorApi(
+            handles: [primaryHandle, secondaryHandle],
+            adapterStatesProvider: () =>
+            {
+                absentReads++;
+                var map = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+                };
+                if (absentReads >= 2)
+                {
+                    map[@"\\.\DISPLAY2"] = SystemMonitors.DisplayDeviceAttachedToDesktop;
+                }
+
+                return map;
+            },
+            infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
+            {
+                [primaryHandle] = new(0, 0, 2560, 1440, 0, 0, 2560, 1400, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
+                [secondaryHandle] = new(2560, 0, 4480, 1080, 2560, 0, 4480, 1040, 0u, @"\\.\DISPLAY2"),
+            },
+            dpis: new Dictionary<nint, (int Hr, uint DpiX)>
+            {
+                [primaryHandle] = (0, 120u),
+                [secondaryHandle] = (0, 96u),
+            });
+
+        IReadOnlyList<MonitorInfo> absentRetried = new SystemMonitors(absentConvergingApi).Read();
+        Assert.Equal(2, absentReads);
+        Assert.Equal(2, absentRetried.Count);
+
+        var absentPersistentApi = new FakeNativeMonitorApi(
+            handles: [primaryHandle, secondaryHandle],
+            adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+            {
+                [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+            },
+            infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
+            {
+                [primaryHandle] = new(0, 0, 2560, 1440, 0, 0, 2560, 1400, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
+                [secondaryHandle] = new(2560, 0, 4480, 1080, 2560, 0, 4480, 1040, 0u, @"\\.\DISPLAY2"),
+            },
+            dpis: new Dictionary<nint, (int Hr, uint DpiX)>
+            {
+                [primaryHandle] = (0, 120u),
+                [secondaryHandle] = (0, 96u),
+            });
+
+        Assert.Throws<DesktopUnavailableException>(() => new SystemMonitors(absentPersistentApi).Read());
     }
 
     [Fact]
@@ -303,6 +354,7 @@ public sealed class UnitSystemMonitorsTests
             new(1920, 0, 1920, 1080, 100, Primary: true),
         ]));
         Assert.Throws<DesktopUnavailableException>(() => SystemMonitors.Normalize([new(0, 0, 0, 1080, 100, Primary: true)]));
+        Assert.Throws<DesktopUnavailableException>(() => SystemMonitors.Normalize([new(0, 0, 1920, 0, 100, Primary: true)]));
         Assert.Throws<DesktopUnavailableException>(() => SystemMonitors.Normalize([new(0, 0, 1920, 1080, 0, Primary: true)]));
     }
 
@@ -373,7 +425,10 @@ public sealed class UnitSystemMonitorsTests
         nint first = new(1);
         var zeroDpiApi = new FakeNativeMonitorApi(
             handles: [first],
-            adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase),
+            adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+            {
+                [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+            },
             infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
             {
                 [first] = new(0, 0, 1920, 1080, 0, 0, 1920, 1040, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),

@@ -209,7 +209,7 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
     {
         if (string.IsNullOrEmpty(deviceName) || !adapterStates.TryGetValue(deviceName, out uint stateFlags))
         {
-            return DisplayClassification.DesktopDisplay;
+            return DisplayClassification.DetachedTopologyMismatch;
         }
 
         if ((stateFlags & DisplayDeviceMirroringDriver) != 0)
