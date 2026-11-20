@@ -440,7 +440,7 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         }
     }
 
-    private static string DecodeStrRet(ref StrRet strRet, nint pidl, Action<nint> freeCoTaskMem)
+    internal static string DecodeStrRet(ref StrRet strRet, nint pidl, Action<nint> freeCoTaskMem)
     {
         // Per Microsoft's StrRetToStrW contract, strRet is consumed by the call (including freeing STRRET_WSTR
         // pOleStr internally) and must not be freed by the caller afterwards; only ppsz is caller-owned.
