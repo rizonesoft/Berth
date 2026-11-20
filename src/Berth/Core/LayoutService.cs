@@ -235,6 +235,12 @@ internal sealed class LayoutService(
             return null;
         }
 
+        if (FindOutOfRangePosition(layout.Icons, icons, arrangement) is { } outOfRange)
+        {
+            string message = $"Saved position ({outOfRange.X}, {outOfRange.Y}) for \"{Messages.SingleLine(outOfRange.Name)}\" does not fit in a 32-bit desktop coordinate for this monitor arrangement.";
+            return OperationResult.Failed(FailureKind.Unexpected, path: null, message, layout.Name, new OverflowException(message));
+        }
+
         var undo = new UndoSnapshot(UndoSnapshot.CurrentSchemaVersion, key, clock.GetUtcNow(), [.. icons]);
         if (LayoutRules.CheckUndo(undo) is { } problem)
         {
@@ -644,6 +650,50 @@ internal sealed class LayoutService(
     }
 
     /// <summary>Whether the monitors still give <paramref name="key"/>; an unreachable desktop counts as a change.</summary>
+    private static IconPosition? FindOutOfRangePosition(
+        IReadOnlyList<IconPosition> requested,
+        IReadOnlyList<IconPosition> liveDesktop,
+        IReadOnlyList<MonitorInfo> arrangement)
+    {
+        if (requested.Count == 0 || arrangement.Count == 0)
+        {
+            return null;
+        }
+
+        long originX = arrangement[0].X;
+        long originY = arrangement[0].Y;
+        for (int i = 1; i < arrangement.Count; i++)
+        {
+            if (arrangement[i].X < originX)
+            {
+                originX = arrangement[i].X;
+            }
+
+            if (arrangement[i].Y < originY)
+            {
+                originY = arrangement[i].Y;
+            }
+        }
+
+        IReadOnlyDictionary<string, IconPosition> liveById = LayoutComparison.ById(liveDesktop);
+        foreach (IconPosition icon in requested)
+        {
+            if (!liveById.ContainsKey(icon.Id))
+            {
+                continue;
+            }
+
+            long viewX = icon.X - originX;
+            long viewY = icon.Y - originY;
+            if (viewX is < int.MinValue or > int.MaxValue || viewY is < int.MinValue or > int.MaxValue)
+            {
+                return icon;
+            }
+        }
+
+        return null;
+    }
+
     private bool StillThe(string key)
     {
         try

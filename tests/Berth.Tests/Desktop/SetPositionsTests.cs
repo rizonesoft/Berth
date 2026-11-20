@@ -183,6 +183,78 @@ public sealed class SetPositionsTests
         Assert.Equal(1, positionFailFixture.SelectAndPositionCalls);
         Assert.True(positionFailFixture.AllSubmittedPidlsWereLiveDuringCall);
         positionFailFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
+
+        // Empty parsing name during enumeration -> throws DesktopUnavailableException before moving any icon.
+        var emptyNameFixture = new ShellFixture(
+        [
+            new FixtureItem(@"C:\Desktop\A.txt"),
+            new FixtureItem(string.Empty),
+        ]);
+        using (ShellDesktopIcons icons = emptyNameFixture.CreateDesktopIcons(monitors))
+        {
+            Assert.Throws<DesktopUnavailableException>(() =>
+                icons.SetPositions([new(@"C:\Desktop\A.txt", "A", 10, 20)]));
+        }
+
+        Assert.Equal(0, emptyNameFixture.SelectAndPositionCalls);
+        emptyNameFixture.AssertAllResourcesReleased(expectedOutputStringsFreed: 2);
+    }
+
+    [Fact]
+    public void RestoreWithCoordinateOverflowingNativePointPreservesExistingUndoSnapshotAndMovesNothing()
+    {
+        string tempRoot = Path.Combine(Path.GetTempPath(), "Berth.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            BerthPaths paths = BerthPaths.ForRoot(tempRoot);
+            MonitorInfo[] arrangement =
+            [
+                new(-1920, 0, 1920, 1080, 100, Primary: false),
+                new(0, 0, 2560, 1440, 100, Primary: true),
+            ];
+            string key = ArrangementKey.From(arrangement);
+            var monitors = new FixedMonitors(arrangement);
+            var fixture = new ShellFixture([new FixtureItem(@"C:\Desktop\Alpha.txt")]);
+
+            // Seed a saved layout whose matched icon overflows signed 32-bit view X (int.MaxValue - (-1920)).
+            var store = new LayoutStore(paths);
+            var layout = new Layout(
+                Layout.CurrentSchemaVersion,
+                key,
+                "Docked",
+                DateTimeOffset.UtcNow,
+                [.. arrangement],
+                [new IconPosition(@"C:\Desktop\Alpha.txt", "Alpha", int.MaxValue, 100)],
+                Previous: null);
+            store.Save(layout, new LayoutSnapshot(key, null, null));
+
+            // Seed a pre-existing undo.json that must remain untouched when Restore refuses the overflow.
+            var existingUndo = new UndoSnapshot(
+                UndoSnapshot.CurrentSchemaVersion,
+                key,
+                DateTimeOffset.UtcNow.AddMinutes(-5),
+                [new IconPosition(@"C:\Desktop\Alpha.txt", "Alpha", 42, 84)]);
+            BerthPaths.EnsureFolderFor(paths.UndoFile);
+            JsonFile.Write(paths.UndoFile, existingUndo, BerthJson.Default.UndoSnapshot);
+            string undoBefore = File.ReadAllText(paths.UndoFile);
+
+            using var icons = fixture.CreateDesktopIcons(monitors);
+            var opLock = new OperationLock(paths, TimeSpan.FromSeconds(5));
+            var log = new Log(paths, TimeProvider.System);
+            var service = new LayoutService(icons, monitors, store, paths, opLock, log, TimeProvider.System);
+
+            OperationResult result = service.Restore();
+
+            Assert.Equal(OperationKind.Failed, result.Kind);
+            Assert.Equal(FailureKind.Unexpected, result.Failure);
+            Assert.Equal(0, fixture.SelectAndPositionCalls);
+            Assert.Equal(undoBefore, File.ReadAllText(paths.UndoFile));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
     }
 
     private sealed class FixedMonitors(IReadOnlyList<MonitorInfo> monitors) : IMonitors
@@ -381,7 +453,9 @@ public sealed class SetPositionsTests
 
             public void GetDisplayNameOf(nint pidl, uint uFlags, out StrRet pName)
             {
-                Assert.Equal(ShellConstants.SHGDN_FORPARSING, uFlags);
+                Assert.True(
+                    uFlags is ShellConstants.SHGDN_FORPARSING or ShellConstants.SHGDN_NORMAL,
+                    $"Unexpected SHGDN flags: 0x{uFlags:X}.");
                 FixtureItem item = owner._activePidls[pidl];
                 if (item.GetDisplayNameError is not null)
                 {

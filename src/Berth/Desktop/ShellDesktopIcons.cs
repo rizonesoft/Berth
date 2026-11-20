@@ -204,10 +204,12 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 allocatedPidls.Add(pidl);
                 folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
                 string id = DecodeStrRet(ref parsingRet, pidl, _freeCoTaskMem);
-                if (!string.IsNullOrEmpty(id))
+                if (string.IsNullOrEmpty(id))
                 {
-                    pidlById.TryAdd(id, pidl);
+                    throw new DesktopUnavailableException("Desktop icon returned an empty parsing name.");
                 }
+
+                pidlById.TryAdd(id, pidl);
             }
 
             var matchedPidls = new List<nint>(icons.Count);
@@ -463,20 +465,6 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
             {
                 throw Unavailable(ex);
             }
-        });
-
-    private T RunMember<T>(string memberName, Func<T> work) =>
-        _worker.Run(() =>
-        {
-            _onMemberExecuted?.Invoke(memberName);
-            return work();
-        });
-
-    private void RunMember(string memberName, Action work) =>
-        _worker.Run(() =>
-        {
-            _onMemberExecuted?.Invoke(memberName);
-            work();
         });
 
     private static DesktopUnavailableException Unavailable(Exception inner) =>
