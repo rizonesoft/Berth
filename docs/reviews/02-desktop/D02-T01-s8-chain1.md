@@ -125,3 +125,27 @@ COMPLETION: gaps
 - Fixed: 1. Updated `DesktopView.Open` `finally` cleanup to use `ReleaseSuppressingShellErrors` so every remaining intermediate is released once without replacing an acquisition exception in flight; added regression where `QueryService` throws `UnauthorizedAccessException` and releasing `dispatchObj` throws `InvalidComObjectException`, asserting exact `InnerException` identity and release count `1`.
 - Fixed: 2. Updated `ShellDesktopIcons.RunWithView` to dispose the view via `DisposeViewSuppressingShellErrors` when `work` throws so a throwing release never masks the caller's exception; added regression asserting exact `UnauthorizedAccessException` identity and release count `1`.
 - Check: `dotnet test --solution Berth.slnx -c Release --filter-class "*UnavailableTests" --filter-class "*DesktopViewTests" --filter-class "*RestoreTests" --filter-class "*UndoTests" --filter-class "*LayerRuleTests"` passed (`total: 112, failed: 0, succeeded: 112, skipped: 0`, including `5/5` in `UnavailableTests`, exit code `0`); `python scripts/todo-graph.py validate` (`valid: 88 sections`) and `python scripts/todo-graph.py plan --check` (`plan current`) passed.
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-20T14:07:01Z
+- Candidate: c6ce4a3a5ebc1cc1052432a050dcc5625beb733d
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 13
+- Digest: fbb4cf6ef2d0e427
+
+Both Completion P2 findings are closed on `c6ce4a3`.
+
+1. `DesktopView.Open` releases each outstanding intermediate once. A mapped shell error during release leaves the original acquisition exception intact and allows cleanup to continue. The `QueryService` regression asserts that `InnerException` is the exact `UnauthorizedAccessException` instance and that dispatch release was attempted once.
+2. `ShellDesktopIcons.RunWithView` disposes the view on the STA worker and rethrows the caller’s original work exception when disposal raises `InvalidComObjectException`. The regression asserts exact exception identity at the caller and one view release.
+
+I verified the implementation and regression assertions in source. The supplied Release checkpoint reports 112 passed, zero skipped, including all five `UnavailableTests`. It also reports 88 valid TODO sections and a current plan. I did not rerun those commands.
+
+LENS adversarial: clean  
+LENS integration: clean  
+LENS plan-delivery: clean  
+LENS record: clean  
+HIGHEST: none  
+RECONCILIATION: complete

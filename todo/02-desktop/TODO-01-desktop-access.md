@@ -238,7 +238,9 @@ The one test that proves reading and writing against Windows itself, touching on
 
 ## 8. One exception for an unreachable desktop
 
-> **Started:** 2026-11-20T13:43Z
+> **Started:** 2026-11-20T14:15Z
+
+**Corrected 2026-11-20:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-20T13:43Z; its review chain is kept as `docs/reviews/02-desktop/D02-T01-s8-chain1.md`.
 
 Explorer restarting, a locked session or a COM failure all surface as `DesktopUnavailableException` (SPEC §9 second notice, §18).
 
