@@ -325,6 +325,38 @@ public sealed class UnavailableTests
             Assert.Equal(1, enumReleases);
             Assert.Equal(1, folderReleases);
             Assert.Equal(1, outerViewReleases);
+
+            // Operation succeeds, then BOTH enumerator and folder releases throw distinct mapped exceptions:
+            // both releases are attempted once and the FIRST release exception is preserved as InnerException.
+            var firstReleaseError = new InvalidComObjectException("First: enumerator release failed");
+            var secondReleaseError = new InvalidComObjectException("Second: folder release failed");
+            int bothEnumReleases = 0;
+            int bothFolderReleases = 0;
+            var viewBothReleaseFail = new HealthyFolderView([(@"C:\Desktop\Probe.txt", "berth-test-1", 10, 20)]);
+            using var bothReleaseShell = new ShellDesktopIcons(
+                openView: () => DesktopView.Open(
+                    () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(viewBothReleaseFail))),
+                    _ => { }),
+                monitors: monitors,
+                releaseComObject: obj =>
+                {
+                    if (obj is IEnumIDList)
+                    {
+                        bothEnumReleases++;
+                        throw firstReleaseError;
+                    }
+
+                    if (obj is IShellFolder)
+                    {
+                        bothFolderReleases++;
+                        throw secondReleaseError;
+                    }
+                });
+
+            DesktopUnavailableException bothThrown = Assert.Throws<DesktopUnavailableException>(() => bothReleaseShell.ReadIcons());
+            Assert.Same(firstReleaseError, bothThrown.InnerException);
+            Assert.Equal(1, bothEnumReleases);
+            Assert.Equal(1, bothFolderReleases);
         }
     }
 

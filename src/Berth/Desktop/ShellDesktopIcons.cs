@@ -477,9 +477,9 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         {
             // Preserve the exception already in flight and still release remaining COM objects.
         }
-        catch (Exception ex) when (cleanupError is null)
+        catch (Exception ex)
         {
-            cleanupError = ex;
+            cleanupError ??= ex;
         }
     }
 
