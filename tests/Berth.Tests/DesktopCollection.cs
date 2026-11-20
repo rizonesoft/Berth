@@ -9,7 +9,7 @@ namespace Berth.Tests;
 /// the same machine waits for the first instead of clashing with it (AGENTS.md, "Interface tests take turns").
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class DesktopCollectionDefinition : ICollectionFixture<DesktopTestGate>
+public sealed class DesktopCollectionDefinition : ICollectionFixture<DesktopTestGate>, ICollectionFixture<Berth.Tests.App.AppFixture>
 {
     public const string Name = "Desktop";
 }

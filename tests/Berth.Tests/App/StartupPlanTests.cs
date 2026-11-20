@@ -106,12 +106,13 @@ public sealed class StartupPlanTests
         var output = new StringWriter();
         var error = new StringWriter();
 
-        // Default TrayApp.Run stub does not open a window or invoke onWindowOpened.
+        // Tray delegate that never opens a window or invokes onWindowOpened must leave settings.json absent.
         int code = global::Berth.Program.Run(
             [],
             output,
             error,
-            getenv: k => k == "BERTH_DATA" ? data.Root : null);
+            getenv: k => k == "BERTH_DATA" ? data.Root : null,
+            runTrayApp: (_, _, _) => 0);
 
         Assert.Equal(0, code);
         Assert.Equal(string.Empty, output.ToString());
@@ -353,13 +354,42 @@ public sealed class StartupPlanTests
 public sealed class StartupPlanProcessTests
 {
     [Fact]
-    public void BerthExeWithNoArgumentsReachesTrayStubAndExits0()
+    public void SecondBerthExeWithSameInstanceSignalsPrimaryAndExits0Within10Seconds()
     {
         using var data = new TestData();
-        BerthProcessResult result = BerthProcess.Run(data.Root, []);
+        string instanceName = "paired-" + Guid.NewGuid().ToString("N");
+        var env = new Dictionary<string, string> { ["BERTH_INSTANCE"] = instanceName };
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal(string.Empty, result.StandardOutput);
-        Assert.Equal(string.Empty, result.StandardError);
+        using BerthProcess first = BerthProcess.Start(data.Root, [], extraEnvironment: env);
+
+        // Wait until the first child owns the named instance mutex before launching the second child.
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        bool firstClaimed = false;
+        while (DateTime.UtcNow < deadline)
+        {
+            using var probe = new SingleInstance(instanceName);
+            if (!probe.TryClaim())
+            {
+                firstClaimed = true;
+                break;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        Assert.True(firstClaimed, "First berth.exe child did not claim the single-instance mutex within 10 seconds.");
+
+        using BerthProcess second = BerthProcess.Start(data.Root, [], extraEnvironment: env);
+        BerthProcessResult secondResult = second.WaitForExit(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, secondResult.ExitCode);
+        Assert.Equal(string.Empty, secondResult.StandardOutput);
+        Assert.Equal(string.Empty, secondResult.StandardError);
+
+        // Confirm the first instance is still running after the second signalled it and exited.
+        using (var postProbe = new SingleInstance(instanceName))
+        {
+            Assert.False(postProbe.TryClaim(), "Primary berth.exe should still be running after secondary exited.");
+        }
     }
 }

@@ -76,6 +76,20 @@ internal sealed class BerthProcess : IDisposable
             allowUnsetBerthData: false,
             timeout ?? DefaultTimeout);
 
+    public static BerthProcess Start(
+        string dataRoot,
+        string[] args,
+        string? testIconPrefix = null,
+        IReadOnlyDictionary<string, string>? extraEnvironment = null) =>
+        StartExecutable(
+            FindBerthExe(),
+            args,
+            dataRoot,
+            testIconPrefix,
+            extraEnvironment,
+            inheritedSeed: null,
+            allowUnsetBerthData: false);
+
     internal static BerthProcessResult RunExecutable(
         string exePath,
         string[] args,

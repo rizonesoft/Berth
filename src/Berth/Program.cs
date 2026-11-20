@@ -69,7 +69,9 @@ internal static class Program
                         FirstRun.CompleteAfterWindowOpened(settingsStore, log);
                     }
                 };
-                exitCode = (runTrayApp ?? TrayApp.Run)(trayPlan.OpenWindow, loaded.Value, onWindowOpened);
+                exitCode = runTrayApp is not null
+                    ? runTrayApp(trayPlan.OpenWindow, loaded.Value, onWindowOpened)
+                    : TrayApp.Run(trayPlan.OpenWindow, loaded.Value, onWindowOpened, readEnv, log);
             }
             else if (CliRunner.TryRunStandalone(parsed, output, error, out int standaloneExit))
             {
