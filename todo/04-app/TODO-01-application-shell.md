@@ -51,6 +51,8 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 
 ## 1. Entry routing and the first-run rule
 
+> **Started:** 2026-11-20T17:48:29Z
+
 `Program.Main` decides between the command line and the tray app, and the tray app decides whether to open its window (SPEC §17).
 
 **Phase:** 4
@@ -59,17 +61,17 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 
 **Build order:**
 
-1. Add `StartupPlan` in `src/Berth/App/StartupPlan.cs`. Done when: each argument shape maps to one plan.
-2. Call it from `Program.Main`. Done when: no arguments reaches the tray app's entry.
+1. Add `StartupPlan` and `FirstRun` in `src/Berth/App/StartupPlan.cs` and `TrayApp.Run(bool openWindow, Settings settings, Action? onWindowOpened = null)` in `src/Berth/App/TrayApp.cs`. Done when: each argument shape maps to one plan and first-run saves only after the window-opened callback.
+2. Call it from `Program.Run` loading settings only for `TrayApp` (`None` without error), forwarding `loaded.Value` and `OpenWindow` to `TrayApp.Run`, and logging `Messages.UnreadableSettings` on unreadable `settings.json`. Done when: no arguments reaches the tray app's entry and CLI commands never touch settings or tray startup.
 
-- [ ] Add `StartupMode` (`Command`, `TrayApp`, `UsageError`) and `StartupPlan.For(CliArguments args, bool settingsExist)` returning the mode and `OpenWindow` (`true` only for `TrayApp` when `settingsExist` is `false`, SPEC §17 "very first run"). Done when: unit tests cover no arguments with and without settings, a command, and an unknown argument. Cheaper substitute: opening the window on every start, which SPEC §17 says not to.
-- [ ] In `Program.Main`, branch on the plan: `Command` and `UsageError` go to `CliRunner` as before; `TrayApp` calls `TrayApp.Run(openWindow)` in `src/Berth/App/TrayApp.cs`, which for now creates nothing and returns 0. Done when: `berth.exe` with no arguments exits 0 and the existing process tests still pass. Cheaper substitute: starting the tray app before parsing, so `berth restore` would flash an icon.
-- [ ] On the first run, write `Settings.Default` through `SettingsStore.Save` after the window was opened, so the next start finds settings. Done when: a unit test over a `FirstRun` helper sees `Exists` `false` then `true`. Cheaper substitute: a separate marker file.
-- [ ] When the tray app starts and `SettingsStore.Load` reports `Unreadable`, write one `WARN` line with the SPEC §18 settings message through `Log`, run on the defaults, treat it as not a first run (`Exists` is `true`), and never write the file. Done when: a test with `{` in `settings.json` gets the `WARN` line, `OpenWindow` `false`, and the file's bytes unchanged. Cheaper substitute: running silently on defaults, so the user never learns why their switches reset. **Corrected 2026-11-18:** added from the `D01 T01 §6` plan review (SPEC §14 asks for an unreadable settings file to be reported).
-- [ ] Add `tests/Berth.Tests/App/StartupPlanTests.cs`. Done when: all pass, and the first-run test fails when `OpenWindow` ignores `settingsExist`. Cheaper substitute: testing by launching the app.
-- [ ] Commit: `app: entry routing and the first-run rule`
+- [x] Add `StartupMode` (`Command`, `TrayApp`, `UsageError`) and `StartupPlan.For(CliArguments args, bool settingsExist)` returning the mode and `OpenWindow` (`true` only for `TrayApp` when `settingsExist` is `false`, SPEC §17 "very first run"). Done when: unit tests cover no arguments with and without settings, all six commands, and an unknown argument. Cheaper substitute: opening the window on every start, which SPEC §17 says not to.
+- [x] In `Program.Run`, branch on `StartupPlan`: `Command` and `UsageError` stay on the CLI paths without loading `settings.json` or calling `TrayApp.Run`; `TrayApp` loads `SettingsStore.Load()`, forwards `loaded.Value`, `trayPlan.OpenWindow`, and an `onWindowOpened` callback to `TrayApp.Run(openWindow, settings, onWindowOpened)` in `src/Berth/App/TrayApp.cs` (which for now creates nothing, does not invoke `onWindowOpened`, and returns 0). **Corrected 2026-11-20:** passed `SettingsLoad.Value` and `onWindowOpened` callback to `TrayApp.Run`, proved all 6 CLI commands + unknown arg bypass tray startup and never load malformed settings, and kept `BerthProcess.Run(data.Root, [])` exiting 0. Done when: `berth.exe` with no arguments exits 0 and all unit/process tests pass. Cheaper substitute: starting the tray app before parsing, so `berth restore` would flash an icon.
+- [x] On the first run, write `Settings.Default` through `FirstRun.CompleteAfterWindowOpened(SettingsStore, Log)` ONLY inside the `onWindowOpened` callback after the window has opened, so the next start finds settings; if the write fails (`IOException`/`UnauthorizedAccessException`), log `Messages.WriteFailed` as `FAIL` without crashing and leave the next start requesting `OpenWindow == true`. **Corrected 2026-11-20:** proved via `Program.Run([], ...)` that `settings.json` stays absent before callback and when callback never fires, persists `Settings.Default` after callback, and handles write failures with path-specific `FAIL` logging. Done when: unit tests verify before/after callback, no-callback, second start, and failed first-run save. Cheaper substitute: a separate marker file.
+- [x] When the tray app starts and `SettingsStore.Load` reports `Unreadable`, write one `WARN` line with `Messages.UnreadableSettings` through `Log`, pass `Settings.Default` and `OpenWindow == false` to `TrayApp.Run`, and never write the file (preserving its bytes). Done when: a test with `{` in `settings.json` gets 1 `WARN` line, `Settings.Default`, `OpenWindow == false`, and identical file bytes. Cheaper substitute: running silently on defaults, so the user never learns why their switches reset. **Corrected 2026-11-18:** added from the `D01 T01 §6` plan review (SPEC §14 asks for an unreadable settings file to be reported).
+- [x] Add `tests/Berth.Tests/App/StartupPlanTests.cs`. Done when: all pass, and the first-run test fails when `OpenWindow` ignores `settingsExist`. Cheaper substitute: testing by launching the app.
+- [x] Commit: `app: entry routing and the first-run rule`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*StartupPlanTests"` passes, and fails when `OpenWindow` is `true` on a later run.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*StartupPlanTests" --filter-class "*StartupPlanProcessTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when `OpenWindow` is `true` on a later run.
 
 ## 2. Single instance and activation
 

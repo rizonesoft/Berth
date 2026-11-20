@@ -2,6 +2,7 @@ using System.IO;
 using Berth.App;
 using Berth.Cli;
 using Berth.Core;
+using Berth.Core.Model;
 using Berth.Desktop;
 
 namespace Berth;
@@ -21,7 +22,8 @@ internal static class Program
         Func<BerthPaths, Log, Composition>? createComposition = null,
         TimeProvider? clock = null,
         Func<IMonitors>? createMonitors = null,
-        TimeZoneInfo? zone = null)
+        TimeZoneInfo? zone = null,
+        Func<bool, Settings, Action, int>? runTrayApp = null)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
@@ -46,7 +48,29 @@ internal static class Program
                 TestModeSwitches.Apply(paths, readEnv);
             }
 
-            if (CliRunner.TryRunStandalone(parsed, output, error, out int standaloneExit))
+            StartupPlan initialPlan = StartupPlan.For(parsed, settingsExist: true);
+            if (initialPlan.Mode == StartupMode.TrayApp)
+            {
+                paths ??= BerthPaths.FromEnvironment(readEnv, folder);
+                log ??= new Log(paths, effectiveClock);
+                var settingsStore = new SettingsStore(paths);
+                SettingsLoad loaded = settingsStore.Load();
+                if (loaded.Unreadable is not null)
+                {
+                    log.Warn(Messages.UnreadableSettings);
+                }
+
+                StartupPlan trayPlan = StartupPlan.For(parsed, loaded.Exists);
+                Action onWindowOpened = () =>
+                {
+                    if (trayPlan.OpenWindow)
+                    {
+                        FirstRun.CompleteAfterWindowOpened(settingsStore, log);
+                    }
+                };
+                exitCode = (runTrayApp ?? TrayApp.Run)(trayPlan.OpenWindow, loaded.Value, onWindowOpened);
+            }
+            else if (CliRunner.TryRunStandalone(parsed, output, error, out int standaloneExit))
             {
                 exitCode = standaloneExit;
             }
