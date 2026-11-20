@@ -173,6 +173,8 @@ The `Application` that hosts the tray app and the window, following the Windows 
 
 ## 6. Taskbar theme detection
 
+> **Started:** 2026-11-20T18:49Z
+
 Whether the taskbar is light or dark, and an event when that changes (SPEC §12, first bullet).
 
 **Phase:** 4
@@ -184,10 +186,10 @@ Whether the taskbar is light or dark, and an event when that changes (SPEC §12,
 1. Add `TaskbarTheme` in `src/Berth/Desktop/TaskbarTheme.cs`. Done when: it reads the registry value.
 2. Raise a change event. Done when: a changed value raises it once.
 
-- [ ] Add `TaskbarTheme(string registryPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")` with `bool IsLight` reading the DWORD `SystemUsesLightTheme` under `HKCU` (missing means dark). Done when: a test passing a key under `HKCU\Software\Berth.Tests\<guid>` reads `false` when missing, `true` for 1 and `false` for 0, and deletes its key afterwards. Cheaper substitute: `AppsUseLightTheme`, which is the app theme, not the taskbar's.
-- [ ] Add `event Action? Changed` and `void OnSettingChange(string? area)` that re-reads the value when `area` is `ImmersiveColorSet` and raises `Changed` only when `IsLight` actually changed. Done when: a test flips the test key, calls `OnSettingChange("ImmersiveColorSet")` twice, and sees one event. Cheaper substitute: polling the registry on a timer.
-- [ ] Add `tests/Berth.Tests/Desktop/TaskbarThemeTests.cs`. Done when: all pass, and the change test fails when the event fires on every call. Cheaper substitute: writing the real `Personalize` key in a test (`AGENTS.md`).
-- [ ] Commit: `desktop: taskbar theme detection`
+- [x] Add `TaskbarTheme(string registryPath = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")` with `bool IsLight` reading the DWORD `SystemUsesLightTheme` under `HKCU` (missing means dark). Done when: a test passing a key under `HKCU\Software\Berth.Tests\<guid>` reads `false` when missing, `true` for 1 and `false` for 0, and deletes its key afterwards. Cheaper substitute: `AppsUseLightTheme`, which is the app theme, not the taskbar's.
+- [x] Add `event Action? Changed` and `void OnSettingChange(string? area)` that re-reads the value when `area` is `ImmersiveColorSet` and raises `Changed` only when `IsLight` actually changed. Done when: a test flips the test key, calls `OnSettingChange("ImmersiveColorSet")` twice, and sees one event. Cheaper substitute: polling the registry on a timer.
+- [x] Add `tests/Berth.Tests/Desktop/TaskbarThemeTests.cs`. Done when: all pass, and the change test fails when the event fires on every call. Cheaper substitute: writing the real `Personalize` key in a test (`AGENTS.md`).
+- [x] Commit: `desktop: taskbar theme detection`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TaskbarThemeTests"` passes, and fails when `Changed` is raised without the value changing.
 
