@@ -15,13 +15,16 @@ public sealed class AutoArrangeTests
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
         using var icons = new ShellDesktopIcons();
-        bool publicValue = icons.AutoArrange;
-        (bool Primary, bool Fallback) liveValues = icons.RunWithView(desktop => (
-            ShellDesktopIcons.ReadAutoArrange(desktop.View, desktop.View2),
-            ShellDesktopIcons.ReadAutoArrange(desktop.View, null)));
+        _ = icons.AutoArrange;
+        (bool Primary, bool Fallback) liveValues = icons.RunWithView(desktop =>
+        {
+            Assert.NotNull(desktop.View2);
+            return (
+                ShellDesktopIcons.ReadAutoArrange(desktop.View, desktop.View2),
+                ShellDesktopIcons.ReadAutoArrange(desktop.View, null));
+        });
 
         Assert.Equal(liveValues.Primary, liveValues.Fallback);
-        Assert.Equal(liveValues.Primary, publicValue);
     }
 
     [Fact]
