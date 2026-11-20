@@ -32,3 +32,7 @@ python3 scripts/todo-graph.py query plan      # plan title, phase names and ever
 ```
 
 Report only commands actually run, and distinguish static evidence, test output and review proof.
+
+## Rendering a surface for review
+
+A `Surface: yes` section renders its UI states off screen before design review by running `pwsh scripts/render-window.ps1`, which writes fresh PNG captures under `build/renders/` (ignored by git) and prints each path. Pass those PNG paths to both the pre-review Opus 5.5 medium design check and the cross-family review so the `design` lens inspects the rendered surface directly.

@@ -359,6 +359,8 @@ A way to turn the window, in a given state and theme, into a PNG with nobody loo
 
 **Test checkpoint:** `pwsh scripts/render-window.ps1` exits 0 and writes `build/renders/frame-light.png` and `build/renders/frame-dark.png`, two different images of 980 by 640 pixels.
 
+> **Started:** 2026-11-20
+
 ## Verification
 
 - On the build machine: start `berth.exe` (first run opens the window), close the window (it hides), left-click the tray icon (it returns), start `berth.exe` again (the same window comes forward, one tray icon), choose Exit (the icon goes and the process ends).

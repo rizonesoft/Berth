@@ -372,13 +372,14 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         });
         Assert.Equal(existing, store.Load().Value.Window);
 
-        // 2. Unreadable `{` in settings.json inside a real running TrayApp: snapshot log immediately before hide,
-        // verify a NEW WARN with exact SPEC §18 message, `{` bytes unchanged, and tray reopens the window cleanly.
+        // 2. Unreadable `{` in settings.json inside a real running TrayApp: capture log lines immediately after Close(),
+        // verify exact WARN + SPEC §18 message, exact raw bytes unchanged, and tray reopens the window cleanly.
         using var unreadableData = new TestData();
         BerthPaths unreadablePaths = BerthPaths.ForRoot(unreadableData.Root);
         var unreadableStore = new SettingsStore(unreadablePaths);
         BerthPaths.EnsureFolderFor(unreadableStore.FilePath);
-        File.WriteAllText(unreadableStore.FilePath, "{");
+        byte[] originalMalformedBytes = [(byte)'{'];
+        File.WriteAllBytes(unreadableStore.FilePath, originalMalformedBytes);
         string unreadableReportFile = Path.Combine(unreadableData.Root, "unreadable-hide.txt");
 
         (int unreadableExit, string unreadableOut, string unreadableErr) = IsolatedStaChildRunner.RunChild(
@@ -393,13 +394,12 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
         Assert.Equal("False", unreadableReport["visibleAfterHide"]);
         Assert.Equal("True", unreadableReport["visibleAfterTrayReopen"]);
-        Assert.Equal("{", File.ReadAllText(unreadableStore.FilePath));
-        int unreadableLinesBefore = int.Parse(unreadableReport["logLinesBeforeHide"], System.Globalization.CultureInfo.InvariantCulture);
-        string[] newUnreadableLines = File.ReadAllLines(unreadablePaths.LogFile).Skip(unreadableLinesBefore).ToArray();
-        Assert.Contains(newUnreadableLines, line => line.Contains("WARN", StringComparison.Ordinal) && line.Contains(Messages.UnreadableSettings, StringComparison.Ordinal));
+        Assert.Equal(originalMalformedBytes, File.ReadAllBytes(unreadableStore.FilePath));
+        string unreadableHideLines = unreadableReport["hideWarnLines"];
+        Assert.Contains($" WARN {Messages.UnreadableSettings}", unreadableHideLines, StringComparison.Ordinal);
 
         // 3. Write failure (valid settings.json, directory blocking redo-note path) inside a real running TrayApp:
-        // snapshot log immediately before hide, verify new path-specific WARN, and tray reopens the window cleanly.
+        // capture log lines immediately after Close(), verify exact SPEC §18 WriteFailed WARN prefix, and tray reopens.
         using var failData = new TestData();
         BerthPaths failPaths = BerthPaths.ForRoot(failData.Root);
         var failStore = new SettingsStore(failPaths);
@@ -419,9 +419,8 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
         Assert.Equal("False", failReport["visibleAfterHide"]);
         Assert.Equal("True", failReport["visibleAfterTrayReopen"]);
-        int failLinesBefore = int.Parse(failReport["logLinesBeforeHide"], System.Globalization.CultureInfo.InvariantCulture);
-        string[] newFailLines = File.ReadAllLines(failPaths.LogFile).Skip(failLinesBefore).ToArray();
-        Assert.Contains(newFailLines, line => line.Contains("WARN", StringComparison.Ordinal) && line.Contains(failStore.FilePath, StringComparison.Ordinal));
+        string expectedWritePrefix = $" WARN Berth could not write {failStore.FilePath}: ";
+        Assert.Contains(expectedWritePrefix, failReport["hideWarnLines"], StringComparison.Ordinal);
     }
 
     [Fact]

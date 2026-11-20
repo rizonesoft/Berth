@@ -888,7 +888,7 @@ internal static class IsolatedStaChildRunner
         var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
 
         TrayMenu? capturedMenu = null;
-        int logLinesBeforeHide = 0;
+        string hideWarnLines = string.Empty;
         bool visibleAfterHide = true;
         bool visibleAfterTrayReopen = false;
 
@@ -919,11 +919,16 @@ internal static class IsolatedStaChildRunner
                         return;
                     }
 
-                    // Snapshot log line count IMMEDIATELY before hide (after window is open).
-                    logLinesBeforeHide = File.Exists(log.FilePath) ? File.ReadAllLines(log.FilePath).Length : 0;
+                    // Snapshot log line count IMMEDIATELY before hide (after window is open) and capture new lines right after Close().
+                    int linesBeforeHide = File.Exists(log.FilePath) ? File.ReadAllLines(log.FilePath).Length : 0;
 
                     win.Close();
                     visibleAfterHide = win.IsVisible;
+
+                    string[] afterHideLines = File.Exists(log.FilePath)
+                        ? File.ReadAllLines(log.FilePath).Skip(linesBeforeHide).ToArray()
+                        : [];
+                    hideWarnLines = string.Join(" || ", afterHideLines);
 
                     // Reopen through the running tray menu to prove the tray app survived the hide-save failure.
                     capturedMenu.OpenItem.PerformClick();
@@ -940,7 +945,7 @@ internal static class IsolatedStaChildRunner
         File.WriteAllLines(
             reportFile,
             [
-                $"logLinesBeforeHide={logLinesBeforeHide}",
+                $"hideWarnLines={hideWarnLines}",
                 $"visibleAfterHide={visibleAfterHide}",
                 $"visibleAfterTrayReopen={visibleAfterTrayReopen}",
                 $"exitCode={exitCode}",
