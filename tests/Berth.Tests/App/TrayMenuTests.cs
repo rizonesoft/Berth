@@ -191,6 +191,78 @@ public sealed class TrayMenuTests(AppFixture appFixture)
     }
 
     [Fact]
+    public async Task AbortedOpeningDispatchSettlesRefreshTaskAndDrainExactlyOnce()
+    {
+        using var data = new TestData();
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var clock = new FixedClock(FixedNow);
+        var log = new Log(paths, clock);
+        var monitors = new FakeMonitors(PrimaryMonitor);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 200));
+        var store = new LayoutStore(paths);
+        var settingsStore = new SettingsStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+
+        using var abortEntered = new ManualResetEventSlim(false);
+        using var abortRelease = new ManualResetEventSlim(false);
+        int idleCount = 0;
+        var idleRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        TrayMenu menu = appFixture.Invoke(() => new TrayMenu(
+            service,
+            store,
+            monitors,
+            desktop,
+            settingsStore,
+            log,
+            (_, onAborted) =>
+            {
+                abortEntered.Set();
+                if (!abortRelease.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException("Abort gate was never released.");
+                }
+
+                // Invoke onAborted twice to simulate racing Aborted event + Status check and prove exactly-once settlement.
+                onAborted();
+                onAborted();
+            }));
+
+        try
+        {
+            Task refreshTask = appFixture.Invoke(() =>
+            {
+                menu.RefreshState();
+                return menu.LastRefreshTask;
+            });
+
+            Assert.True(abortEntered.Wait(TimeSpan.FromSeconds(5), ct));
+            appFixture.Invoke(() =>
+            {
+                menu.BeginDrain(() =>
+                {
+                    Interlocked.Increment(ref idleCount);
+                    idleRan.TrySetResult();
+                });
+            });
+
+            Assert.False(idleRan.Task.IsCompleted);
+            abortRelease.Set();
+
+            await refreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            await idleRan.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            Assert.False(menu.HasInFlightOperations);
+            Assert.Equal(1, Volatile.Read(ref idleCount));
+        }
+        finally
+        {
+            appFixture.Invoke(menu.Dispose);
+        }
+    }
+
+    [Fact]
     public async Task SaveAndRestoreRunOffUiThreadDeliverCompletionOnUiThreadAndRefreshTooltip()
     {
         using var env = new TestHarness(appFixture);
@@ -462,11 +534,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
                 RecordingDesktop,
                 SettingsStore,
                 Log,
-                action =>
-                {
-                    _appFixture.Invoke(action);
-                    return true;
-                }));
+                (action, _) => _appFixture.Invoke(action)));
         }
 
         public BerthPaths Paths { get; }

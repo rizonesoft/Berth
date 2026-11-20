@@ -120,21 +120,29 @@ internal static class TrayApp
             IMonitors effectiveMonitors = monitors ?? effectiveComposition.Monitors;
             var settingsStore = new SettingsStore(effectiveComposition.Paths);
 
-            bool TryMarshalToUi(Action action)
+            void MarshalToUi(Action action, Action? onAborted)
             {
                 if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
                 {
-                    return false;
+                    onAborted?.Invoke();
+                    return;
                 }
 
                 if (app.Dispatcher.CheckAccess())
                 {
                     action();
-                    return true;
+                    return;
                 }
 
-                _ = app.Dispatcher.BeginInvoke(action);
-                return true;
+                DispatcherOperation op = app.Dispatcher.BeginInvoke(action);
+                if (onAborted is not null)
+                {
+                    op.Aborted += (_, _) => onAborted();
+                    if (op.Status == DispatcherOperationStatus.Aborted)
+                    {
+                        onAborted();
+                    }
+                }
             }
 
             Layout? initialActive = TrayIcon.FindActiveLayout(effectiveComposition.Store, effectiveMonitors);
@@ -144,7 +152,7 @@ internal static class TrayApp
                 initialActive,
                 effectiveClock.GetUtcNow(),
                 effectiveZone,
-                marshal: action => _ = TryMarshalToUi(action));
+                marshal: action => MarshalToUi(action, onAborted: null));
             activeTrayIcon = trayIcon;
 
             using var trayMenu = new TrayMenu(
@@ -154,7 +162,7 @@ internal static class TrayApp
                 effectiveComposition.Desktop,
                 settingsStore,
                 effectiveComposition.Log,
-                TryMarshalToUi);
+                MarshalToUi);
 
             trayMenu.OperationFinished += _ =>
             {

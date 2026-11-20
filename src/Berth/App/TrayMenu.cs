@@ -19,7 +19,7 @@ internal sealed class TrayMenu : IDisposable
     private readonly IDesktopIcons _desktop;
     private readonly SettingsStore _settingsStore;
     private readonly SettingChanges _settingChanges;
-    private readonly Func<Action, bool> _tryMarshal;
+    private readonly Action<Action, Action> _marshal;
 
     private readonly ContextMenuStrip _strip;
     private readonly ToolStripMenuItem _saveItem;
@@ -45,7 +45,7 @@ internal sealed class TrayMenu : IDisposable
         IDesktopIcons desktop,
         SettingsStore settingsStore,
         Log log,
-        Func<Action, bool> tryMarshal)
+        Action<Action, Action> marshal)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(store);
@@ -53,7 +53,7 @@ internal sealed class TrayMenu : IDisposable
         ArgumentNullException.ThrowIfNull(desktop);
         ArgumentNullException.ThrowIfNull(settingsStore);
         ArgumentNullException.ThrowIfNull(log);
-        ArgumentNullException.ThrowIfNull(tryMarshal);
+        ArgumentNullException.ThrowIfNull(marshal);
 
         _service = service;
         _store = store;
@@ -61,7 +61,7 @@ internal sealed class TrayMenu : IDisposable
         _desktop = desktop;
         _settingsStore = settingsStore;
         _settingChanges = new SettingChanges(settingsStore, log);
-        _tryMarshal = tryMarshal;
+        _marshal = marshal;
 
         _strip = new ContextMenuStrip
         {
@@ -212,46 +212,59 @@ internal sealed class TrayMenu : IDisposable
                 restoreAutomatically = false;
             }
 
-            bool marshalled = false;
-            try
+            int settled = 0;
+
+            void SettleAborted()
             {
-                marshalled = _tryMarshal(() =>
+                if (Interlocked.Exchange(ref settled, 1) != 0)
                 {
-                    Action? drainCallback = null;
-                    try
-                    {
-                        bool apply;
-                        lock (_sync)
-                        {
-                            apply = !_disposed && !_exiting && generation == _openGeneration;
-                        }
+                    return;
+                }
 
-                        if (apply)
-                        {
-                            _restoreItem.Enabled = canRestore;
-                            _restoreAutomaticallyItem.Checked = restoreAutomatically;
-                            _restoreAutomaticallyItem.Enabled = true;
-                        }
-                    }
-                    finally
-                    {
-                        drainCallback = CompleteInFlightWork();
-                        tcs.TrySetResult();
-                    }
-
-                    drainCallback?.Invoke();
-                });
-            }
-            catch (Exception)
-            {
-                marshalled = false;
-            }
-
-            if (!marshalled)
-            {
                 Action? drainCallback = CompleteInFlightWork();
                 tcs.TrySetResult();
                 drainCallback?.Invoke();
+            }
+
+            try
+            {
+                _marshal(
+                    () =>
+                    {
+                        if (Interlocked.Exchange(ref settled, 1) != 0)
+                        {
+                            return;
+                        }
+
+                        Action? drainCallback = null;
+                        try
+                        {
+                            bool apply;
+                            lock (_sync)
+                            {
+                                apply = !_disposed && !_exiting && generation == _openGeneration;
+                            }
+
+                            if (apply)
+                            {
+                                _restoreItem.Enabled = canRestore;
+                                _restoreAutomaticallyItem.Checked = restoreAutomatically;
+                                _restoreAutomaticallyItem.Enabled = true;
+                            }
+                        }
+                        finally
+                        {
+                            drainCallback = CompleteInFlightWork();
+                            tcs.TrySetResult();
+                        }
+
+                        drainCallback?.Invoke();
+                    },
+                    SettleAborted);
+            }
+            catch (Exception)
+            {
+                SettleAborted();
             }
         });
     }
@@ -427,20 +440,36 @@ internal sealed class TrayMenu : IDisposable
 
             activeLayout = TrayIcon.FindActiveLayout(_store, _monitors);
 
-            bool marshalled = false;
+            int settled = 0;
+
+            void SettleAborted()
+            {
+                if (Interlocked.Exchange(ref settled, 1) != 0)
+                {
+                    return;
+                }
+
+                Action? drainCallback = CompleteInFlightWork();
+                drainCallback?.Invoke();
+            }
+
             try
             {
-                marshalled = _tryMarshal(() => CompleteOperationOnUiThread(result, activeLayout));
+                _marshal(
+                    () =>
+                    {
+                        if (Interlocked.Exchange(ref settled, 1) != 0)
+                        {
+                            return;
+                        }
+
+                        CompleteOperationOnUiThread(result, activeLayout);
+                    },
+                    SettleAborted);
             }
             catch (Exception)
             {
-                marshalled = false;
-            }
-
-            if (!marshalled)
-            {
-                Action? drainCallback = CompleteInFlightWork();
-                drainCallback?.Invoke();
+                SettleAborted();
             }
         });
     }
