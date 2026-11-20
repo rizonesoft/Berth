@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using Berth.Cli;
 using Berth.Core;
 using Berth.Core.Model;
@@ -10,6 +11,8 @@ namespace Berth.App;
 /// <summary>Tray application entry point (SPEC §17): claims the single instance, attaches crash handling, and runs <see cref="BerthApplication"/>.</summary>
 internal static class TrayApp
 {
+    private static readonly TimeSpan CrashDisposeTimeout = TimeSpan.FromMilliseconds(500);
+
     public static int Run(
         bool openWindow,
         Settings settings,
@@ -79,26 +82,16 @@ internal static class TrayApp
             }
         }
 
+        BerthApplication? activeApp = null;
         TrayIcon? activeTrayIcon = null;
         Action<int> effectiveExit = exitProcess ?? Environment.Exit;
         var crashHandler = new CrashHandler(
             log,
             showCrashMessage,
-            exitProcess: code =>
-            {
-                try
-                {
-                    activeTrayIcon?.Dispose();
-                }
-                catch (Exception)
-                {
-                    // Best-effort tray icon removal before process exit so no ghost icon remains.
-                }
-                finally
-                {
-                    effectiveExit(code);
-                }
-            });
+            exitProcess: CreateCrashExitAction(
+                () => activeApp?.Dispatcher,
+                () => activeTrayIcon,
+                effectiveExit));
         try
         {
             if (runPrimary is not null)
@@ -107,6 +100,7 @@ internal static class TrayApp
             }
 
             var app = new BerthApplication();
+            activeApp = app;
             using IDisposable crashAttachment = crashHandler.Attach(app);
 
             TaskbarTheme effectiveTheme = taskbarTheme ?? new TaskbarTheme();
@@ -138,17 +132,15 @@ internal static class TrayApp
             activeTrayIcon = trayIcon;
             onTrayIconCreated?.Invoke(trayIcon);
 
-            void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
-            {
-                if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
-                {
-                    effectiveTheme.OnSettingChange("ImmersiveColorSet");
-                }
-            }
+            void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) =>
+                HandleUserPreferenceChanged(effectiveTheme, e.Category);
 
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             try
             {
+                // Reconcile immediately after subscribing so any theme flip between initial read and subscribe is never missed.
+                effectiveTheme.OnSettingChange("ImmersiveColorSet");
+
                 if (onAppStartup is not null)
                 {
                     app.Startup += (_, _) => onAppStartup(app);
@@ -168,4 +160,59 @@ internal static class TrayApp
             return CliExit.Error;
         }
     }
+
+    internal static void HandleUserPreferenceChanged(TaskbarTheme theme, UserPreferenceCategory category)
+    {
+        if (category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
+        {
+            theme.OnSettingChange("ImmersiveColorSet");
+        }
+    }
+
+    /// <summary>
+    /// Gives the owning UI dispatcher a bounded opportunity to dispose the tray icon cleanly before falling back
+    /// to direct disposal and exiting the process, preventing a ghost tray icon on background-thread crashes.
+    /// </summary>
+    internal static Action<int> CreateCrashExitAction(
+        Func<Dispatcher?> getDispatcher,
+        Func<TrayIcon?> getTrayIcon,
+        Action<int> exitProcess) =>
+        code =>
+        {
+            try
+            {
+                TrayIcon? icon = getTrayIcon();
+                if (icon is not null)
+                {
+                    Dispatcher? dispatcher = getDispatcher();
+                    if (dispatcher is not null
+                        && !dispatcher.HasShutdownStarted
+                        && !dispatcher.HasShutdownFinished
+                        && !dispatcher.CheckAccess())
+                    {
+                        using var cts = new CancellationTokenSource(CrashDisposeTimeout);
+                        try
+                        {
+                            dispatcher.Invoke(icon.Dispose, DispatcherPriority.Send, cts.Token);
+                        }
+                        catch (Exception)
+                        {
+                            icon.Dispose();
+                        }
+                    }
+                    else
+                    {
+                        icon.Dispose();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Best-effort tray icon removal before process exit so no ghost icon remains.
+            }
+            finally
+            {
+                exitProcess(code);
+            }
+        };
 }

@@ -106,8 +106,10 @@ public sealed class TrayIconTests(AppFixture appFixture)
                 Size expectedSize = SystemInformation.SmallIconSize;
                 Assert.Equal(expectedSize, trayIcon.IconSize);
 
-                using Icon expectedDark = TrayIcon.LoadEmbeddedIcon(isLightTaskbar: false, expectedSize);
-                using Icon expectedLight = TrayIcon.LoadEmbeddedIcon(isLightTaskbar: true, expectedSize);
+                // Load expected icons independently from the source assets on disk so swapping TrayIcon's mapping fails.
+                string assetsDir = Path.Combine(FindRepoRoot(), "assets", "icon");
+                using var expectedDark = new Icon(Path.Combine(assetsDir, "berth-tray-dark.ico"), expectedSize);
+                using var expectedLight = new Icon(Path.Combine(assetsDir, "berth-tray-light.ico"), expectedSize);
 
                 // Verify dark and light assets actually differ visually and the initial icon matches dark.
                 Assert.False(IconsHaveIdenticalPixels(expectedDark, expectedLight), "Dark and light tray icons must differ.");
@@ -115,9 +117,9 @@ public sealed class TrayIconTests(AppFixture appFixture)
 
                 IntPtr darkHandle = trayIcon.IconHandle;
 
-                // Flip registry key to light taskbar and drive TaskbarTheme.OnSettingChange on the UI thread.
+                // Flip registry key to light taskbar and drive the production TrayApp UserPreferenceChanged path.
                 testKey.SetDword(1);
-                theme.OnSettingChange("ImmersiveColorSet");
+                TrayApp.HandleUserPreferenceChanged(theme, UserPreferenceCategory.General);
 
                 Assert.NotEqual(darkHandle, trayIcon.IconHandle);
                 Assert.Equal(expectedSize, trayIcon.IconSize);
@@ -218,22 +220,17 @@ public sealed class TrayIconTests(AppFixture appFixture)
         try
         {
             var sources = new FakeCrashSources();
-            var handler = new CrashHandler(
-                log,
-                _ => true,
-                exitProcess: code =>
+            // Exercise the REAL TrayApp.CreateCrashExitAction production callback from a non-UI thread.
+            Action<int> crashExit = TrayApp.CreateCrashExitAction(
+                () => appFixture.App.Dispatcher,
+                () => icon,
+                code =>
                 {
-                    try
-                    {
-                        icon?.Dispose();
-                    }
-                    finally
-                    {
-                        visibleAtExit = icon?.IsVisible;
-                        exitCode = code;
-                    }
+                    visibleAtExit = icon?.IsVisible;
+                    exitCode = code;
                 });
 
+            var handler = new CrashHandler(log, _ => true, exitProcess: crashExit);
             using IDisposable attachment = handler.Attach(sources);
             sources.RaiseAppDomain(new InvalidOperationException("Background crash"));
 
@@ -245,6 +242,17 @@ public sealed class TrayIconTests(AppFixture appFixture)
         {
             appFixture.Invoke(() => icon?.Dispose());
         }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Berth.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        return dir?.FullName ?? throw new InvalidOperationException("Could not locate Berth.slnx above test output.");
     }
 
     private sealed class FakeCrashSources : ICrashSources

@@ -21,6 +21,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly TaskbarTheme _theme;
     private readonly Action<Action>? _marshal;
     private readonly NotifyIcon _notifyIcon;
+    private readonly Lock _sync = new();
     private Icon? _currentIcon;
     private bool _disposed;
 
@@ -67,8 +68,11 @@ internal sealed class TrayIcon : IDisposable
     /// <summary>Updates the tooltip text directly from <paramref name="active"/>.</summary>
     public void SetTooltip(Layout? active, DateTimeOffset now, TimeZoneInfo zone)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        _notifyIcon.Text = TrayText.Tooltip(active, now, zone);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _notifyIcon.Text = TrayText.Tooltip(active, now, zone);
+        }
     }
 
     /// <summary>Resolves the saved layout for the current monitors from <paramref name="store"/> and updates the tooltip.</summary>
@@ -78,7 +82,6 @@ internal sealed class TrayIcon : IDisposable
         ArgumentNullException.ThrowIfNull(monitors);
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(zone);
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
         Layout? active = FindActiveLayout(store, monitors);
         SetTooltip(active, clock.GetUtcNow(), zone);
@@ -94,7 +97,7 @@ internal sealed class TrayIcon : IDisposable
         return new Icon(stream, size);
     }
 
-    /// <summary>Finds the saved layout matching the current monitor arrangement, or <see langword="null"/> if none exists.</summary>
+    /// <summary>Finds the saved layout matching the current monitor arrangement via targeted <see cref="LayoutStore.Find"/>, or <see langword="null"/> if none exists or it is unreadable.</summary>
     internal static Layout? FindActiveLayout(LayoutStore store, IMonitors monitors)
     {
         try
@@ -106,10 +109,9 @@ internal sealed class TrayIcon : IDisposable
             }
 
             string key = ArrangementKey.From(current);
-            LayoutSet loaded = store.LoadAll();
-            return loaded.Layouts.FirstOrDefault(l => string.Equals(l.Key, key, StringComparison.Ordinal));
+            return store.Find(key);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DesktopUnavailableException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DesktopUnavailableException or UnreadableLayoutException)
         {
             return null;
         }
@@ -117,37 +119,37 @@ internal sealed class TrayIcon : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        lock (_sync)
         {
-            return;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        _disposed = true;
-        _theme.Changed -= OnThemeChanged;
-        _notifyIcon.MouseClick -= OnNotifyIconMouseClick;
-        _notifyIcon.Visible = false;
-        _notifyIcon.Icon = null;
-        _notifyIcon.Dispose();
-        _currentIcon?.Dispose();
-        _currentIcon = null;
+            _disposed = true;
+            _theme.Changed -= OnThemeChanged;
+            _notifyIcon.MouseClick -= OnNotifyIconMouseClick;
+            _notifyIcon.Visible = false;
+            _notifyIcon.Icon = null;
+            _notifyIcon.Dispose();
+            _currentIcon?.Dispose();
+            _currentIcon = null;
+        }
     }
 
     private void OnThemeChanged()
     {
-        if (_disposed)
+        lock (_sync)
         {
-            return;
+            if (_disposed)
+            {
+                return;
+            }
         }
 
         if (_marshal is not null)
         {
-            _marshal(() =>
-            {
-                if (!_disposed)
-                {
-                    ApplyIconForTheme();
-                }
-            });
+            _marshal(ApplyIconForTheme);
         }
         else
         {
@@ -157,16 +159,30 @@ internal sealed class TrayIcon : IDisposable
 
     private void ApplyIconForTheme()
     {
-        Icon next = LoadEmbeddedIcon(_theme.IsLight, SystemInformation.SmallIconSize);
-        Icon? previous = _currentIcon;
-        _currentIcon = next;
-        _notifyIcon.Icon = next;
-        previous?.Dispose();
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            Icon next = LoadEmbeddedIcon(_theme.IsLight, SystemInformation.SmallIconSize);
+            Icon? previous = _currentIcon;
+            _currentIcon = next;
+            _notifyIcon.Icon = next;
+            previous?.Dispose();
+        }
     }
 
     private void OnNotifyIconMouseClick(object? sender, MouseEventArgs e)
     {
-        if (!_disposed && e.Button == MouseButtons.Left)
+        bool disposed;
+        lock (_sync)
+        {
+            disposed = _disposed;
+        }
+
+        if (!disposed && e.Button == MouseButtons.Left)
         {
             OpenRequested?.Invoke();
         }
