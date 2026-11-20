@@ -198,7 +198,46 @@ public sealed class UnavailableTests
                         }));
                 Assert.Same(releaseError, openThrown.InnerException);
                 Assert.Equal(1, shellWindowsReleases);
+
+                // Acquisition throws UnauthorizedAccessException AND releasing dispatchObj in finally throws InvalidComObjectException:
+                // original UnauthorizedAccessException is preserved and dispatchObj is released once.
+                var queryError = new UnauthorizedAccessException("QueryService denied");
+                int dispatchReleases = 0;
+                var throwingSp = new ThrowingServiceProvider(queryError);
+                DesktopUnavailableException queryThrown = Assert.Throws<DesktopUnavailableException>(() =>
+                    DesktopView.Open(
+                        () => new StubShellWindows(throwingSp),
+                        obj =>
+                        {
+                            if (ReferenceEquals(obj, throwingSp))
+                            {
+                                dispatchReleases++;
+                                throw releaseError;
+                            }
+                        }));
+                Assert.Same(queryError, queryThrown.InnerException);
+                Assert.Equal(1, dispatchReleases);
             });
+
+            // RunWithView: work throws UnauthorizedAccessException AND view disposal throws InvalidComObjectException ->
+            // exact work exception reaches the caller and view is released once.
+            int runWithViewReleases = 0;
+            var runWithViewTarget = new HealthyFolderView([(@"C:\Desktop\A.txt", "A", 10, 20)]);
+            var workError = new UnauthorizedAccessException("Caller work denied");
+            using var runWithViewShell = new ShellDesktopIcons(
+                openView: () => DesktopView.Open(
+                    () => new StubShellWindows(new StubServiceProvider(new StubShellBrowser(runWithViewTarget))),
+                    obj =>
+                    {
+                        if (ReferenceEquals(obj, runWithViewTarget))
+                        {
+                            runWithViewReleases++;
+                            throw releaseError;
+                        }
+                    }),
+                monitors: monitors);
+            Assert.Same(workError, Assert.Throws<UnauthorizedAccessException>(() => runWithViewShell.RunWithView<int>(_ => throw workError)));
+            Assert.Equal(1, runWithViewReleases);
         }
 
         // Programming bugs (NullReferenceException and InvalidOperationException) propagate unwrapped.
@@ -682,6 +721,11 @@ public sealed class UnavailableTests
     private sealed class StubServiceProvider(object browser) : Berth.Desktop.Interop.IServiceProvider
     {
         public void QueryService(in Guid guidService, in Guid riid, out object? ppvObject) => ppvObject = browser;
+    }
+
+    private sealed class ThrowingServiceProvider(Exception error) : Berth.Desktop.Interop.IServiceProvider
+    {
+        public void QueryService(in Guid guidService, in Guid riid, out object? ppvObject) => throw error;
     }
 
     private sealed class StubShellBrowser(IShellView view) : IShellBrowser

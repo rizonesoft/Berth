@@ -137,25 +137,33 @@ internal sealed class DesktopView : IDisposable
         }
         finally
         {
-            if (shellViewObj is not null)
-            {
-                release(shellViewObj);
-            }
+            ReleaseSuppressingShellErrors(shellViewObj, release);
+            ReleaseSuppressingShellErrors(browserObj, release);
+            ReleaseSuppressingShellErrors(dispatchObj, release);
+            ReleaseSuppressingShellErrors(shellWindowsObj, release);
+        }
+    }
 
-            if (browserObj is not null)
-            {
-                release(browserObj);
-            }
+    private static void ReleaseSuppressingShellErrors(object? instance, Action<object> release)
+    {
+        if (instance is null)
+        {
+            return;
+        }
 
-            if (dispatchObj is not null)
-            {
-                release(dispatchObj);
-            }
-
-            if (shellWindowsObj is not null)
-            {
-                release(shellWindowsObj);
-            }
+        try
+        {
+            release(instance);
+        }
+        catch (Exception ex) when (
+            ex is COMException
+                or InvalidCastException
+                or InvalidComObjectException
+                or UnauthorizedAccessException
+                or FileNotFoundException
+                or DirectoryNotFoundException)
+        {
+            // Preserve the acquisition exception already in flight and continue releasing remaining intermediates.
         }
     }
 

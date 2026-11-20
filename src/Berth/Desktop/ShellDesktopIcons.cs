@@ -167,8 +167,20 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         ArgumentNullException.ThrowIfNull(work);
         return _worker.Run(() =>
         {
-            using DesktopView view = OpenViewChecked();
-            return work(view);
+            DesktopView view = OpenViewChecked();
+            T result;
+            try
+            {
+                result = work(view);
+            }
+            catch
+            {
+                DisposeViewSuppressingShellErrors(view);
+                throw;
+            }
+
+            view.Dispose();
+            return result;
         });
     }
 
