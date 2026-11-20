@@ -38,7 +38,7 @@ public sealed class UsageTests
     public void HelpAndVersionFormsWorkIdenticallyThroughCliRunnerAndProgramRunWithoutTouchingStorageOrDesktop()
     {
         using var data = new TestData();
-        (LayoutService service, BerthPaths paths) = CreateThrowingService(data.Root);
+        (LayoutService service, BerthPaths paths, ThrowingTimeProvider clock) = CreateThrowingService(data.Root);
 
         // Every SPEC §13 help form: --help, -h, /?.
         foreach (string flag in new[] { "--help", "-h", "/?" })
@@ -49,6 +49,7 @@ public sealed class UsageTests
             Assert.Equal(0, runnerCode);
             Assert.Equal(Usage.Text + Environment.NewLine, runnerOut.ToString());
             Assert.Equal(string.Empty, runnerErr.ToString());
+            Assert.Equal(0, clock.Calls);
             Assert.False(File.Exists(paths.LogFile));
 
             var progOut = new StringWriter();
@@ -74,6 +75,7 @@ public sealed class UsageTests
         Assert.Equal(0, verRunnerCode);
         Assert.Equal(expectedVersion, verRunnerOut.ToString());
         Assert.Equal(string.Empty, verRunnerErr.ToString());
+        Assert.Equal(0, clock.Calls);
         Assert.False(File.Exists(paths.LogFile));
 
         var verProgOut = new StringWriter();
@@ -95,7 +97,7 @@ public sealed class UsageTests
     public void UsageErrorsPrintTwoLineDiagnosticToStderrWithEmptyStdoutAndExit2ThroughBothEntryPoints()
     {
         using var data = new TestData();
-        (LayoutService service, BerthPaths paths) = CreateThrowingService(data.Root);
+        (LayoutService service, BerthPaths paths, ThrowingTimeProvider clock) = CreateThrowingService(data.Root);
 
         (string[] Args, string ExpectedFirstLine)[] cases =
         [
@@ -116,6 +118,7 @@ public sealed class UsageTests
             Assert.Equal(2, runnerCode);
             Assert.Equal(string.Empty, runnerOut.ToString());
             Assert.Equal(expectedErr, runnerErr.ToString());
+            Assert.Equal(0, clock.Calls);
             Assert.False(File.Exists(paths.LogFile));
 
             var progOut = new StringWriter();
@@ -134,7 +137,7 @@ public sealed class UsageTests
         }
     }
 
-    private static (LayoutService Service, BerthPaths Paths) CreateThrowingService(string root)
+    private static (LayoutService Service, BerthPaths Paths, ThrowingTimeProvider Clock) CreateThrowingService(string root)
     {
         BerthPaths paths = BerthPaths.ForRoot(root);
         // Place a file at LayoutsFolder so any LayoutStore.LoadAll() or Save() call throws IOException immediately.
@@ -149,7 +152,7 @@ public sealed class UsageTests
             new OperationLock(paths, TimeSpan.FromSeconds(1)),
             new Log(paths, clock),
             clock);
-        return (service, paths);
+        return (service, paths, clock);
     }
 
     private sealed class ThrowingDesktopIcons : IDesktopIcons
@@ -168,6 +171,12 @@ public sealed class UsageTests
 
     private sealed class ThrowingTimeProvider : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => throw new InvalidOperationException("Clock must not be read.");
+        public int Calls { get; private set; }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            Calls++;
+            throw new InvalidOperationException("Clock must not be read.");
+        }
     }
 }
