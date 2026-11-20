@@ -11,7 +11,7 @@ depends_on: ["layout-core", "desktop-access"]
 
 > **Goal:** `berth save`, `berth restore`, `berth undo`, `berth list`, `berth --help` and `berth --version` work from a terminal exactly as `design/SPEC.md` §13 says: the right line on the right stream, the right exit code, no window, and a terminal that waits.
 
-> **Current state:** Measured 2026-11-15. `Program.cs` from `D00 T01 §2` prints the version for `--version` and returns 2 for anything else. `LayoutService`, `Messages` and `Formats` come from `D01 T01`, and `ShellDesktopIcons` and `SystemMonitors` from `D02 T01`.
+> **Current state:** Measured 2026-11-20. `Program.cs` from `D00 T01 §2` prints the version for `--version` and returns 2 for anything else. `D01 T01` (`LayoutService`, `Messages`, `Formats`, `LayoutStore`, `BerthPaths`, `OperationLock`, `Log`) and `D02 T01` (`ShellDesktopIcons`, `ScopedDesktopIcons`, `SystemMonitors`, `ProbeIcon`) are both `done`.
 
 ## Inputs
 
