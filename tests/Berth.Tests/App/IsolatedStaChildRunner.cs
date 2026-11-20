@@ -27,6 +27,7 @@ internal static class IsolatedStaChildRunner
     public const string TrayAppWiringTrayOnlyScenario = "tray-wiring-tray-only";
     public const string ExitBlocksActivationDuringDrainScenario = "exit-blocks-activation-drain";
     public const string ProductionTrayPlacementScenario = "production-tray-placement";
+    public const string SettingsFailureHideReopenScenario = "settings-failure-hide-reopen";
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
 
     public static int RunMain(string[] args)
@@ -187,6 +188,8 @@ internal static class IsolatedStaChildRunner
             ExitBlocksActivationDuringDrainScenario => RunExitBlocksActivationDuringDrainScenario(paths, log, instanceName),
 
             ProductionTrayPlacementScenario => RunProductionTrayPlacementScenario(paths, log, instanceName),
+
+            SettingsFailureHideReopenScenario => RunSettingsFailureHideReopenScenario(paths, log, instanceName),
 
             RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
 
@@ -863,6 +866,83 @@ internal static class IsolatedStaChildRunner
                 $"observed={observedRectLine}",
                 $"saved={savedRectLine}",
                 $"reopenedFresh={reopenedFreshRectLine}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunSettingsFailureHideReopenScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        TrayMenu? capturedMenu = null;
+        int logLinesBeforeHide = 0;
+        bool visibleAfterHide = true;
+        bool visibleAfterTrayReopen = false;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: true,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            createMainWindow: null,
+            onAppStartup: app =>
+            {
+                try
+                {
+                    Berth.Window.MainWindow? win = app.Windows.OfType<Berth.Window.MainWindow>().FirstOrDefault();
+                    if (win is null || capturedMenu is null)
+                    {
+                        app.Shutdown(2);
+                        return;
+                    }
+
+                    // Snapshot log line count IMMEDIATELY before hide (after window is open).
+                    logLinesBeforeHide = File.Exists(log.FilePath) ? File.ReadAllLines(log.FilePath).Length : 0;
+
+                    win.Close();
+                    visibleAfterHide = win.IsVisible;
+
+                    // Reopen through the running tray menu to prove the tray app survived the hide-save failure.
+                    capturedMenu.OpenItem.PerformClick();
+                    visibleAfterTrayReopen = win.IsVisible;
+
+                    capturedMenu.ExitItem.PerformClick();
+                }
+                catch
+                {
+                    app.Shutdown(3);
+                }
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"logLinesBeforeHide={logLinesBeforeHide}",
+                $"visibleAfterHide={visibleAfterHide}",
+                $"visibleAfterTrayReopen={visibleAfterTrayReopen}",
                 $"exitCode={exitCode}",
             ]);
 

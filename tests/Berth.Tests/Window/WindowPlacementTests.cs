@@ -269,12 +269,40 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
                 win.BringToFront();
 
                 WindowPlacement expectedPrimary = WindowPlacementRule.CenterOnPrimary([primary], fakeInterop.PrimaryWorkArea, 980d, 640d)!;
+                Assert.Equal(WindowState.Maximized, win.WindowState);
                 Assert.Equal(expectedPrimary, fakeInterop.LastSetNormalRect);
                 Assert.Equal(expectedPrimary, fakeInterop.NormalRect);
             }
             finally
             {
                 win.CloseForShutdown();
+            }
+        });
+
+        // Also verify real Win32 SetWindowPlacement updates restored normal bounds on a live maximized window
+        // so restoring to Normal lands at the expected GetWindowRect.
+        Assert.True(NativeWindowBoundsInterop.Instance.TryGetPrimaryWorkArea(out WindowPlacement livePrimaryWork, out double liveScale));
+        var liveExpected = new WindowPlacement(
+            livePrimaryWork.X + 90,
+            livePrimaryWork.Y + 75,
+            (int)Math.Round(980 * liveScale),
+            (int)Math.Round(640 * liveScale));
+        appFixture.Invoke(() =>
+        {
+            var liveWin = new MainWindow();
+            try
+            {
+                liveWin.Show();
+                liveWin.WindowState = WindowState.Maximized;
+                IntPtr hwnd = new WindowInteropHelper(liveWin).Handle;
+                Assert.True(NativeWindowBoundsInterop.Instance.TrySetNormalPlacement(hwnd, liveExpected));
+                liveWin.WindowState = WindowState.Normal;
+                Assert.True(NativeWindowBoundsInterop.Instance.TryGetWindowRect(hwnd, out WindowPlacement actualRestored));
+                Assert.Equal(liveExpected, actualRestored);
+            }
+            finally
+            {
+                liveWin.CloseForShutdown();
             }
         });
     }
@@ -344,54 +372,56 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         });
         Assert.Equal(existing, store.Load().Value.Window);
 
-        // 2. Unreadable `{` in settings.json: hide logs a NEW WARN with exact SPEC §18 message, hides cleanly, leaves `{` untouched.
-        File.WriteAllText(store.FilePath, "{");
-        int logLinesBefore = File.Exists(log.FilePath) ? File.ReadAllLines(log.FilePath).Length : 0;
+        // 2. Unreadable `{` in settings.json inside a real running TrayApp: snapshot log immediately before hide,
+        // verify a NEW WARN with exact SPEC §18 message, `{` bytes unchanged, and tray reopens the window cleanly.
+        using var unreadableData = new TestData();
+        BerthPaths unreadablePaths = BerthPaths.ForRoot(unreadableData.Root);
+        var unreadableStore = new SettingsStore(unreadablePaths);
+        BerthPaths.EnsureFolderFor(unreadableStore.FilePath);
+        File.WriteAllText(unreadableStore.FilePath, "{");
+        string unreadableReportFile = Path.Combine(unreadableData.Root, "unreadable-hide.txt");
 
-        appFixture.Invoke(() =>
-        {
-            var win = new MainWindow(store, monitors, log);
-            try
-            {
-                win.Show();
-                win.Close();
-                Assert.False(win.IsVisible);
-            }
-            finally
-            {
-                win.CloseForShutdown();
-            }
-        });
+        (int unreadableExit, string unreadableOut, string unreadableErr) = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.SettingsFailureHideReopenScenario,
+            unreadableData.Root,
+            $"Berth.Tests.UnreadableHide.{Guid.NewGuid():N}",
+            reportFile: unreadableReportFile);
 
-        Assert.Equal("{", File.ReadAllText(store.FilePath));
-        string[] newUnreadableLines = File.ReadAllLines(log.FilePath).Skip(logLinesBefore).ToArray();
+        Assert.True(unreadableExit == 0, $"Expected exit 0, got {unreadableExit}. stdout={unreadableOut} stderr={unreadableErr}");
+        Dictionary<string, string> unreadableReport = File.ReadAllLines(unreadableReportFile)
+            .Select(line => line.Split('=', 2))
+            .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
+        Assert.Equal("False", unreadableReport["visibleAfterHide"]);
+        Assert.Equal("True", unreadableReport["visibleAfterTrayReopen"]);
+        Assert.Equal("{", File.ReadAllText(unreadableStore.FilePath));
+        int unreadableLinesBefore = int.Parse(unreadableReport["logLinesBeforeHide"], System.Globalization.CultureInfo.InvariantCulture);
+        string[] newUnreadableLines = File.ReadAllLines(unreadablePaths.LogFile).Skip(unreadableLinesBefore).ToArray();
         Assert.Contains(newUnreadableLines, line => line.Contains("WARN", StringComparison.Ordinal) && line.Contains(Messages.UnreadableSettings, StringComparison.Ordinal));
 
-        // 3. Write failure (valid settings.json, directory blocking the pending redo-note path): hide logs WARN with path-specific message and still hides.
+        // 3. Write failure (valid settings.json, directory blocking redo-note path) inside a real running TrayApp:
+        // snapshot log immediately before hide, verify new path-specific WARN, and tray reopens the window cleanly.
         using var failData = new TestData();
         BerthPaths failPaths = BerthPaths.ForRoot(failData.Root);
         var failStore = new SettingsStore(failPaths);
-        var failLog = new Log(failPaths, TimeProvider.System);
         failStore.Save(Settings.Default);
         Directory.CreateDirectory(failStore.FilePath + ".berth-pending");
+        string failReportFile = Path.Combine(failData.Root, "writefail-hide.txt");
 
-        appFixture.Invoke(() =>
-        {
-            var win = new MainWindow(failStore, monitors, failLog);
-            try
-            {
-                win.Show();
-                win.Close();
-                Assert.False(win.IsVisible);
-            }
-            finally
-            {
-                win.CloseForShutdown();
-            }
-        });
+        (int failExit, string failOut, string failErr) = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.SettingsFailureHideReopenScenario,
+            failData.Root,
+            $"Berth.Tests.WriteFailHide.{Guid.NewGuid():N}",
+            reportFile: failReportFile);
 
-        string[] failLines = File.ReadAllLines(failLog.FilePath);
-        Assert.Contains(failLines, line => line.Contains("WARN", StringComparison.Ordinal) && line.Contains(failStore.FilePath, StringComparison.Ordinal));
+        Assert.True(failExit == 0, $"Expected exit 0, got {failExit}. stdout={failOut} stderr={failErr}");
+        Dictionary<string, string> failReport = File.ReadAllLines(failReportFile)
+            .Select(line => line.Split('=', 2))
+            .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
+        Assert.Equal("False", failReport["visibleAfterHide"]);
+        Assert.Equal("True", failReport["visibleAfterTrayReopen"]);
+        int failLinesBefore = int.Parse(failReport["logLinesBeforeHide"], System.Globalization.CultureInfo.InvariantCulture);
+        string[] newFailLines = File.ReadAllLines(failPaths.LogFile).Skip(failLinesBefore).ToArray();
+        Assert.Contains(newFailLines, line => line.Contains("WARN", StringComparison.Ordinal) && line.Contains(failStore.FilePath, StringComparison.Ordinal));
     }
 
     [Fact]
