@@ -74,6 +74,7 @@ public sealed class DesktopPollerTests
         CancellationToken ct = TestContext.Current.CancellationToken;
         var timer = new FakePollerTimer();
         int attempts = 0;
+        Exception? observedError = null;
 
         using var failingPoller = new DesktopPoller(
             () =>
@@ -86,11 +87,14 @@ public sealed class DesktopPollerTests
                 return Task.CompletedTask;
             },
             timer,
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(5),
+            onError: ex => observedError = ex);
 
         failingPoller.Start();
         await failingPoller.CurrentRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
         Assert.Equal(1, Volatile.Read(ref attempts));
+        Assert.IsType<InvalidOperationException>(observedError);
+        Assert.Equal("Transient failure", observedError.Message);
 
         // Next tick retries because finally released _inFlight.
         timer.RaiseTick();
@@ -158,7 +162,7 @@ public sealed class DesktopPollerTests
 public sealed class MainWindowPollerWiringTests(AppFixture appFixture)
 {
     [Fact]
-    public async Task MainWindowStartsPollerWhenShownStopsWhenHiddenResumesOnReopenAndDisposesOnShutdown()
+    public async Task ProductionFactoryWiresPollerStartsOnShowReadsOnActivatedStopsOnHideAndDisposesOnShutdown()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         using var data = new TestData();
@@ -168,46 +172,54 @@ public sealed class MainWindowPollerWiringTests(AppFixture appFixture)
         var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 10, 20));
         var log = new Log(paths, TimeProvider.System);
         var settingsStore = new SettingsStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, TimeProvider.System);
+        using var composition = Berth.App.Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
 
-        var vm = new MainViewModel(
-            store,
-            desktop,
-            monitors,
-            TimeProvider.System,
-            action =>
-            {
-                appFixture.Invoke(action);
-                return Task.CompletedTask;
-            });
-
-        var timer = new FakeWindowTimer();
-        var poller = new DesktopPoller(vm.RefreshAsync, timer, TimeSpan.FromSeconds(5));
         MainWindow? window = null;
-
         try
         {
-            window = appFixture.Invoke(() => new MainWindow(settingsStore, monitors, log, null, vm, poller));
+            window = appFixture.Invoke(() =>
+            {
+                var app = (Berth.App.BerthApplication)System.Windows.Application.Current;
+                return Berth.App.TrayApp.CreateProductionMainWindow(app, settingsStore, composition, monitors, TimeProvider.System);
+            });
+
+            DesktopPoller poller = Assert.IsType<DesktopPoller>(window.Poller);
+            Assert.NotNull(window.ViewModel);
+            Assert.Same(window.ViewModel, appFixture.Invoke(() => window.DataContext));
             Assert.False(poller.IsStarted);
             Assert.Equal(0, desktop.Reads);
 
-            // Show -> poller starts and triggers an immediate read.
+            // 1. Show -> poller starts and triggers an immediate read.
             appFixture.Invoke(window.Show);
             await poller.CurrentRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.True(poller.IsStarted);
             int readsAfterShow = desktop.Reads;
             Assert.True(readsAfterShow >= 1);
 
-            // Hide (Close) -> poller stops and further ticks do not read.
+            // 2. Window.Activated while already visible and idle -> triggers an additional read.
+            appFixture.Invoke(() =>
+            {
+                typeof(System.Windows.Window)
+                    .GetMethod("OnActivated", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(window, [EventArgs.Empty]);
+            });
+            await poller.CurrentRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            int readsAfterActivate = desktop.Reads;
+            Assert.True(readsAfterActivate > readsAfterShow, $"Expected Activated to trigger another read (before={readsAfterShow}, after={readsAfterActivate}).");
+
+            // 3. Hide (Close) -> poller stops and TriggerNow does not read.
             appFixture.Invoke(window.Close);
             Assert.False(poller.IsStarted);
-            timer.RaiseTickUnconditionally();
-            Assert.Equal(readsAfterShow, desktop.Reads);
+            poller.TriggerNow();
+            Assert.Equal(readsAfterActivate, desktop.Reads);
 
-            // Reopen via BringToFront -> poller resumes and reads again.
+            // 4. Reopen via BringToFront -> poller resumes and reads again.
             appFixture.Invoke(window.BringToFront);
             await poller.CurrentRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
             Assert.True(poller.IsStarted);
-            Assert.True(desktop.Reads > readsAfterShow);
+            Assert.True(desktop.Reads > readsAfterActivate);
         }
         finally
         {
@@ -217,15 +229,6 @@ public sealed class MainWindowPollerWiringTests(AppFixture appFixture)
             }
         }
 
-        Assert.False(poller.IsStarted);
-    }
-
-    private sealed class FakeWindowTimer : IPollerTimer
-    {
-        public event EventHandler? Tick;
-        public void Start(TimeSpan interval) { }
-        public void Stop() { }
-        public void Dispose() { }
-        public void RaiseTickUnconditionally() => Tick?.Invoke(this, EventArgs.Empty);
+        Assert.False(window!.Poller!.IsStarted);
     }
 }

@@ -233,6 +233,85 @@ public sealed class MainViewModelTests
         Assert.True(failVm.Rows[0].IsUnsaved);
     }
 
+    [Fact]
+    public async Task TransientFolderReadErrorPreservesNonActiveSelectionAcrossRecovery()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonA], "ActiveLayout");
+        SaveLayout(store, [MonB], "OtherLayout");
+
+        var monitors = new FakeMonitors(MonA);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 10, 20));
+        var vm = new MainViewModel(store, desktop, monitors, new FixedClock(FixedNow));
+
+        await vm.RefreshAsync();
+        Assert.Equal("ActiveLayout", vm.Selected?.Name);
+
+        // User selects the non-active layout.
+        vm.Selected = vm.Rows.Single(r => r.Name == "OtherLayout");
+        Assert.Equal("OtherLayout", vm.Selected?.Name);
+
+        // Simulate transient folder outage by moving LayoutsFolder aside and replacing with a file.
+        string backupFolder = paths.LayoutsFolder + ".bak";
+        Directory.Move(paths.LayoutsFolder, backupFolder);
+        File.WriteAllText(paths.LayoutsFolder, "transient lock");
+        try
+        {
+            await vm.RefreshAsync();
+            Assert.NotNull(vm.StoreReadError);
+            Assert.Empty(vm.Rows);
+            Assert.Null(vm.Selected);
+        }
+        finally
+        {
+            File.Delete(paths.LayoutsFolder);
+            Directory.Move(backupFolder, paths.LayoutsFolder);
+        }
+
+        // Folder recovers: user's non-active selection ("OtherLayout") MUST be restored!
+        await vm.RefreshAsync();
+        Assert.Null(vm.StoreReadError);
+        Assert.Equal("OtherLayout", vm.Selected?.Name);
+    }
+
+    [Fact]
+    public async Task MidPollMonitorTopologyChangeDiscardsMixedComparisonAndUnchangedPollEmitsZeroRowChanges()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonA], "LayoutA", new IconPosition("id-1", "One", 100, 200));
+
+        // Topology flips on every monitor read -> all 3 attempts see mismatched before/after keys, so mixed snapshot is discarded.
+        var shiftingMonitors = new FakeMonitors(MonA);
+        bool flip = false;
+        shiftingMonitors.AfterRead = _ =>
+        {
+            flip = !flip;
+            shiftingMonitors.Monitors = flip ? [MonB] : [MonA];
+        };
+
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 999, 888));
+        var vm = new MainViewModel(store, desktop, shiftingMonitors, new FixedClock(FixedNow));
+
+        await vm.RefreshAsync();
+        Assert.Empty(vm.Rows);
+        Assert.Null(vm.Comparison);
+
+        // Now stabilize on MonA: first refresh populates Rows, second unchanged refresh emits 0 CollectionChanged events.
+        shiftingMonitors.AfterRead = null;
+        shiftingMonitors.Monitors = [MonA];
+        await vm.RefreshAsync();
+        Assert.Single(vm.Rows);
+
+        int collectionEvents = 0;
+        vm.Rows.CollectionChanged += (_, _) => collectionEvents++;
+        await vm.RefreshAsync();
+        Assert.Equal(0, collectionEvents);
+    }
+
     private static void SaveLayout(LayoutStore store, MonitorInfo[] monitors, string name, params IconPosition[] icons)
     {
         IconPosition[] effectiveIcons = icons.Length > 0 ? icons : [new IconPosition("id-default", "Default", 10, 20)];

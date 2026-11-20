@@ -64,6 +64,7 @@ internal sealed class DesktopPoller : IDisposable
     private readonly Func<Task> _refreshAsync;
     private readonly IPollerTimer _timer;
     private readonly TimeSpan _interval;
+    private readonly Action<Exception>? _onError;
     private readonly Lock _sync = new();
 
     private bool _started;
@@ -71,7 +72,11 @@ internal sealed class DesktopPoller : IDisposable
     private int _inFlight;
     private Task _currentRefreshTask = Task.CompletedTask;
 
-    public DesktopPoller(Func<Task> refreshAsync, IPollerTimer timer, TimeSpan interval)
+    public DesktopPoller(
+        Func<Task> refreshAsync,
+        IPollerTimer timer,
+        TimeSpan interval,
+        Action<Exception>? onError = null)
     {
         ArgumentNullException.ThrowIfNull(refreshAsync);
         ArgumentNullException.ThrowIfNull(timer);
@@ -83,6 +88,7 @@ internal sealed class DesktopPoller : IDisposable
         _refreshAsync = refreshAsync;
         _timer = timer;
         _interval = interval;
+        _onError = onError;
         _timer.Tick += OnTimerTick;
     }
 
@@ -190,9 +196,9 @@ internal sealed class DesktopPoller : IDisposable
         {
             await _refreshAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Refresh failures are surfaced on MainViewModel; release the overlap guard so the next visible tick retries.
+            _onError?.Invoke(ex);
         }
         finally
         {

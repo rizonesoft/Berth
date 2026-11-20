@@ -12,6 +12,8 @@ namespace Berth.Window;
 /// </summary>
 internal sealed class MainViewModel : ObservableObject
 {
+    private const int MaxCaptureAttempts = 3;
+
     private readonly LayoutStore _store;
     private readonly IDesktopIcons _desktop;
     private readonly IMonitors _monitors;
@@ -20,6 +22,7 @@ internal sealed class MainViewModel : ObservableObject
 
     private int _refreshInFlight;
     private LayoutRow? _selected;
+    private string? _lastKnownSelectedKey;
     private DesktopState _desktopState;
     private LayoutComparison? _comparison;
     private ComparisonKind _comparisonKind;
@@ -77,6 +80,15 @@ internal sealed class MainViewModel : ObservableObject
         {
             if (Set(ref _selected, value))
             {
+                if (value is not null)
+                {
+                    _lastKnownSelectedKey = value.Key;
+                }
+                else
+                {
+                    _lastKnownSelectedKey = null;
+                }
+
                 RebuildComparison();
             }
         }
@@ -107,8 +119,11 @@ internal sealed class MainViewModel : ObservableObject
 
         try
         {
-            RefreshSnapshot snapshot = await Task.Run(CaptureSnapshot).ConfigureAwait(false);
-            await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
+            RefreshSnapshot? snapshot = await Task.Run(CaptureSnapshot).ConfigureAwait(false);
+            if (snapshot is not null)
+            {
+                await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -119,41 +134,76 @@ internal sealed class MainViewModel : ObservableObject
     /// <summary>Fire-and-forget convenience entry point delegating to <see cref="RefreshAsync"/>.</summary>
     public Task Refresh() => RefreshAsync();
 
-    private RefreshSnapshot CaptureSnapshot()
+    private RefreshSnapshot? CaptureSnapshot()
     {
         DateTimeOffset checkedAt = _clock.GetUtcNow();
 
-        // 1. Read monitors independently so a shell/Explorer outage still preserves the known monitor arrangement.
-        IReadOnlyList<MonitorInfo> monitors;
-        bool monitorsAvailable;
-        try
+        // Capture monitors and desktop icons together: if the monitor arrangement changes mid-read, retry up to
+        // MaxCaptureAttempts times and discard a perpetually shifting snapshot rather than publishing a mixed comparison.
+        IReadOnlyList<MonitorInfo> monitors = [];
+        bool monitorsAvailable = false;
+        string? currentKey = null;
+        IReadOnlyList<IconPosition> icons = [];
+        bool autoArrange = false;
+        bool desktopUnavailable = false;
+        bool stable = false;
+
+        for (int attempt = 0; attempt < MaxCaptureAttempts; attempt++)
         {
-            monitors = _monitors.Read();
-            monitorsAvailable = monitors.Count > 0;
-        }
-        catch (DesktopUnavailableException)
-        {
-            monitors = [];
-            monitorsAvailable = false;
+            try
+            {
+                monitors = _monitors.Read();
+                monitorsAvailable = monitors.Count > 0;
+            }
+            catch (DesktopUnavailableException)
+            {
+                monitors = [];
+                monitorsAvailable = false;
+            }
+
+            currentKey = monitorsAvailable ? ArrangementKey.From(monitors) : null;
+
+            try
+            {
+                icons = _desktop.ReadIcons();
+                autoArrange = _desktop.AutoArrange;
+                desktopUnavailable = false;
+            }
+            catch (DesktopUnavailableException)
+            {
+                icons = [];
+                autoArrange = false;
+                desktopUnavailable = true;
+            }
+
+            if (desktopUnavailable || !monitorsAvailable)
+            {
+                // No live comparison will be built from mixed coordinates; accept this snapshot.
+                stable = true;
+                break;
+            }
+
+            string? afterKey;
+            try
+            {
+                IReadOnlyList<MonitorInfo> afterMonitors = _monitors.Read();
+                afterKey = afterMonitors.Count > 0 ? ArrangementKey.From(afterMonitors) : null;
+            }
+            catch (DesktopUnavailableException)
+            {
+                afterKey = null;
+            }
+
+            if (string.Equals(currentKey, afterKey, StringComparison.Ordinal))
+            {
+                stable = true;
+                break;
+            }
         }
 
-        string? currentKey = monitorsAvailable ? ArrangementKey.From(monitors) : null;
-
-        // 2. Read desktop icons and auto-arrange state independently.
-        IReadOnlyList<IconPosition> icons;
-        bool autoArrange;
-        bool desktopUnavailable;
-        try
+        if (!stable)
         {
-            icons = _desktop.ReadIcons();
-            autoArrange = _desktop.AutoArrange;
-            desktopUnavailable = false;
-        }
-        catch (DesktopUnavailableException)
-        {
-            icons = [];
-            autoArrange = false;
-            desktopUnavailable = true;
+            return null;
         }
 
         var desktopState = new DesktopState(
@@ -163,7 +213,7 @@ internal sealed class MainViewModel : ObservableObject
             Unavailable: desktopUnavailable || !monitorsAvailable,
             CheckedAt: checkedAt);
 
-        // 3. Load saved layouts independently of shell availability.
+        // Load saved layouts independently of shell availability.
         IReadOnlyList<Layout> layouts;
         IReadOnlyList<UnreadableFile> unreadable;
         string? storeReadError;
@@ -186,8 +236,9 @@ internal sealed class MainViewModel : ObservableObject
 
     private void ApplySnapshot(RefreshSnapshot snapshot)
     {
-        // Capture the live selection at UI-application time so user selection changes during an async read win.
-        string? previouslySelectedKey = _selected?.Key;
+        // Capture the live selection at UI-application time so user selection changes during an async read win,
+        // and preserve _lastKnownSelectedKey across transient folder-read failures.
+        string? preferredKey = _selected?.Key ?? _lastKnownSelectedKey;
 
         Desktop = snapshot.Desktop;
         Unreadable = snapshot.Unreadable;
@@ -195,13 +246,28 @@ internal sealed class MainViewModel : ObservableObject
 
         List<LayoutRow> nextRows = BuildRows(snapshot);
 
-        Rows.Clear();
-        foreach (LayoutRow row in nextRows)
+        bool rowsUnchanged = Rows.Count == nextRows.Count && Rows.SequenceEqual(nextRows);
+        if (!rowsUnchanged)
         {
-            Rows.Add(row);
+            Rows.Clear();
+            foreach (LayoutRow row in nextRows)
+            {
+                Rows.Add(row);
+            }
         }
 
-        LayoutRow? nextSelected = ChooseSelection(nextRows, previouslySelectedKey);
+        LayoutRow? nextSelected = ChooseSelection(nextRows, preferredKey);
+        if (snapshot.StoreReadError is not null && nextSelected is null)
+        {
+            // Transient folder-read failure: clear Selected while keeping _lastKnownSelectedKey for recovery.
+            if (Set(ref _selected, null, nameof(Selected)))
+            {
+                RebuildComparison();
+            }
+
+            return;
+        }
+
         bool selectionChanged = !EqualityComparer<LayoutRow?>.Default.Equals(_selected, nextSelected);
         if (selectionChanged)
         {
