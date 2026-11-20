@@ -38,7 +38,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [x] |
-| 2 | §2 | Single instance and activation | §1 | [ ] |
+| 2 | §2 | Single instance and activation | §1 | [x] |
 | 3 | §3 | Crash handling | §1 | [ ] |
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
@@ -100,6 +100,9 @@ One tray app per user and logon session, and a second start opens the first one'
 - [x] Commit: `app: single instance and activation`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SingleInstanceTests"` passes, and fails when the pipe listener stops after a client that sends junk.
+
+> **Verified:** 2026-11-20 | §2 | dcf92a24f485f947f9edf7a36291224f4f312688
+> **Review:** `docs/reviews/d04-t01-s2.json`
 
 ## 3. Crash handling
 

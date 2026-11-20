@@ -1,0 +1,85 @@
+{
+  "ref": "D04 T01 \u00a72",
+  "title": "Single instance and activation",
+  "implementation_sha": "dcf92a24f485f947f9edf7a36291224f4f312688",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/04-app/D04-T01-s2.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SingleInstanceTests --filter-class *StartupPlanProcessTests --filter-class *LayerRuleTests:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/04-app/D04-T01-s2.md",
+    "verdict": "reconciled",
+    "candidate": "dcf92a24f485f947f9edf7a36291224f4f312688",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/04-app/D04-T01-s2.md",
+    "candidate": "65c25c2c0024d14ffc9aea853d5e918fce1225df",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "65c25c2c0024d14ffc9aea853d5e918fce1225df",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 5,
+  "pass_cap": 33
+}

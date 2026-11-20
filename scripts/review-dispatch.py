@@ -1300,10 +1300,15 @@ def check_three_pass_order(kind, record_path, candidate, schedule):
         if not ended_gaps(chain[-1]):
             ref = section_ref_for_record(record_path)
             if len(chain) > 1 and ref is not None:
-                from lib import todo_graph as _tg
-                unsettled = not _tg.reconciliation_settles(
-                    ROOT, ref, completions[0]["candidate"], chain[-1]["candidate"]
-                )
+                tg_path = Path(__file__).resolve().parent / "lib" / "todo_graph.py"
+                if tg_path.is_file():
+                    spec = importlib.util.spec_from_file_location("todo_graph", tg_path)
+                    if spec is not None and spec.loader is not None:
+                        _tg = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(_tg)
+                        unsettled = not _tg.reconciliation_settles(
+                            ROOT, ref, completions[0]["candidate"], chain[-1]["candidate"]
+                        )
             if not unsettled:
                 raise Refused("the section's reconciliation already returned complete; it needs no further pass")
         worst = [declared_highest(e["review"]) for e in chain]
