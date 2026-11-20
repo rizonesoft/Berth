@@ -392,7 +392,17 @@ public sealed partial class ConsoleBehaviourTests
         {
             if (File.Exists(path))
             {
-                return true;
+                try
+                {
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+                    if (stream.Length > 0)
+                    {
+                        return true;
+                    }
+                }
+                catch (IOException)
+                {
+                }
             }
 
             Thread.Sleep(25);

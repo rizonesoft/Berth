@@ -120,7 +120,7 @@ The foundation plan's one technical bet: a console program with a detached conso
 - [x] Add `tests/Berth.Tests/Cli/SaveCommandTests.cs` with the unit and real-process cases. Done when: all pass, and the invalid-name test fails when its exit code is changed to 3. Cheaper substitute: only the process test.
 - [x] Commit: `cli: the save command`
 
-**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SaveCommandTests" --filter-class "*ConsoleBehaviourTests" --filter-class "*TestModeSwitchesTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an invalid `--name` returns exit code 3 instead of 2.
+**Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SaveCommandTests" --filter-class "*SaveCommandProcessTests" --filter-class "*ConsoleBehaviourTests" --filter-class "*TestModeSwitchesTests" --filter-class "*LayerRuleTests"` passes with `0` skipped, and fails when an invalid `--name` returns exit code 3 instead of 2.
 
 ## 4. The restore command
 

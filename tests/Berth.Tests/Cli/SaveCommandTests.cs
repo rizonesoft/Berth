@@ -130,13 +130,20 @@ public sealed class SaveCommandTests
             Assert.Equal($"Enter a name.{Environment.NewLine}", errEmpty.ToString());
         }
 
-        // Missing value (`save --name`) is a parser usage error distinct from empty name.
+        // Missing value (`save --name`) is a parser usage error distinct from empty name, handled via Program.Run.
         CliArguments missingValue = CliArguments.Parse(["save", "--name"]);
         Assert.Equal("--name needs a value", missingValue.Error);
         var outMissing = new StringWriter();
         var errMissing = new StringWriter();
-        Assert.Equal(CliExit.Usage, new CliRunner(service, outMissing, errMissing).Run(missingValue));
+        int missingCode = global::Berth.Program.Run(
+            ["save", "--name"],
+            outMissing,
+            errMissing,
+            getenv: _ => null,
+            folder: _ => throw new InvalidOperationException("folder must not be queried for parser errors"));
+        Assert.Equal(CliExit.Usage, missingCode);
         Assert.Equal(string.Empty, outMissing.ToString());
+        Assert.Equal(string.Empty, errMissing.ToString());
     }
 
     [Fact]
@@ -189,8 +196,8 @@ public sealed class SaveCommandTests
         Assert.Equal(CliExit.Error, exitCode);
         Assert.Equal(string.Empty, output.ToString());
         string errText = error.ToString();
-        Assert.StartsWith($"Berth could not write {targetLayoutPath}: ", errText, StringComparison.Ordinal);
-        Assert.EndsWith($".{Environment.NewLine}", errText, StringComparison.Ordinal);
+        string expectedExact = $"Berth could not write {targetLayoutPath}: Cannot create a file when that file already exists.{Environment.NewLine}";
+        Assert.Equal(expectedExact, errText);
     }
 
     [Fact]
@@ -269,13 +276,30 @@ public sealed class SaveCommandTests
 
         Assert.True(File.Exists(paths.LogFile), "Expected log file to be written on composition failure.");
         string logText = File.ReadAllText(paths.LogFile);
+        string[] logLines = logText.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        Assert.Single(logLines, l => l.Contains(" FAIL ", StringComparison.Ordinal));
         Assert.Contains("FAIL Something went wrong: composition boom. The details are in the log.", logText, StringComparison.Ordinal);
         Assert.Contains("System.InvalidOperationException: composition boom", logText, StringComparison.Ordinal);
+        Assert.Contains(nameof(ProgramRunCatchesCompositionFailureLogsWithStackAndPrintsSpecUnexpectedLine), logText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ProgramRunCatchesPathResolutionFailureAndPrintsSpecUnexpectedLine()
+    public void ProgramRunCatchesPathResolutionFailureForSaveWithoutBreakingVersionOrParserErrors()
     {
+        // --version does not require AppData resolution when BERTH_DATA is unset.
+        var verOut = new StringWriter();
+        var verErr = new StringWriter();
+        int verCode = global::Berth.Program.Run(
+            ["--version"],
+            verOut,
+            verErr,
+            getenv: _ => null,
+            folder: _ => throw new InvalidOperationException("appdata unavailable"));
+        Assert.Equal(CliExit.Done, verCode);
+        Assert.Equal($"Berth {AppInfo.Version}{Environment.NewLine}", verOut.ToString());
+        Assert.Equal(string.Empty, verErr.ToString());
+
+        // save requires AppData resolution when BERTH_DATA is unset, so a folder failure prints SPEC §18 unexpected line.
         var output = new StringWriter();
         var error = new StringWriter();
 
@@ -289,6 +313,38 @@ public sealed class SaveCommandTests
         Assert.Equal(CliExit.Error, exitCode);
         Assert.Equal(string.Empty, output.ToString());
         Assert.Equal($"Something went wrong: appdata unavailable. The details are in the log.{Environment.NewLine}", error.ToString());
+    }
+
+    [Fact]
+    public void ProgramRunCatchesTestReportWriteFailureInsideExceptionBoundary()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        string existingDir = Path.Combine(data.Root, "report-is-a-directory");
+        Directory.CreateDirectory(existingDir);
+
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        int exitCode = global::Berth.Program.Run(
+            ["--version"],
+            output,
+            error,
+            getenv: k => k switch
+            {
+                "BERTH_DATA" => data.Root,
+                "BERTH_TEST_REPORT" => existingDir,
+                _ => null,
+            });
+
+        Assert.Equal(CliExit.Error, exitCode);
+        Assert.Equal($"Berth {AppInfo.Version}{Environment.NewLine}", output.ToString());
+        Assert.Equal($"Something went wrong: Access to the path '{existingDir}' is denied. The details are in the log.{Environment.NewLine}", error.ToString());
+
+        Assert.True(File.Exists(paths.LogFile), "Expected log file to record the test-report write failure.");
+        string logText = File.ReadAllText(paths.LogFile);
+        Assert.Contains("FAIL Something went wrong: Access to the path", logText, StringComparison.Ordinal);
+        Assert.Contains(nameof(TestModeSwitches.Apply), logText, StringComparison.Ordinal);
     }
 
     private sealed class FixedClock(DateTimeOffset start) : TimeProvider
