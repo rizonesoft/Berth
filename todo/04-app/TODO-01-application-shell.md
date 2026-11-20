@@ -213,6 +213,8 @@ Whether the taskbar is light or dark, and an event when that changes (SPEC §12,
 
 ## 7. Tray icon and tooltip
 
+> **Started:** 2026-11-20T20:04Z
+
 The icon in the notification area: the right variant for the taskbar, a tooltip, and a click that opens the window.
 
 **Phase:** 4
@@ -228,14 +230,14 @@ The icon in the notification area: the right variant for the taskbar, a tooltip,
 1. Add `TrayIcon` in `src/Berth/App/TrayIcon.cs`. Done when: `berth.exe` shows an icon in the notification area.
 2. Add the tooltip text and the click. Done when: the tooltip matches SPEC §12 for both states.
 
-- [ ] Embed the two tray `.ico` files as resources in `src/Berth/Berth.csproj` (linked from `assets/icon/`, not copied). Done when: a test loads both through `Assembly.GetManifestResourceStream` and gets an `Icon` with a 16 px frame. Cheaper substitute: a second copy of the files under `src/`.
-- [ ] Add `TrayIcon(TaskbarTheme theme)` creating a `NotifyIcon`, choosing `berth-tray-dark.ico` when `theme.IsLight` is `false` and `berth-tray-light.ico` when `true`, at the size `SystemInformation.SmallIconSize` reports, and switching on `theme.Changed`. Done when: a test with a fake theme flips it and reads the `NotifyIcon.Icon` handle change. Cheaper substitute: the application icon scaled to 16 px, whose tile is unreadable in the tray (README, "Brand").
-- [ ] Add `TrayText.Tooltip(Layout? active, DateTimeOffset now, TimeZoneInfo zone)` in `src/Berth/App/TrayText.cs` returning `Berth: Docked, saved today, 09:14` or `Berth: no layout for this monitor arrangement`, shortened with an ellipsis character inside the name when the whole text would pass 127 characters (the `NotifyIcon.Text` limit). Done when: unit tests compare both strings and a 40 character name stays within 127. Cheaper substitute: letting `NotifyIcon.Text` throw on a long name.
-- [ ] Refresh the tooltip after every operation and when the monitors change. Done when: a test invoking a save through the menu handler sees the tooltip text change from the "no layout" form to the "saved" form. Cheaper substitute: a tooltip computed once at startup.
-- [ ] Raise `OpenRequested` on a left click and on a double click, and not on a right click. Done when: a unit test invoking the `MouseClick` handler with each button sees the event only for the left button. Cheaper substitute: opening the window on any click, which fights the menu.
-- [ ] Dispose removes the icon (`Visible = false`, then `Dispose`). Done when: a test disposes it and `NotifyIcon.Visible` is `false`. Cheaper substitute: a ghost icon left until the pointer passes over it.
-- [ ] Add `tests/Berth.Tests/App/TrayIconTests.cs`. Done when: all pass, and the theme test fails when the variants are swapped. Cheaper substitute: checking the tray by eye.
-- [ ] Commit: `app: tray icon and tooltip`
+- [x] Embed the two tray `.ico` files as resources in `src/Berth/Berth.csproj` (linked from `assets/icon/`, not copied). Done when: a test loads both through `Assembly.GetManifestResourceStream` and gets an `Icon` with a 16 px frame. Cheaper substitute: a second copy of the files under `src/`.
+- [x] Add `TrayIcon(TaskbarTheme theme)` creating a `NotifyIcon`, choosing `berth-tray-dark.ico` when `theme.IsLight` is `false` and `berth-tray-light.ico` when `true`, at the size `SystemInformation.SmallIconSize` reports, and switching on `theme.Changed`. Done when: a test with a fake theme flips it and reads the `NotifyIcon.Icon` handle change. Cheaper substitute: the application icon scaled to 16 px, whose tile is unreadable in the tray (README, "Brand").
+- [x] Add `TrayText.Tooltip(Layout? active, DateTimeOffset now, TimeZoneInfo zone)` in `src/Berth/App/TrayText.cs` returning `Berth: Docked, saved today, 09:14` or `Berth: no layout for this monitor arrangement`, shortened with an ellipsis character inside the name when the whole text would pass 127 characters (the `NotifyIcon.Text` limit). Done when: unit tests compare both strings and a 40 character name stays within 127. Cheaper substitute: letting `NotifyIcon.Text` throw on a long name.
+- [x] Refresh the tooltip after every operation and when the monitors change. Done when: a test invoking a save through the menu handler sees the tooltip text change from the "no layout" form to the "saved" form. Cheaper substitute: a tooltip computed once at startup. **Corrected 2026-11-20:** §7 provides `TrayIcon.RefreshTooltip` and verifies save + monitor-arrangement transitions against `LayoutService`/`LayoutStore`; §8 wires `TrayMenu` operation completion and `D06 T01 §1` wires `WM_DISPLAYCHANGE`.
+- [x] Raise `OpenRequested` on a left click and on a double click, and not on a right click. Done when: a unit test invoking the `MouseClick` handler with each button sees the event only for the left button. Cheaper substitute: opening the window on any click, which fights the menu.
+- [x] Dispose removes the icon (`Visible = false`, then `Dispose`). Done when: a test disposes it and `NotifyIcon.Visible` is `false`. Cheaper substitute: a ghost icon left until the pointer passes over it.
+- [x] Add `tests/Berth.Tests/App/TrayIconTests.cs`. Done when: all pass, and the theme test fails when the variants are swapped. Cheaper substitute: checking the tray by eye.
+- [x] Commit: `app: tray icon and tooltip`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TrayIconTests"` passes, and fails when the dark and light icon variants are swapped.
 

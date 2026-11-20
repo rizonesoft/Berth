@@ -22,6 +22,11 @@
     <InternalsVisibleTo Include="Berth.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\icon\berth-tray-dark.ico" LogicalName="Berth.Assets.berth-tray-dark.ico" />
+    <EmbeddedResource Include="..\..\assets\icon\berth-tray-light.ico" LogicalName="Berth.Assets.berth-tray-light.ico" />
+  </ItemGroup>
+
   <!-- The preprocessor symbols the compiler defines for berth.exe, read by the layer rule test in tests/Berth.Tests. -->
   <Target Name="GetBerthDefineConstants" DependsOnTargets="AddImplicitDefineConstants" Returns="$(DefineConstants)" />
 

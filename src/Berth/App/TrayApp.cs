@@ -2,6 +2,8 @@ using System.Windows;
 using Berth.Cli;
 using Berth.Core;
 using Berth.Core.Model;
+using Berth.Desktop;
+using Microsoft.Win32;
 
 namespace Berth.App;
 
@@ -20,6 +22,7 @@ internal static class TrayApp
         ArgumentNullException.ThrowIfNull(log);
 
         string instanceName = SingleInstance.ResolveName(getenv);
+        BerthPaths paths = BerthPaths.FromEnvironment(getenv);
         return RunWithInstance(
             openWindow,
             settings,
@@ -31,7 +34,8 @@ internal static class TrayApp
                 _ = System.Windows.MessageBox.Show(text, "Berth", MessageBoxButton.OK, MessageBoxImage.Error);
                 return true;
             },
-            runPrimary: null);
+            runPrimary: null,
+            paths: paths);
     }
 
     internal static int RunWithInstance(
@@ -43,7 +47,14 @@ internal static class TrayApp
         Func<string, bool> showCrashMessage,
         Func<SingleInstance, CrashHandler, int>? runPrimary,
         Action? onBeforeReclaim = null,
-        Action<BerthApplication>? onAppStartup = null)
+        Action<BerthApplication>? onAppStartup = null,
+        BerthPaths? paths = null,
+        IMonitors? monitors = null,
+        TimeProvider? clock = null,
+        TimeZoneInfo? zone = null,
+        TaskbarTheme? taskbarTheme = null,
+        Action<TrayIcon>? onTrayIconCreated = null,
+        Action<int>? exitProcess = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -68,7 +79,26 @@ internal static class TrayApp
             }
         }
 
-        var crashHandler = new CrashHandler(log, showCrashMessage);
+        TrayIcon? activeTrayIcon = null;
+        Action<int> effectiveExit = exitProcess ?? Environment.Exit;
+        var crashHandler = new CrashHandler(
+            log,
+            showCrashMessage,
+            exitProcess: code =>
+            {
+                try
+                {
+                    activeTrayIcon?.Dispose();
+                }
+                catch (Exception)
+                {
+                    // Best-effort tray icon removal before process exit so no ghost icon remains.
+                }
+                finally
+                {
+                    effectiveExit(code);
+                }
+            });
         try
         {
             if (runPrimary is not null)
@@ -78,13 +108,59 @@ internal static class TrayApp
 
             var app = new BerthApplication();
             using IDisposable crashAttachment = crashHandler.Attach(app);
-            if (onAppStartup is not null)
+
+            TaskbarTheme effectiveTheme = taskbarTheme ?? new TaskbarTheme();
+            TimeProvider effectiveClock = clock ?? TimeProvider.System;
+            TimeZoneInfo effectiveZone = zone ?? TimeZoneInfo.Local;
+            Layout? initialActive = paths is not null
+                ? TrayIcon.FindActiveLayout(new LayoutStore(paths), monitors ?? new SystemMonitors())
+                : null;
+
+            using var trayIcon = new TrayIcon(
+                effectiveTheme,
+                initialActive,
+                effectiveClock.GetUtcNow(),
+                effectiveZone,
+                marshal: action =>
+                {
+                    if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+                    {
+                        if (app.Dispatcher.CheckAccess())
+                        {
+                            action();
+                        }
+                        else
+                        {
+                            _ = app.Dispatcher.BeginInvoke(action);
+                        }
+                    }
+                });
+            activeTrayIcon = trayIcon;
+            onTrayIconCreated?.Invoke(trayIcon);
+
+            void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
             {
-                app.Startup += (_, _) => onAppStartup(app);
+                if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
+                {
+                    effectiveTheme.OnSettingChange("ImmersiveColorSet");
+                }
             }
 
-            app.InitializeTheme();
-            return app.Run();
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            try
+            {
+                if (onAppStartup is not null)
+                {
+                    app.Startup += (_, _) => onAppStartup(app);
+                }
+
+                app.InitializeTheme();
+                return app.Run();
+            }
+            finally
+            {
+                SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            }
         }
         catch (Exception ex)
         {
