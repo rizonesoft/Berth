@@ -8,7 +8,8 @@ namespace Berth.App;
 
 /// <summary>
 /// Right-click notification-area menu (SPEC §12): six entries in SPEC order, system renderer, live state refreshed on
-/// <see cref="ContextMenuStrip.Opening"/>, background execution for desktop operations, and graceful drain on Exit.
+/// <see cref="ContextMenuStrip.Opening"/> (with shell <see cref="IDesktopIcons.AutoArrange"/> read off the UI thread so
+/// opening never freezes), background execution for desktop operations, and graceful drain on Exit.
 /// </summary>
 internal sealed class TrayMenu : IDisposable
 {
@@ -31,6 +32,8 @@ internal sealed class TrayMenu : IDisposable
 
     private readonly Lock _sync = new();
     private int _inFlightCount;
+    private long _openGeneration;
+    private Task _lastRefreshTask = Task.CompletedTask;
     private bool _exiting;
     private bool _disposed;
     private Action? _whenIdle;
@@ -119,6 +122,17 @@ internal sealed class TrayMenu : IDisposable
 
     internal ToolStripMenuItem ExitItem => _exitItem;
 
+    internal Task LastRefreshTask
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _lastRefreshTask;
+            }
+        }
+    }
+
     internal bool HasInFlightOperations
     {
         get
@@ -132,12 +146,16 @@ internal sealed class TrayMenu : IDisposable
 
     /// <summary>
     /// Refreshes the dynamic enabled and checked states for the current arrangement and settings (SPEC §12).
+    /// Queries <see cref="IDesktopIcons.AutoArrange"/> off the UI thread while keeping Restore disabled until the
+    /// check finishes, discarding results from superseded openings.
     /// </summary>
     internal void RefreshState()
     {
+        long generation;
         bool exiting;
         lock (_sync)
         {
+            generation = ++_openGeneration;
             exiting = _exiting || _disposed;
         }
 
@@ -148,15 +166,50 @@ internal sealed class TrayMenu : IDisposable
             _restoreAutomaticallyItem.Enabled = false;
             _openItem.Enabled = false;
             _exitItem.Enabled = false;
+            lock (_sync)
+            {
+                _lastRefreshTask = Task.CompletedTask;
+            }
+
             return;
         }
 
-        _restoreItem.Enabled = CanRestoreCurrentArrangement();
         SettingsLoad loaded = _settingsStore.Load();
-        if (loaded.Unreadable is null)
+        _restoreAutomaticallyItem.Checked = loaded.Value.RestoreAutomatically;
+
+        // Keep Restore disabled while the asynchronous shell check is pending so Opening never freezes the UI thread.
+        _restoreItem.Enabled = false;
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_sync)
         {
-            _restoreAutomaticallyItem.Checked = loaded.Value.RestoreAutomatically;
+            _lastRefreshTask = tcs.Task;
         }
+
+        _ = Task.Run(() =>
+        {
+            bool canRestore = CanRestoreCurrentArrangement();
+            _marshal(() =>
+            {
+                try
+                {
+                    bool apply;
+                    lock (_sync)
+                    {
+                        apply = !_disposed && !_exiting && generation == _openGeneration;
+                    }
+
+                    if (apply)
+                    {
+                        _restoreItem.Enabled = canRestore;
+                    }
+                }
+                finally
+                {
+                    tcs.TrySetResult();
+                }
+            });
+        });
     }
 
     /// <summary>
@@ -171,6 +224,7 @@ internal sealed class TrayMenu : IDisposable
         lock (_sync)
         {
             _exiting = true;
+            _openGeneration++;
             if (_inFlightCount == 0)
             {
                 runNow = true;
@@ -200,6 +254,7 @@ internal sealed class TrayMenu : IDisposable
 
             _disposed = true;
             _exiting = true;
+            _openGeneration++;
             _whenIdle = null;
         }
 
@@ -269,6 +324,7 @@ internal sealed class TrayMenu : IDisposable
             }
 
             _exiting = true;
+            _openGeneration++;
         }
 
         ExitRequested?.Invoke();

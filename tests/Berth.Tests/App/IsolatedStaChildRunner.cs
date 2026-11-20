@@ -255,6 +255,8 @@ internal static class IsolatedStaChildRunner
         bool attachedToNotifyIcon = false;
         int completedCount = 0;
         bool exitedBeforeRelease = false;
+        bool iconVisibleBeforeRelease = false;
+        int completedCountBeforeRelease = -1;
 
         int exitCode = TrayApp.RunWithInstance(
             openWindow: false,
@@ -308,6 +310,8 @@ internal static class IsolatedStaChildRunner
                         {
                             capturedMenu.ExitItem.PerformClick();
                             exitedBeforeRelease = app.Dispatcher.HasShutdownStarted;
+                            iconVisibleBeforeRelease = capturedIcon.IsVisible;
+                            completedCountBeforeRelease = completedCount;
                         });
                         Thread.Sleep(50);
                         desktop.ReleaseGate();
@@ -325,6 +329,8 @@ internal static class IsolatedStaChildRunner
                 $"attachedToNotifyIcon={attachedToNotifyIcon}",
                 $"initialTooltip={initialTooltip}",
                 $"tooltipAfterSave={tooltipAfterSave}",
+                $"completedCountBeforeRelease={completedCountBeforeRelease}",
+                $"iconVisibleBeforeRelease={iconVisibleBeforeRelease}",
                 $"completedCount={completedCount}",
                 $"exitedBeforeRelease={exitedBeforeRelease}",
                 $"visibleAfterExit={visibleAfterExit}",
@@ -337,45 +343,44 @@ internal static class IsolatedStaChildRunner
     private sealed class GatedDesktopIcons(params IconPosition[] initial) : IDesktopIcons, IDisposable
     {
         private readonly Berth.Tests.Fakes.FakeDesktopIcons _inner = new(initial);
-        private ManualResetEventSlim? _entered;
-        private ManualResetEventSlim? _release;
+        private readonly ManualResetEventSlim _entered = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+        private int _gateArmed;
 
         public void ArmGate()
         {
-            _entered?.Dispose();
-            _release?.Dispose();
-            _entered = new ManualResetEventSlim(false);
-            _release = new ManualResetEventSlim(false);
+            _entered.Reset();
+            _release.Reset();
+            Volatile.Write(ref _gateArmed, 1);
         }
 
         public void WaitUntilEntered(TimeSpan timeout)
         {
-            if (_entered is not null && !_entered.Wait(timeout))
+            if (!_entered.Wait(timeout))
             {
                 throw new TimeoutException("In-flight desktop read did not start in time.");
             }
         }
 
-        public void ReleaseGate() => _release?.Set();
+        public void ReleaseGate() => _release.Set();
 
         public void Dispose()
         {
-            _entered?.Dispose();
-            _release?.Dispose();
+            _entered.Dispose();
+            _release.Dispose();
         }
 
         public bool AutoArrange => ((IDesktopIcons)_inner).AutoArrange;
 
         public IReadOnlyList<IconPosition> ReadIcons()
         {
-            ManualResetEventSlim? entered = _entered;
-            ManualResetEventSlim? release = _release;
-            if (entered is not null && release is not null)
+            if (Interlocked.Exchange(ref _gateArmed, 0) == 1)
             {
-                _entered = null;
-                _release = null;
-                entered.Set();
-                release.Wait(TimeSpan.FromSeconds(5));
+                _entered.Set();
+                if (!_release.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException("In-flight desktop read gate was never released.");
+                }
             }
 
             return ((IDesktopIcons)_inner).ReadIcons();
