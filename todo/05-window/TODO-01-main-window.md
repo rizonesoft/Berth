@@ -319,6 +319,8 @@ The `Run` value behind the second switch, with the registry path as a parameter 
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RunValueTests"` passes, and fails when `IsOn` is `true` for a value naming another executable.
 
+> **Started:** 2026-11-20
+
 ## 11. Settings switches and version caption
 
 The two switches and the version at the bottom of the layouts pane (SPEC §11, §5 last bullet).
