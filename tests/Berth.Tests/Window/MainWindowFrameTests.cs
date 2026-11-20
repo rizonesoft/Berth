@@ -55,17 +55,21 @@ public sealed class MainWindowFrameTests(AppFixture appFixture)
                 Assert.True(window.PaneDivider.ActualWidth > 0d, "PaneDivider must have a positive rendered width.");
                 Assert.InRange(window.PaneDivider.ActualWidth, 1d - tolerance, 1d + tolerance);
 
+                double initialWindowWidth = window.ActualWidth;
                 double initialDetailWidth = window.DetailHost.ActualWidth;
                 Assert.True(initialDetailWidth > 0d, "DetailHost should fill the remaining width.");
 
-                // Resizing wider must grow DetailHost while preserving the 250 DIP LayoutsHost.
-                window.Width = 1100d;
+                // Resizing narrower (to 860 DIPs, above MinWidth 760 and within 1024 px virtual CI displays)
+                // must shrink DetailHost by the exact window width delta while preserving the 250 DIP LayoutsHost.
+                window.Width = 860d;
                 window.UpdateLayout();
 
+                double windowDelta = initialWindowWidth - window.ActualWidth;
+                double detailDelta = initialDetailWidth - window.DetailHost.ActualWidth;
                 Assert.InRange(window.LayoutsHost.ActualWidth, 250d - tolerance, 250d + tolerance);
                 Assert.True(
-                    window.DetailHost.ActualWidth > initialDetailWidth + 100d,
-                    $"Expected DetailHost width to grow on resize (before={initialDetailWidth}, after={window.DetailHost.ActualWidth}).");
+                    windowDelta > 100d && Math.Abs(detailDelta - windowDelta) <= tolerance + 1d,
+                    $"Expected DetailHost width to track window resize (windowDelta={windowDelta}, detailDelta={detailDelta}, before={initialDetailWidth}, after={window.DetailHost.ActualWidth}).");
             }
             finally
             {
