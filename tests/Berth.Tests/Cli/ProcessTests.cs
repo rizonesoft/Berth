@@ -148,11 +148,13 @@ public sealed class ProcessTests
             Assert.Equal(probe.Icon.X, savedIcon.X);
             Assert.Equal(probe.Icon.Y, savedIcon.Y);
 
-            // 2) Move the probe icon through ScopedDesktopIcons using grid-safe target selection, then poll for landed coordinates.
-            (bool snapToGrid, int spacingX, int spacingY) = ProbeIconTests.ReadGridInfo(shell);
-            int stepX = snapToGrid ? Math.Max(spacingX * 2, 160) : 120;
-            int stepY = snapToGrid ? Math.Max(spacingY, 100) : 80;
-            (int targetX, int targetY) = ProbeIconTests.ChooseInBoundsTarget(savedIcon.X, savedIcon.Y, stepX, stepY, monitors.Read());
+            // 2) Move the probe icon horizontally onto an exact grid cell (when snap-to-grid is on) so Explorer does not
+            // re-snap it asynchronously between our read and berth.exe restore.
+            (bool snapToGrid, int spacingX, _) = ProbeIconTests.ReadGridInfo(shell);
+            int stepX = snapToGrid && spacingX > 0
+                ? Math.Max(spacingX * 2, ((200 + spacingX - 1) / spacingX) * spacingX)
+                : 200;
+            (int targetX, int targetY) = ProbeIconTests.ChooseInBoundsTarget(savedIcon.X, savedIcon.Y, stepX, 0, monitors.Read());
             probe.ScopedDesktop.SetPositions([savedIcon with { X = targetX, Y = targetY }]);
 
             IconPosition landed = WaitForDistinctPosition(probe.ScopedDesktop, savedIcon, TimeSpan.FromSeconds(5));
@@ -239,6 +241,8 @@ public sealed class ProcessTests
     {
         var sw = Stopwatch.StartNew();
         IconPosition latest = original;
+        IconPosition? settledCandidate = null;
+        var stableFor = new Stopwatch();
         while (sw.Elapsed < timeout)
         {
             IReadOnlyList<IconPosition> icons = scoped.ReadIcons();
@@ -248,10 +252,26 @@ public sealed class ProcessTests
                 latest = match;
                 if (match.X != original.X || match.Y != original.Y)
                 {
-                    return match;
+                    if (settledCandidate is not null && settledCandidate.X == match.X && settledCandidate.Y == match.Y)
+                    {
+                        if (stableFor.Elapsed >= TimeSpan.FromMilliseconds(500))
+                        {
+                            return match;
+                        }
+                    }
+                    else
+                    {
+                        settledCandidate = match;
+                        stableFor.Restart();
+                    }
+
+                    Thread.Sleep(100);
+                    continue;
                 }
             }
 
+            settledCandidate = null;
+            stableFor.Reset();
             Thread.Sleep(50);
         }
 
@@ -288,12 +308,14 @@ public sealed class ProcessTests
         private sealed class FolderSnapshot
         {
             private readonly bool _exists;
+            private readonly bool _rootIsReparsePoint;
             private readonly DateTime _rootLastWriteUtc;
             private readonly List<FsEntry> _entries;
 
-            private FolderSnapshot(bool exists, DateTime rootLastWriteUtc, List<FsEntry> entries)
+            private FolderSnapshot(bool exists, bool rootIsReparsePoint, DateTime rootLastWriteUtc, List<FsEntry> entries)
             {
                 _exists = exists;
+                _rootIsReparsePoint = rootIsReparsePoint;
                 _rootLastWriteUtc = rootLastWriteUtc;
                 _entries = entries;
             }
@@ -302,13 +324,14 @@ public sealed class ProcessTests
             {
                 if (!Directory.Exists(root))
                 {
-                    return new FolderSnapshot(exists: false, default, []);
+                    return new FolderSnapshot(exists: false, rootIsReparsePoint: false, default, []);
                 }
 
                 var rootInfo = new DirectoryInfo(root);
+                bool rootIsReparse = (rootInfo.Attributes & FileAttributes.ReparsePoint) != 0;
                 var entries = new List<FsEntry>();
                 var pending = new Stack<DirectoryInfo>();
-                if ((rootInfo.Attributes & FileAttributes.ReparsePoint) == 0)
+                if (!rootIsReparse)
                 {
                     pending.Push(rootInfo);
                 }
@@ -345,12 +368,13 @@ public sealed class ProcessTests
                 }
 
                 entries.Sort(static (a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.RelativePath, b.RelativePath));
-                return new FolderSnapshot(exists: true, rootInfo.LastWriteTimeUtc, entries);
+                return new FolderSnapshot(exists: true, rootIsReparse, rootInfo.LastWriteTimeUtc, entries);
             }
 
             public void AssertEqual(FolderSnapshot other)
             {
                 Assert.Equal(_exists, other._exists);
+                Assert.Equal(_rootIsReparsePoint, other._rootIsReparsePoint);
                 Assert.Equal(_rootLastWriteUtc, other._rootLastWriteUtc);
                 Assert.Equal(_entries, other._entries);
             }
