@@ -85,6 +85,13 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     public IReadOnlyList<IconPosition> ReadIcons() =>
         RunMemberWithView(nameof(ReadIcons), ReadIconsFromView);
 
+    internal IReadOnlyList<IconPosition> ReadIcons(string namePrefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(namePrefix);
+        return RunMemberWithView(nameof(ReadIcons), desktop =>
+            ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject, namePrefix));
+    }
+
     public void SetPositions(IReadOnlyList<IconPosition> icons)
     {
         ArgumentNullException.ThrowIfNull(icons);
@@ -102,6 +109,17 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
         RunMemberWithView(nameof(SetPositions), desktop =>
         {
             SetPositionsOnView(desktop, icons, beforeMove);
+            return 0;
+        });
+    }
+
+    internal void SetPositions(IReadOnlyList<IconPosition> icons, Action? beforeMove, string namePrefix)
+    {
+        ArgumentNullException.ThrowIfNull(icons);
+        ArgumentException.ThrowIfNullOrWhiteSpace(namePrefix);
+        RunMemberWithView(nameof(SetPositions), desktop =>
+        {
+            SetPositionsOnView(desktop, icons, beforeMove, namePrefix);
             return 0;
         });
     }
@@ -155,7 +173,11 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
     public void Dispose() => _worker.Dispose();
 
-    private void SetPositionsOnView(DesktopView desktop, IReadOnlyList<IconPosition> icons, Action? beforeMove)
+    private void SetPositionsOnView(
+        DesktopView desktop,
+        IReadOnlyList<IconPosition> icons,
+        Action? beforeMove,
+        string? namePrefix = null)
     {
         if (icons.Count == 0)
         {
@@ -211,6 +233,27 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
                 if (pidl == nint.Zero)
                 {
                     throw new DesktopUnavailableException("Desktop icon enumeration returned a null item identifier list.");
+                }
+
+                if (namePrefix is not null)
+                {
+                    string scopedName;
+                    try
+                    {
+                        folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_NORMAL, out StrRet scopedDisplayRet);
+                        scopedName = DecodeStrRet(ref scopedDisplayRet, pidl, _freeCoTaskMem);
+                    }
+                    catch
+                    {
+                        _freeCoTaskMem(pidl);
+                        throw;
+                    }
+
+                    if (!scopedName.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _freeCoTaskMem(pidl);
+                        continue;
+                    }
                 }
 
                 allocatedPidls.Add(pidl);
@@ -276,12 +319,13 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     }
 
     private IReadOnlyList<IconPosition> ReadIconsFromView(DesktopView desktop) =>
-        ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject);
+        ReadIconsFromView(desktop, _freeCoTaskMem, _releaseComObject, namePrefix: null);
 
     private IReadOnlyList<IconPosition> ReadIconsFromView(
         DesktopView desktop,
         Action<nint> freeCoTaskMem,
-        Action<object> releaseComObject)
+        Action<object> releaseComObject,
+        string? namePrefix = null)
     {
         IReadOnlyList<MonitorInfo> monitors = _monitors.Read();
         object? folderObj = null;
@@ -334,6 +378,28 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
                 try
                 {
+                    if (namePrefix is not null)
+                    {
+                        folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_NORMAL, out StrRet scopedDisplayRet);
+                        string scopedName = DecodeStrRet(ref scopedDisplayRet, pidl, freeCoTaskMem);
+                        if (!scopedName.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        desktop.View.GetItemPosition(pidl, out NativePoint scopedViewPoint);
+                        folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet scopedParsingRet);
+                        string scopedId = DecodeStrRet(ref scopedParsingRet, pidl, freeCoTaskMem);
+                        if (string.IsNullOrEmpty(scopedId))
+                        {
+                            throw new DesktopUnavailableException("Desktop icon returned an empty parsing name.");
+                        }
+
+                        (int scopedX, int scopedY) = DesktopCoordinates.ToDesktop(scopedViewPoint.X, scopedViewPoint.Y, monitors);
+                        raw.Add(new IconPosition(scopedId, scopedName, scopedX, scopedY));
+                        continue;
+                    }
+
                     desktop.View.GetItemPosition(pidl, out NativePoint viewPoint);
                     folder.GetDisplayNameOf(pidl, ShellConstants.SHGDN_FORPARSING, out StrRet parsingRet);
                     string id = DecodeStrRet(ref parsingRet, pidl, freeCoTaskMem);
