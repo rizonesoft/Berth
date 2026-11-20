@@ -783,6 +783,9 @@ public sealed class LayoutEditTests
         public void SetPositions(IReadOnlyList<IconPosition> icons) =>
             throw new InvalidOperationException("Layout edits must never move desktop icons.");
 
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove) =>
+            throw new InvalidOperationException("Layout edits must never move desktop icons.");
+
         public bool TryTurnAutoArrangeOff() =>
             throw new InvalidOperationException("Layout edits must never change AutoArrange.");
     }

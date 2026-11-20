@@ -62,11 +62,30 @@ internal sealed class FakeDesktopIcons : IDesktopIcons
         return [.. icons];
     }
 
-    void IDesktopIcons.SetPositions(IReadOnlyList<IconPosition> requested)
+    void IDesktopIcons.SetPositions(IReadOnlyList<IconPosition> requested) =>
+        SetPositionsCore(requested, beforeMove: null);
+
+    void IDesktopIcons.SetPositions(IReadOnlyList<IconPosition> requested, Action beforeMove)
+    {
+        ArgumentNullException.ThrowIfNull(beforeMove);
+        SetPositionsCore(requested, beforeMove);
+    }
+
+    private void SetPositionsCore(IReadOnlyList<IconPosition> requested, Action? beforeMove)
     {
         ArgumentNullException.ThrowIfNull(requested);
-        Calls.Add([.. requested]);
-        ThrowIfUnavailable();
+        if (beforeMove is null)
+        {
+            Calls.Add([.. requested]);
+            ThrowIfUnavailable();
+        }
+        else
+        {
+            ThrowIfUnavailable();
+            beforeMove();
+            Calls.Add([.. requested]);
+        }
+
         BeforeSet?.Invoke();
         if (UnavailableOnSet)
         {

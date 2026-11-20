@@ -685,6 +685,9 @@ public sealed class UndoTests
         public void SetPositions(IReadOnlyList<IconPosition> icons) =>
             throw new InvalidOperationException("CanUndo must never position desktop icons.");
 
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove) =>
+            throw new InvalidOperationException("CanUndo must never position desktop icons.");
+
         public bool TryTurnAutoArrangeOff() =>
             throw new InvalidOperationException("CanUndo must never change AutoArrange.");
     }
