@@ -60,13 +60,12 @@ public sealed class ListCommandTests
         var store = new LayoutStore(paths);
         var when = new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero);
 
-        // Control char \b expands to \u0008 (6 chars), making "AB\u0008C" (9 chars) wider than "Docked" (6 chars).
+        // Raw length of "AB\bC" is 4 (< "Docked" length 6), but sanitized "AB\u0008C" has display width 9 (> 6),
+        // so measuring before sanitization would fail to pad "Docked" out to column 9.
         Layout docked = MakeLayout(ArrangementA, "Docked", when, 42);
         Layout controlName = MakeLayout(ArrangementB, "AB\bC", when, 1);
-        Layout longerName = MakeLayout(ArrangementC, "Home Office Desk", when, 5);
         store.Save(docked);
         store.Save(controlName);
-        store.Save(longerName);
 
         var output = new StringWriter();
         var error = new StringWriter();
@@ -76,9 +75,33 @@ public sealed class ListCommandTests
         Assert.Equal(string.Empty, error.ToString());
 
         string expected =
-            $"* Docked            2 monitors  42 icons  2026-11-15 09:14{Environment.NewLine}" +
-            $"  AB\\u0008C         1 monitor  1 icon  2026-11-15 09:14{Environment.NewLine}" +
-            $"  Home Office Desk  1 monitor  5 icons  2026-11-15 09:14{Environment.NewLine}";
+            $"* Docked     2 monitors  42 icons  2026-11-15 09:14{Environment.NewLine}" +
+            $"  AB\\u0008C  1 monitor  1 icon  2026-11-15 09:14{Environment.NewLine}";
+        Assert.Equal(expected, output.ToString());
+    }
+
+    [Fact]
+    public void ListAlignsWideUnicodeNamesByTerminalCellWidth()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        var when = new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero);
+
+        // "東京" (2 UTF-16 code units, 4 terminal cells) vs "AB" (2 UTF-16 code units, 2 terminal cells).
+        store.Save(MakeLayout(ArrangementA, "東京", when, 42));
+        store.Save(MakeLayout(ArrangementB, "AB", when, 1));
+
+        var output = new StringWriter();
+        var error = new StringWriter();
+        int exitCode = CliRunner.RunList(store, paths, new FakeMonitors(ArrangementA), log: null, output, error, UtcPlusTwo);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+
+        string expected =
+            $"* 東京  2 monitors  42 icons  2026-11-15 09:14{Environment.NewLine}" +
+            $"  AB    1 monitor  1 icon  2026-11-15 09:14{Environment.NewLine}";
         Assert.Equal(expected, output.ToString());
     }
 
@@ -213,7 +236,9 @@ public sealed class ListCommandTests
         Assert.StartsWith($"Berth could not read {paths.LayoutsFolder}: ", errText, StringComparison.Ordinal);
         Assert.EndsWith($".{Environment.NewLine}", errText, StringComparison.Ordinal);
         Assert.True(File.Exists(paths.LogFile));
-        Assert.Contains($"FAIL Berth could not read {paths.LayoutsFolder}: ", File.ReadAllText(paths.LogFile), StringComparison.Ordinal);
+        string[] logLines = File.ReadAllLines(paths.LogFile);
+        string soleLogLine = Assert.Single(logLines);
+        Assert.EndsWith($" FAIL {errText.TrimEnd()}", soleLogLine, StringComparison.Ordinal);
     }
 
     [Fact]

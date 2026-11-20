@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.IO;
+using System.Text;
 using Berth.Core;
 using Berth.Core.Model;
 
@@ -17,37 +19,14 @@ internal static class CliExit
 internal sealed class CliRunner
 {
     private readonly LayoutService _service;
-    private readonly LayoutStore? _store;
-    private readonly BerthPaths? _paths;
-    private readonly IMonitors? _monitors;
-    private readonly Log? _log;
     private readonly TextWriter _output;
     private readonly TextWriter _error;
-    private readonly TimeZoneInfo _zone;
 
     public CliRunner(LayoutService service, TextWriter output, TextWriter error)
-        : this(service, store: null, paths: null, monitors: null, log: null, output, error, TimeZoneInfo.Local)
-    {
-    }
-
-    public CliRunner(
-        LayoutService service,
-        LayoutStore? store,
-        BerthPaths? paths,
-        IMonitors? monitors,
-        Log? log,
-        TextWriter output,
-        TextWriter error,
-        TimeZoneInfo zone)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
-        _store = store;
-        _paths = paths;
-        _monitors = monitors;
-        _log = log;
         _output = output ?? throw new ArgumentNullException(nameof(output));
         _error = error ?? throw new ArgumentNullException(nameof(error));
-        _zone = zone ?? throw new ArgumentNullException(nameof(zone));
     }
 
     public int Run(CliArguments args)
@@ -63,14 +42,6 @@ internal sealed class CliRunner
             CliCommand.Save => WriteOperationResult(_service.Save(args.Name)),
             CliCommand.Restore => WriteOperationResult(_service.Restore()),
             CliCommand.Undo => WriteOperationResult(_service.Undo()),
-            CliCommand.List => RunList(
-                _store ?? throw new InvalidOperationException("LayoutStore is required for list."),
-                _paths ?? throw new InvalidOperationException("BerthPaths is required for list."),
-                _monitors ?? throw new InvalidOperationException("IMonitors is required for list."),
-                _log,
-                _output,
-                _error,
-                _zone),
             _ => CliExit.Usage,
         };
     }
@@ -102,7 +73,7 @@ internal sealed class CliRunner
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             string line = Messages.ReadFailed(paths.LayoutsFolder, ex.Message);
-            log?.Fail(line, ex);
+            log?.Fail(line);
             error.WriteLine(line);
             return CliExit.Error;
         }
@@ -125,13 +96,14 @@ internal sealed class CliRunner
         foreach (Layout layout in loaded.Layouts)
         {
             string displayName = Messages.SingleLine(layout.Name);
-            if (displayName.Length > maxNameWidth)
+            int width = DisplayWidth(displayName);
+            if (width > maxNameWidth)
             {
-                maxNameWidth = displayName.Length;
+                maxNameWidth = width;
             }
 
             bool isActive = activeKey is not null && string.Equals(layout.Key, activeKey, StringComparison.Ordinal);
-            rows.Add(new ListRow(layout, displayName, isActive));
+            rows.Add(new ListRow(layout, displayName, width, isActive));
         }
 
         rows.Sort(static (a, b) =>
@@ -160,14 +132,51 @@ internal sealed class CliRunner
         foreach (ListRow row in rows)
         {
             string marker = row.IsActive ? "* " : "  ";
-            string paddedName = row.DisplayName.PadRight(maxNameWidth);
+            string padding = new(' ', maxNameWidth - row.DisplayWidth);
             string monitorCount = Formats.MonitorCount(row.Layout.Monitors.Length);
             string iconCount = Formats.IconCount(row.Layout.Icons.Length);
             string savedAt = Formats.ListDate(row.Layout.SavedAt, zone);
-            output.WriteLine($"{marker}{paddedName}  {monitorCount}  {iconCount}  {savedAt}");
+            output.WriteLine($"{marker}{row.DisplayName}{padding}  {monitorCount}  {iconCount}  {savedAt}");
         }
 
         return CliExit.Done;
+    }
+
+    internal static int DisplayWidth(string text)
+    {
+        int width = 0;
+        foreach (Rune rune in text.EnumerateRunes())
+        {
+            width += RuneDisplayWidth(rune);
+        }
+
+        return width;
+    }
+
+    private static int RuneDisplayWidth(Rune rune)
+    {
+        UnicodeCategory category = Rune.GetUnicodeCategory(rune);
+        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
+        {
+            return 0;
+        }
+
+        int v = rune.Value;
+        bool wide =
+            v >= 0x1100 &&
+            (v <= 0x115F
+             || v is 0x2329 or 0x232A
+             || (v >= 0x2E80 && v <= 0xA4CF && v != 0x303F)
+             || (v >= 0xAC00 && v <= 0xD7A3)
+             || (v >= 0xF900 && v <= 0xFAFF)
+             || (v >= 0xFE10 && v <= 0xFE19)
+             || (v >= 0xFE30 && v <= 0xFE6F)
+             || (v >= 0xFF00 && v <= 0xFF60)
+             || (v >= 0xFFE0 && v <= 0xFFE6)
+             || (v >= 0x1F300 && v <= 0x1FAFF)
+             || (v >= 0x20000 && v <= 0x3FFFD));
+
+        return wide ? 2 : 1;
     }
 
     private static string? TryReadActiveKey(IMonitors monitors)
@@ -210,5 +219,5 @@ internal sealed class CliRunner
         }
     }
 
-    private readonly record struct ListRow(Layout Layout, string DisplayName, bool IsActive);
+    private readonly record struct ListRow(Layout Layout, string DisplayName, int DisplayWidth, bool IsActive);
 }
