@@ -54,6 +54,11 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
                 WpfListBoxItem[] items = RealizeItems(pane.LayoutsList);
                 Assert.Equal(3, items.Length);
                 Assert.Equal(["Docked", "Laptop", "Projector"], items.Select(AutomationProperties.GetName));
+                AssertRealizedRowTexts(
+                    items,
+                    ("Docked", "2 monitors \u00B7 42 icons"),
+                    ("Laptop", "1 monitor \u00B7 18 icons"),
+                    ("Projector", "1 monitor \u00B7 12 icons"));
 
                 // Active badge element MUST exist ONLY in the active row (index 0) and read "Active".
                 Border?[] badges = [.. items.Select(i => FindDescendant<Border>(i, "ActiveBadge"))];
@@ -237,8 +242,7 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
             assertBeforeCapture: (vm, items) =>
             {
                 Assert.Single(items);
-                Assert.Equal("This arrangement", vm.Rows[0].Name);
-                Assert.Equal("Not saved yet", vm.Rows[0].Subtitle);
+                AssertRealizedRowTexts(items, ("This arrangement", "Not saved yet"));
                 Assert.Null(FindDescendant<Border>(items[0], "ActiveBadge"));
                 AssertSelectionMarker(items, selectedIndex: 0);
             });
@@ -254,8 +258,7 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
             assertBeforeCapture: (vm, items) =>
             {
                 Assert.Single(items);
-                Assert.Equal("Docked", vm.Rows[0].Name);
-                Assert.Equal("2 monitors \u00B7 42 icons", vm.Rows[0].Subtitle);
+                AssertRealizedRowTexts(items, ("Docked", "2 monitors \u00B7 42 icons"));
                 Assert.NotNull(FindDescendant<Border>(items[0], "ActiveBadge"));
                 AssertSelectionMarker(items, selectedIndex: 0);
             });
@@ -276,7 +279,11 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
             assertBeforeCapture: (vm, items) =>
             {
                 Assert.Equal(3, items.Length);
-                Assert.Equal(["Docked", "Laptop", "Projector"], vm.Rows.Select(r => r.Name));
+                AssertRealizedRowTexts(
+                    items,
+                    ("Docked", "2 monitors \u00B7 42 icons"),
+                    ("Laptop", "1 monitor \u00B7 18 icons"),
+                    ("Projector", "1 monitor \u00B7 12 icons"));
                 Assert.NotNull(FindDescendant<Border>(items[0], "ActiveBadge"));
                 Assert.Null(FindDescendant<Border>(items[1], "ActiveBadge"));
                 Assert.Null(FindDescendant<Border>(items[2], "ActiveBadge"));
@@ -300,6 +307,10 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
             {
                 Assert.Equal(2, items.Length);
                 Assert.Equal("Laptop", vm.Selected?.Name);
+                AssertRealizedRowTexts(
+                    items,
+                    ("Docked", "2 monitors \u00B7 42 icons"),
+                    ("Laptop", "1 monitor \u00B7 18 icons"));
                 Assert.NotNull(FindDescendant<Border>(items[0], "ActiveBadge"));
                 Assert.Null(FindDescendant<Border>(items[1], "ActiveBadge"));
                 AssertSelectionMarker(items, selectedIndex: 1);
@@ -320,11 +331,87 @@ public sealed class LayoutsPaneTests(AppFixture appFixture)
             assertBeforeCapture: (vm, items) =>
             {
                 Assert.Equal(3, items.Length);
-                Assert.Equal(["This arrangement", "Docked", "Projector"], vm.Rows.Select(r => r.Name));
-                Assert.Equal("Not saved yet", vm.Rows[0].Subtitle);
+                AssertRealizedRowTexts(
+                    items,
+                    ("This arrangement", "Not saved yet"),
+                    ("Docked", "2 monitors \u00B7 42 icons"),
+                    ("Projector", "1 monitor \u00B7 12 icons"));
                 Assert.All(items, item => Assert.Null(FindDescendant<Border>(item, "ActiveBadge")));
                 AssertSelectionMarker(items, selectedIndex: 0);
             });
+    }
+
+    [Fact]
+    public async Task CtrlClickDeselectionPreservesSelectedRowAndMarkerAcrossRefresh()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonDualA, MonDualB], "Docked", 42);
+        SaveLayout(store, [MonSingle], "Laptop", 18);
+
+        var monitors = new FakeMonitors(MonDualA, MonDualB);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 10, 20));
+        var vm = CreateViewModel(store, desktop, monitors);
+        await vm.RefreshAsync();
+
+        MainWindow? window = null;
+        try
+        {
+            window = appFixture.Invoke(() =>
+            {
+                var w = new MainWindow { DataContext = vm };
+                MeasureAndArrange(w);
+                var pane = (LayoutsPane)w.LayoutsHost.Content;
+                pane.LayoutsList.SelectedIndex = 1;
+                MeasureAndArrange(w);
+                Assert.Equal("Laptop", vm.Selected?.Name);
+
+                // Simulate WPF SelectionMode.Single Ctrl-click deselection writing null into SelectedItem.
+                pane.LayoutsList.SelectedItem = null;
+                MeasureAndArrange(w);
+
+                Assert.Equal("Laptop", vm.Selected?.Name);
+                Assert.Same(vm.Rows[1], pane.LayoutsList.SelectedItem);
+                WpfListBoxItem[] items = RealizeItems(pane.LayoutsList);
+                AssertSelectionMarker(items, selectedIndex: 1);
+                return w;
+            });
+
+            // A subsequent refresh must still preserve "Laptop" rather than falling back to the active row.
+            await vm.RefreshAsync();
+
+            appFixture.Invoke(() =>
+            {
+                MeasureAndArrange(window!);
+                var pane = (LayoutsPane)window!.LayoutsHost.Content;
+                Assert.Equal("Laptop", vm.Selected?.Name);
+                Assert.Same(vm.Rows[1], pane.LayoutsList.SelectedItem);
+                WpfListBoxItem[] items = RealizeItems(pane.LayoutsList);
+                AssertSelectionMarker(items, selectedIndex: 1);
+            });
+        }
+        finally
+        {
+            if (window is not null)
+            {
+                appFixture.Invoke(() => window.CloseForShutdown());
+            }
+        }
+    }
+
+    private static void AssertRealizedRowTexts(WpfListBoxItem[] items, params (string Name, string Subtitle)[] expected)
+    {
+        Assert.Equal(expected.Length, items.Length);
+        for (int i = 0; i < expected.Length; i++)
+        {
+            TextBlock? nameText = FindDescendant<TextBlock>(items[i], "RowNameText");
+            TextBlock? subtitleText = FindDescendant<TextBlock>(items[i], "RowSubtitleText");
+            Assert.NotNull(nameText);
+            Assert.NotNull(subtitleText);
+            Assert.Equal(expected[i].Name, nameText.Text);
+            Assert.Equal(expected[i].Subtitle, subtitleText.Text);
+        }
     }
 
     private async Task RenderAndAssertStateAsync(

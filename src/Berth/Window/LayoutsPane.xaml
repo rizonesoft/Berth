@@ -36,13 +36,14 @@
                  ItemsSource="{Binding Rows}"
                  SelectedItem="{Binding Selected, Mode=TwoWay}"
                  SelectionMode="Single"
-                 BorderThickness="0"
+                 SelectionChanged="OnSelectionChanged"
+                 BorderThickness="{DynamicResource Berth.Space.None}"
                  Background="Transparent"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  AutomationProperties.Name="Layouts">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Padding" Value="{DynamicResource Berth.Space.None}" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="MinHeight" Value="{DynamicResource Berth.ControlHeight}" />
                     <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />

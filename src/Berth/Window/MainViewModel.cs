@@ -79,6 +79,12 @@ internal sealed class MainViewModel : ObservableObject
         get => _selected;
         set
         {
+            if (value is null && !_isApplyingSnapshot && Rows.Count > 0)
+            {
+                RaisePropertyChanged(nameof(Selected));
+                return;
+            }
+
             if (Set(ref _selected, value))
             {
                 if (value is not null)

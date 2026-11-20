@@ -159,33 +159,33 @@ public sealed class MainViewModelTests
         Assert.Equal(IconState.Neutral, vm.Comparison!.Icons[0].State);
         Assert.Equal(300, vm.Comparison.Icons[0].Saved.X);
 
-        // 3. Explorer outage (desktop.Unavailable = true) while monitors still succeed -> preserves active "Zebra"
-        //    and shows Neutral(savedLayout), then recovers to live Compare on next refresh without losing selection!
-        vm.Selected = null; // Reset to test opening rule during outage.
+        // 3. Explorer outage (desktop.Unavailable = true) while monitors still succeed -> fresh VM opening rule preserves
+        //    active "Zebra" and shows Neutral(savedLayout), then recovers to live Compare on next refresh without losing selection!
         desktop.Unavailable = true;
-        await vm.RefreshAsync();
-        Assert.True(vm.Desktop.Unavailable);
-        Assert.Equal("Zebra", vm.Selected?.Name);
-        Assert.True(vm.Selected!.IsActive);
-        Assert.Equal(ComparisonKind.Neutral, vm.ComparisonKind);
-        Assert.Equal(IconState.Neutral, vm.Comparison!.Icons[0].State);
-        Assert.Equal(100, vm.Comparison.Icons[0].Saved.X);
+        var outageVm = new MainViewModel(store, desktop, monitors, new FixedClock(FixedNow));
+        await outageVm.RefreshAsync();
+        Assert.True(outageVm.Desktop.Unavailable);
+        Assert.Equal("Zebra", outageVm.Selected?.Name);
+        Assert.True(outageVm.Selected!.IsActive);
+        Assert.Equal(ComparisonKind.Neutral, outageVm.ComparisonKind);
+        Assert.Equal(IconState.Neutral, outageVm.Comparison!.Icons[0].State);
+        Assert.Equal(100, outageVm.Comparison.Icons[0].Saved.X);
 
         desktop.Unavailable = false;
-        await vm.RefreshAsync();
-        Assert.False(vm.Desktop.Unavailable);
-        Assert.Equal("Zebra", vm.Selected?.Name);
-        Assert.Equal(ComparisonKind.Compared, vm.ComparisonKind);
-        Assert.Equal(1, vm.Comparison!.Moved);
+        await outageVm.RefreshAsync();
+        Assert.False(outageVm.Desktop.Unavailable);
+        Assert.Equal("Zebra", outageVm.Selected?.Name);
+        Assert.Equal(ComparisonKind.Compared, outageVm.ComparisonKind);
+        Assert.Equal(1, outageVm.Comparison!.Moved);
 
-        // 4. Unsaved current arrangement -> opening rule selects "This arrangement" and shows live icons with Neutral state.
-        vm.Selected = null;
+        // 4. Unsaved current arrangement -> fresh VM opening rule selects "This arrangement" and shows live icons with Neutral state.
         monitors.Monitors = [MonC];
-        await vm.RefreshAsync();
-        Assert.True(vm.Selected?.IsUnsaved);
-        Assert.Equal(ComparisonKind.Unsaved, vm.ComparisonKind);
-        Assert.Equal(IconState.Neutral, vm.Comparison!.Icons[0].State);
-        Assert.Equal(999, vm.Comparison.Icons[0].Saved.X);
+        var unsavedVm = new MainViewModel(store, desktop, monitors, new FixedClock(FixedNow));
+        await unsavedVm.RefreshAsync();
+        Assert.True(unsavedVm.Selected?.IsUnsaved);
+        Assert.Equal(ComparisonKind.Unsaved, unsavedVm.ComparisonKind);
+        Assert.Equal(IconState.Neutral, unsavedVm.Comparison!.Icons[0].State);
+        Assert.Equal(999, unsavedVm.Comparison.Icons[0].Saved.X);
     }
 
     [Fact]
