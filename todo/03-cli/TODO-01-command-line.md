@@ -37,7 +37,7 @@ depends_on: ["layout-core", "desktop-access"]
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Argument parser | D00 T01 §3 | [x] |
-| 2 | §2 | Console behaviour proven with real processes | D00 T01 §2 | [ ] |
+| 2 | §2 | Console behaviour proven with real processes | D00 T01 §2 | [x] |
 | 3 | §3 | The save command | §1, D01 T01 §16, D02 T01 §8 | [ ] |
 | 4 | §4 | The restore command | §3 | [ ] |
 | 5 | §5 | The undo command | §4 | [ ] |
@@ -94,6 +94,9 @@ The foundation plan's one technical bet: a console program with a detached conso
 - [x] Commit: `cli: console behaviour proven with real processes`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*ConsoleBehaviourTests" --filter-class "*TestModeSwitchesTests" --filter-class "*LayerRuleTests"` passes with `0` skipped: detached `berth.exe` reports `console=0`, stripped-manifest copy reports `console=1`, `cmd.exe` blocks marker creation while Berth holds (`1500 ms`) while non-waiting control does not, descendant tree-kill passes on timeout and early `Dispose`, and `TestModeSwitches` unit + unset-`BERTH_DATA` process tests pass.
+
+> **Verified:** 2026-11-20 | §2 | 54ad2a1190037950fa8f84622199a920229de645
+> **Review:** `docs/reviews/d03-t01-s2.json`
 
 ## 3. The save command
 
