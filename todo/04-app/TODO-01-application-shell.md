@@ -41,7 +41,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 2 | §2 | Single instance and activation | §1 | [x] |
 | 3 | §3 | Crash handling | §1 | [x] |
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
-| 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
+| 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [x] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [ ] |
@@ -182,6 +182,9 @@ The `Application` that hosts the tray app and the window, following the Windows 
 - [x] Commit: `app: WPF application object and theme`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BerthApplicationTests"` passes, and fails when the token dictionaries are not merged into the application resources.
+
+> **Verified:** 2026-11-20 | §5 | a116cce1372de78ecfb76b3453b44b1290e538fb
+> **Review:** `docs/reviews/d04-t01-s5.json`
 
 ## 6. Taskbar theme detection
 

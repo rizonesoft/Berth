@@ -1,0 +1,88 @@
+{
+  "ref": "D04 T01 \u00a75",
+  "title": "WPF application object and theme",
+  "implementation_sha": "a116cce1372de78ecfb76b3453b44b1290e538fb",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/04-app/D04-T01-s5.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *ThemeResourcesTests --filter-class *TrayAppHandoffTests --filter-class *BerthApplicationTests --filter-class *BerthApplicationSecondConsumerTests --filter-class *StartupPlanTests --filter-class *StartupPlanProcessTests --filter-class *NoHexColourTests --filter-class *TokenKeysTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0",
+    "python scripts/todo-graph.py validate:0",
+    "python scripts/todo-graph.py plan --check:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/04-app/D04-T01-s5.md",
+    "verdict": "filed",
+    "candidate": "a116cce1372de78ecfb76b3453b44b1290e538fb",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D04 T01 \u00a79"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/04-app/D04-T01-s5.md",
+    "candidate": "d6f0e52c8158c1387349a95a5c67c56e57b22f8f",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "d6f0e52c8158c1387349a95a5c67c56e57b22f8f",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
