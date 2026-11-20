@@ -9,10 +9,10 @@ using WpfApplication = System.Windows.Application;
 namespace Berth.Tests.Render;
 
 [Collection(DesktopCollectionDefinition.Name)]
+[Trait("Category", "Render")]
 public sealed class WindowRendererTests(AppFixture appFixture)
 {
     [Fact]
-    [Trait("Category", "Render")]
     public void RendersMainWindowFrameInLightAndDarkThemesWithDistinctBrightnessAndDivider()
     {
         string outputDir = ResolveRenderOutputDirectory();
@@ -41,11 +41,13 @@ public sealed class WindowRendererTests(AppFixture appFixture)
         Assert.Equal(980, dark.Width);
         Assert.Equal(640, dark.Height);
 
-        // Both captures must be opaque, non-uniform, and show the 1 px divider at x = 250.
+        // Both captures must be opaque, non-uniform, and show an exact 1 px divider at x = 250 (x=249 and x=251 are background).
         Assert.Equal(255, light.AlphaAt(100, 100));
         Assert.Equal(255, dark.AlphaAt(100, 100));
-        Assert.NotEqual(light.PixelAt(100, 100), light.PixelAt(250, 100));
-        Assert.NotEqual(dark.PixelAt(100, 100), dark.PixelAt(250, 100));
+        Assert.Equal(light.PixelAt(249, 100), light.PixelAt(251, 100));
+        Assert.NotEqual(light.PixelAt(249, 100), light.PixelAt(250, 100));
+        Assert.Equal(dark.PixelAt(249, 100), dark.PixelAt(251, 100));
+        Assert.NotEqual(dark.PixelAt(249, 100), dark.PixelAt(250, 100));
 
         // Light and Dark themes must differ widely in average brightness.
         double lightLuma = light.AverageLuminance();

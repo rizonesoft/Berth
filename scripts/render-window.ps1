@@ -9,6 +9,7 @@ $stageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("berth-renders-" + [Gui
 
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 $previousRenderDir = $env:BERTH_RENDER_DIR
+Push-Location $repoRoot
 try {
     $env:BERTH_RENDER_DIR = $stageDir
     dotnet test --solution $solution -c Release --filter-trait Category=Render | Out-Host
@@ -33,6 +34,7 @@ try {
     }
 }
 finally {
+    Pop-Location
     if ($null -eq $previousRenderDir) {
         if (Test-Path Env:BERTH_RENDER_DIR) {
             Remove-Item Env:BERTH_RENDER_DIR

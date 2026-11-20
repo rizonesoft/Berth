@@ -395,8 +395,8 @@ public sealed class WindowPlacementTests(AppFixture appFixture)
         Assert.Equal("False", unreadableReport["visibleAfterHide"]);
         Assert.Equal("True", unreadableReport["visibleAfterTrayReopen"]);
         Assert.Equal(originalMalformedBytes, File.ReadAllBytes(unreadableStore.FilePath));
-        string unreadableHideLines = unreadableReport["hideWarnLines"];
-        Assert.Contains($" WARN {Messages.UnreadableSettings}", unreadableHideLines, StringComparison.Ordinal);
+        string[] unreadableHideLines = unreadableReport["hideWarnLines"].Split(" || ", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains(unreadableHideLines, line => line.EndsWith($" WARN {Messages.UnreadableSettings}", StringComparison.Ordinal));
 
         // 3. Write failure (valid settings.json, directory blocking redo-note path) inside a real running TrayApp:
         // capture log lines immediately after Close(), verify exact SPEC §18 WriteFailed WARN prefix, and tray reopens.
