@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using System.IO;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Berth.Core;
 
@@ -54,12 +55,12 @@ internal static partial class TestModeSwitches
             return 0;
         }
 
-        if (!int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) || value <= 0)
+        if (!BigInteger.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out BigInteger value) || value <= 0)
         {
             return 0;
         }
 
-        return Math.Min(value, MaxHoldMilliseconds);
+        return value >= MaxHoldMilliseconds ? MaxHoldMilliseconds : (int)value;
     }
 
     private static bool HasConsoleWindow() => NativeMethods.GetConsoleWindow() != nint.Zero;

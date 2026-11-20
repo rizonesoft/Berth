@@ -90,6 +90,9 @@ public sealed class TestModeSwitchesTests
         Assert.Equal(0, TestModeSwitches.ParseHoldMilliseconds("0"));
         Assert.Equal(1500, TestModeSwitches.ParseHoldMilliseconds("1500"));
         Assert.Equal(5000, TestModeSwitches.ParseHoldMilliseconds("5001"));
+        Assert.Equal(5000, TestModeSwitches.ParseHoldMilliseconds("2147483648"));
+        Assert.Equal(5000, TestModeSwitches.ParseHoldMilliseconds("99999999999999999999"));
+        Assert.Equal(0, TestModeSwitches.ParseHoldMilliseconds("-2147483649"));
     }
 }
 
