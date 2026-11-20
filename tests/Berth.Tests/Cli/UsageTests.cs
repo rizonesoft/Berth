@@ -10,44 +10,38 @@ public sealed class UsageTests
     private static readonly MonitorInfo[] OneMonitor = [new(0, 0, 1920, 1080, 100, true)];
 
     [Fact]
-    public void UsageTextHasExactFirstLineHeadingsAllEightCommandRowsAndAllFourExitCodes()
+    public void UsageTextMatchesCompleteExpectedLinesForAllCommandsAndExitCodes()
     {
         string[] lines = Usage.Text.Split(["\r\n", "\n"], StringSplitOptions.None);
-        Assert.Equal("Berth saves the positions of your desktop icons and puts them back.", lines[0]);
+        string[] expected =
+        [
+            "Berth saves the positions of your desktop icons and puts them back.",
+            string.Empty,
+            "Usage:",
+            "  berth                       Starts the tray app (opens the window on first run)",
+            "  berth save                  Saves the desktop to the current arrangement's layout",
+            "  berth save --name <name>    Saves and names (or renames) the current arrangement's layout",
+            "  berth restore               Restores the current arrangement's layout",
+            "  berth undo                  Puts icons back where they were before the last restore",
+            "  berth list                  Lists the saved layouts",
+            "  berth --help, -h, /?        Prints the usage text",
+            "  berth --version             Prints the version",
+            string.Empty,
+            "Exit codes:",
+            "  0  Done",
+            "  1  An error: a write failed, an icon did not stay where it was put, or something unexpected",
+            "  2  Wrong usage: an unknown command or option, or a missing or invalid --name",
+            "  3  Refused: auto arrange on, no layout, nothing to undo, desktop unreachable, busy, or unreadable layout",
+        ];
 
-        int usageHeading = Array.IndexOf(lines, "Usage:");
-        int exitHeading = Array.IndexOf(lines, "Exit codes:");
-        Assert.True(usageHeading > 0, "Expected 'Usage:' heading.");
-        Assert.True(exitHeading > usageHeading, "Expected 'Exit codes:' heading after 'Usage:'.");
-
-        string[] commandRows = lines[(usageHeading + 1)..exitHeading]
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToArray();
-        Assert.Equal(8, commandRows.Length);
-        Assert.Contains(commandRows, l => l.StartsWith("  berth  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth save  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth save --name <name>  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth restore  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth undo  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth list  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth --help, -h, /?  ", StringComparison.Ordinal));
-        Assert.Contains(commandRows, l => l.StartsWith("  berth --version  ", StringComparison.Ordinal));
-
-        string[] exitRows = lines[(exitHeading + 1)..]
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .ToArray();
-        Assert.Equal(4, exitRows.Length);
-        Assert.Contains(exitRows, l => l.StartsWith("  0  ", StringComparison.Ordinal));
-        Assert.Contains(exitRows, l => l.StartsWith("  1  ", StringComparison.Ordinal));
-        Assert.Contains(exitRows, l => l.StartsWith("  2  ", StringComparison.Ordinal));
-        Assert.Contains(exitRows, l => l.StartsWith("  3  ", StringComparison.Ordinal));
+        Assert.Equal(expected, lines);
     }
 
     [Fact]
     public void HelpAndVersionFormsWorkIdenticallyThroughCliRunnerAndProgramRunWithoutTouchingStorageOrDesktop()
     {
         using var data = new TestData();
-        LayoutService service = CreateUnusedService(data.Root);
+        (LayoutService service, FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths) = CreateWatchedService(data.Root);
 
         // Every SPEC §13 help form: --help, -h, /?.
         foreach (string flag in new[] { "--help", "-h", "/?" })
@@ -58,6 +52,7 @@ public sealed class UsageTests
             Assert.Equal(0, runnerCode);
             Assert.Equal(Usage.Text + Environment.NewLine, runnerOut.ToString());
             Assert.Equal(string.Empty, runnerErr.ToString());
+            AssertZeroDependencyAccess(desktop, monitors, paths);
 
             var progOut = new StringWriter();
             var progErr = new StringWriter();
@@ -82,6 +77,7 @@ public sealed class UsageTests
         Assert.Equal(0, verRunnerCode);
         Assert.Equal(expectedVersion, verRunnerOut.ToString());
         Assert.Equal(string.Empty, verRunnerErr.ToString());
+        AssertZeroDependencyAccess(desktop, monitors, paths);
 
         var verProgOut = new StringWriter();
         var verProgErr = new StringWriter();
@@ -102,7 +98,7 @@ public sealed class UsageTests
     public void UsageErrorsPrintTwoLineDiagnosticToStderrWithEmptyStdoutAndExit2ThroughBothEntryPoints()
     {
         using var data = new TestData();
-        LayoutService service = CreateUnusedService(data.Root);
+        (LayoutService service, FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths) = CreateWatchedService(data.Root);
 
         (string[] Args, string ExpectedFirstLine)[] cases =
         [
@@ -123,6 +119,7 @@ public sealed class UsageTests
             Assert.Equal(2, runnerCode);
             Assert.Equal(string.Empty, runnerOut.ToString());
             Assert.Equal(expectedErr, runnerErr.ToString());
+            AssertZeroDependencyAccess(desktop, monitors, paths);
 
             var progOut = new StringWriter();
             var progErr = new StringWriter();
@@ -140,16 +137,28 @@ public sealed class UsageTests
         }
     }
 
-    private static LayoutService CreateUnusedService(string root)
+    private static (LayoutService Service, FakeDesktopIcons Desktop, FakeMonitors Monitors, BerthPaths Paths) CreateWatchedService(string root)
     {
         BerthPaths paths = BerthPaths.ForRoot(root);
-        return new LayoutService(
-            new FakeDesktopIcons(),
-            new FakeMonitors(OneMonitor),
+        var desktop = new FakeDesktopIcons();
+        var monitors = new FakeMonitors(OneMonitor);
+        var service = new LayoutService(
+            desktop,
+            monitors,
             new LayoutStore(paths),
             paths,
             new OperationLock(paths, TimeSpan.FromSeconds(1)),
             new Log(paths, TimeProvider.System),
             TimeProvider.System);
+        return (service, desktop, monitors, paths);
+    }
+
+    private static void AssertZeroDependencyAccess(FakeDesktopIcons desktop, FakeMonitors monitors, BerthPaths paths)
+    {
+        Assert.Equal(0, desktop.Reads);
+        Assert.Empty(desktop.Calls);
+        Assert.Equal(0, monitors.Reads);
+        Assert.False(Directory.Exists(paths.LayoutsFolder));
+        Assert.False(File.Exists(paths.LogFile));
     }
 }
