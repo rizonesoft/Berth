@@ -41,11 +41,29 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
     public IReadOnlyList<MonitorInfo> Read()
     {
         nint previousContext = _api.SetThreadDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2);
+        if (previousContext == nint.Zero)
+        {
+            throw new DesktopUnavailableException("Could not enter per-monitor v2 DPI awareness context.");
+        }
+
         try
+        {
+            return ReadWithTopologyRetry();
+        }
+        finally
+        {
+            _ = _api.SetThreadDpiAwarenessContext(previousContext);
+        }
+    }
+
+    private IReadOnlyList<MonitorInfo> ReadWithTopologyRetry()
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
         {
             IReadOnlyDictionary<string, uint> adapterStates = _api.ReadAdapterStateFlags();
             var raw = new List<MonitorInfo>();
             Exception? callbackError = null;
+            bool topologyMismatch = false;
 
             bool enumerated = _api.EnumerateMonitors(hMonitor =>
             {
@@ -57,11 +75,22 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
                         return false;
                     }
 
-                    if (!IsDesktopDisplay(info.DeviceName, adapterStates))
+                    DisplayClassification classification = ClassifyDisplay(info.DeviceName, adapterStates);
+                    if (classification == DisplayClassification.MirroringPseudoMonitor)
                     {
                         return true;
                     }
 
+                    if (classification == DisplayClassification.DetachedTopologyMismatch)
+                    {
+                        topologyMismatch = true;
+                        return false;
+                    }
+
+                    // GetDpiForMonitor(MDT_EFFECTIVE_DPI) returns the monitor's effective DPI directly for an HMONITOR
+                    // without requiring an HWND (CLI and tray startup have no window). Microsoft's remark recommends
+                    // GetDpiForWindow for window-scoped DPI; here we intentionally read monitor-level scale under
+                    // PerMonitorV2 awareness so bounds and scale match SPEC §14.
                     int dpiHr = _api.GetDpiForMonitor(hMonitor, MdtEffectiveDpi, out uint dpiX, out _);
                     if (dpiHr != 0)
                     {
@@ -91,6 +120,16 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
                 }
             }, out int enumError);
 
+            if (topologyMismatch)
+            {
+                if (attempt == 0)
+                {
+                    continue;
+                }
+
+                throw new DesktopUnavailableException("Display topology changed while reading monitors.");
+            }
+
             if (callbackError is not null)
             {
                 throw callbackError is DesktopUnavailableException unavailable
@@ -107,13 +146,8 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
 
             return Normalize(raw);
         }
-        finally
-        {
-            if (previousContext != nint.Zero)
-            {
-                _ = _api.SetThreadDpiAwarenessContext(previousContext);
-            }
-        }
+
+        throw new DesktopUnavailableException("Display topology changed while reading monitors.");
     }
 
     internal static IReadOnlyList<MonitorInfo> Normalize(IReadOnlyList<MonitorInfo> raw)
@@ -164,19 +198,57 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
         return checked((int)((dpi * 100L + 48L) / 96L));
     }
 
-    internal static bool IsDesktopDisplay(string deviceName, IReadOnlyDictionary<string, uint> adapterStates)
+    internal enum DisplayClassification
+    {
+        DesktopDisplay,
+        MirroringPseudoMonitor,
+        DetachedTopologyMismatch,
+    }
+
+    internal static DisplayClassification ClassifyDisplay(string deviceName, IReadOnlyDictionary<string, uint> adapterStates)
     {
         if (string.IsNullOrEmpty(deviceName) || !adapterStates.TryGetValue(deviceName, out uint stateFlags))
         {
-            return true;
+            return DisplayClassification.DesktopDisplay;
         }
 
         if ((stateFlags & DisplayDeviceMirroringDriver) != 0)
         {
-            return false;
+            return DisplayClassification.MirroringPseudoMonitor;
         }
 
-        return (stateFlags & DisplayDeviceAttachedToDesktop) != 0;
+        return (stateFlags & DisplayDeviceAttachedToDesktop) != 0
+            ? DisplayClassification.DesktopDisplay
+            : DisplayClassification.DetachedTopologyMismatch;
+    }
+
+    internal static RawMonitorInfo ToRawMonitorInfo(in MonitorInfoExW nativeInfo)
+    {
+        fixed (char* deviceName = nativeInfo.DeviceName)
+        {
+            return new RawMonitorInfo(
+                nativeInfo.Monitor.Left,
+                nativeInfo.Monitor.Top,
+                nativeInfo.Monitor.Right,
+                nativeInfo.Monitor.Bottom,
+                nativeInfo.Work.Left,
+                nativeInfo.Work.Top,
+                nativeInfo.Work.Right,
+                nativeInfo.Work.Bottom,
+                nativeInfo.Flags,
+                ExtractFixedString(deviceName, 32));
+        }
+    }
+
+    private static string ExtractFixedString(char* buffer, int maxLength)
+    {
+        int length = 0;
+        while (length < maxLength && buffer[length] != '\0')
+        {
+            length++;
+        }
+
+        return new string(buffer, 0, length);
     }
 
     internal readonly record struct RawMonitorInfo(
@@ -263,17 +335,7 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
             }
 
             win32Error = 0;
-            info = new RawMonitorInfo(
-                nativeInfo.Monitor.Left,
-                nativeInfo.Monitor.Top,
-                nativeInfo.Monitor.Right,
-                nativeInfo.Monitor.Bottom,
-                nativeInfo.Work.Left,
-                nativeInfo.Work.Top,
-                nativeInfo.Work.Right,
-                nativeInfo.Work.Bottom,
-                nativeInfo.Flags,
-                ExtractFixedString(nativeInfo.DeviceName, 32));
+            info = ToRawMonitorInfo(in nativeInfo);
             return true;
         }
 
@@ -297,17 +359,6 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
             {
                 return 0;
             }
-        }
-
-        private static string ExtractFixedString(char* buffer, int maxLength)
-        {
-            int length = 0;
-            while (length < maxLength && buffer[length] != '\0')
-            {
-                length++;
-            }
-
-            return new string(buffer, 0, length);
         }
 
         private sealed class EnumCallbackState(Func<nint, bool> onMonitor)
@@ -350,7 +401,7 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    internal struct NativeRect
     {
         public int Left;
         public int Top;
@@ -359,7 +410,7 @@ internal sealed unsafe partial class SystemMonitors : IMonitors
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct MonitorInfoExW
+    internal struct MonitorInfoExW
     {
         public uint CbSize;
         public NativeRect Monitor;

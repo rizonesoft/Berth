@@ -10,8 +10,6 @@ namespace Berth.Tests.Desktop;
 [Trait("Category", "RealDesktop")]
 public sealed partial class SystemMonitorsTests
 {
-    private const int DpiAwarenessPerMonitorAware = 2;
-
     [LibraryImport("user32.dll")]
     private static partial nint SetThreadDpiAwarenessContext(nint dpiContext);
 
@@ -19,18 +17,21 @@ public sealed partial class SystemMonitorsTests
     private static partial nint GetThreadDpiAwarenessContext();
 
     [LibraryImport("user32.dll")]
-    private static partial int GetAwarenessFromDpiAwarenessContext(nint value);
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AreDpiAwarenessContextsEqual(nint dpiContextA, nint dpiContextB);
 
     [Fact]
     public void LiveSystemMonitorsReadsPhysicalMonitorsInOrderWithOnePrimaryAndValidScale()
     {
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
-        nint previousContext = SetThreadDpiAwarenessContext(SystemMonitors.DpiAwarenessContextPerMonitorAwareV2);
+        nint perMonitorV2 = new(-4);
+        nint previousContext = SetThreadDpiAwarenessContext(perMonitorV2);
         try
         {
-            int awareness = GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
-            Assert.Equal(DpiAwarenessPerMonitorAware, awareness);
+            Assert.True(
+                AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), perMonitorV2),
+                "Expected exact DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4) on the live test thread.");
 
             var monitors = new SystemMonitors();
             Assert.IsAssignableFrom<IMonitors>(monitors);
@@ -112,41 +113,141 @@ public sealed class UnitSystemMonitorsTests
         Assert.Equal(new MonitorInfo(-1920, -240, 1920, 1080, 150, Primary: false), result[0]);
         Assert.Equal(new MonitorInfo(0, 0, 2560, 1440, 125, Primary: true), result[1]);
         Assert.Equal(
-            [SystemMonitors.DpiAwarenessContextPerMonitorAwareV2, api.InitialContext],
+            [new nint(-4), api.InitialContext],
             api.DpiContextHistory);
     }
 
     [Fact]
-    public void ReadExcludesMirroringAndDetachedPseudoMonitors()
+    public unsafe void ToRawMonitorInfoReadsRcMonitorNotRcWork()
+    {
+        var nativeInfo = new SystemMonitors.MonitorInfoExW
+        {
+            CbSize = (uint)sizeof(SystemMonitors.MonitorInfoExW),
+            Monitor = new SystemMonitors.NativeRect { Left = -1920, Top = -240, Right = 0, Bottom = 840 },
+            Work = new SystemMonitors.NativeRect { Left = -1920, Top = -200, Right = -40, Bottom = 800 },
+            Flags = SystemMonitors.MonitorInfoPrimaryFlag,
+        };
+        const string device = @"\\.\DISPLAY2";
+        for (int i = 0; i < device.Length; i++)
+        {
+            nativeInfo.DeviceName[i] = device[i];
+        }
+
+        SystemMonitors.RawMonitorInfo raw = SystemMonitors.ToRawMonitorInfo(in nativeInfo);
+
+        Assert.Equal(-1920, raw.MonitorLeft);
+        Assert.Equal(-240, raw.MonitorTop);
+        Assert.Equal(0, raw.MonitorRight);
+        Assert.Equal(840, raw.MonitorBottom);
+        Assert.Equal(-200, raw.WorkTop);
+        Assert.Equal(-40, raw.WorkRight);
+        Assert.Equal(device, raw.DeviceName);
+    }
+
+    [Fact]
+    public void ReadExcludesMirroringPseudoMonitor()
     {
         nint visibleHandle = new(1);
         nint mirrorHandle = new(2);
-        nint detachedHandle = new(3);
         var api = new FakeNativeMonitorApi(
-            handles: [mirrorHandle, visibleHandle, detachedHandle],
+            handles: [mirrorHandle, visibleHandle],
             adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
             {
                 [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
                 [@"\\.\DISPLAYV1"] = SystemMonitors.DisplayDeviceAttachedToDesktop | SystemMonitors.DisplayDeviceMirroringDriver,
-                [@"\\.\DISPLAY3"] = 0u,
             },
             infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
             {
                 [visibleHandle] = new(0, 0, 1920, 1080, 0, 0, 1920, 1040, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
                 [mirrorHandle] = new(-1000, 0, 0, 1000, -1000, 0, 0, 1000, 0u, @"\\.\DISPLAYV1"),
-                [detachedHandle] = new(1920, 0, 3840, 1080, 1920, 0, 3840, 1080, 0u, @"\\.\DISPLAY3"),
             },
             dpis: new Dictionary<nint, (int Hr, uint DpiX)>
             {
                 [visibleHandle] = (0, 96u),
                 [mirrorHandle] = (0, 96u),
-                [detachedHandle] = (0, 96u),
             });
 
         IReadOnlyList<MonitorInfo> result = new SystemMonitors(api).Read();
 
         Assert.Single(result);
         Assert.Equal(new MonitorInfo(0, 0, 1920, 1080, 100, Primary: true), result[0]);
+    }
+
+    [Fact]
+    public void ReadRetriesOnMidReadTopologyChangeAndThrowsOnPersistentMismatch()
+    {
+        nint primaryHandle = new(1);
+        nint secondaryHandle = new(2);
+        int adapterReads = 0;
+        var transientApi = new FakeNativeMonitorApi(
+            handles: [primaryHandle, secondaryHandle],
+            adapterStatesProvider: () =>
+            {
+                adapterReads++;
+                return new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+                    [@"\\.\DISPLAY2"] = adapterReads == 1 ? 0u : SystemMonitors.DisplayDeviceAttachedToDesktop,
+                };
+            },
+            infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
+            {
+                [primaryHandle] = new(0, 0, 2560, 1440, 0, 0, 2560, 1400, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
+                [secondaryHandle] = new(2560, 0, 4480, 1080, 2560, 0, 4480, 1040, 0u, @"\\.\DISPLAY2"),
+            },
+            dpis: new Dictionary<nint, (int Hr, uint DpiX)>
+            {
+                [primaryHandle] = (0, 120u),
+                [secondaryHandle] = (0, 96u),
+            });
+
+        IReadOnlyList<MonitorInfo> retried = new SystemMonitors(transientApi).Read();
+        Assert.Equal(2, adapterReads);
+        Assert.Equal(2, retried.Count);
+
+        var persistentApi = new FakeNativeMonitorApi(
+            handles: [primaryHandle, secondaryHandle],
+            adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+            {
+                [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+                [@"\\.\DISPLAY2"] = 0u,
+            },
+            infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
+            {
+                [primaryHandle] = new(0, 0, 2560, 1440, 0, 0, 2560, 1400, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
+                [secondaryHandle] = new(2560, 0, 4480, 1080, 2560, 0, 4480, 1040, 0u, @"\\.\DISPLAY2"),
+            },
+            dpis: new Dictionary<nint, (int Hr, uint DpiX)>
+            {
+                [primaryHandle] = (0, 120u),
+                [secondaryHandle] = (0, 96u),
+            });
+
+        Assert.Throws<DesktopUnavailableException>(() => new SystemMonitors(persistentApi).Read());
+    }
+
+    [Fact]
+    public void ReadThrowsDesktopUnavailableExceptionWhenDpiContextSwitchFails()
+    {
+        nint first = new(1);
+        var api = new FakeNativeMonitorApi(
+            handles: [first],
+            adapterStates: new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase)
+            {
+                [@"\\.\DISPLAY1"] = SystemMonitors.DisplayDeviceAttachedToDesktop,
+            },
+            infos: new Dictionary<nint, SystemMonitors.RawMonitorInfo>
+            {
+                [first] = new(0, 0, 1920, 1080, 0, 0, 1920, 1040, SystemMonitors.MonitorInfoPrimaryFlag, @"\\.\DISPLAY1"),
+            },
+            dpis: new Dictionary<nint, (int Hr, uint DpiX)>
+            {
+                [first] = (0, 96u),
+            },
+            setDpiContextResult: nint.Zero);
+
+        Assert.Throws<DesktopUnavailableException>(() => new SystemMonitors(api).Read());
+        Assert.Empty(api.VisitedHandles);
     }
 
     [Fact]
@@ -298,11 +399,13 @@ public sealed class UnitSystemMonitorsTests
 
     private sealed class FakeNativeMonitorApi(
         nint[] handles,
-        IReadOnlyDictionary<string, uint> adapterStates,
-        IReadOnlyDictionary<nint, SystemMonitors.RawMonitorInfo> infos,
-        IReadOnlyDictionary<nint, (int Hr, uint DpiX)> dpis,
+        IReadOnlyDictionary<string, uint>? adapterStates = null,
+        IReadOnlyDictionary<nint, SystemMonitors.RawMonitorInfo>? infos = null,
+        IReadOnlyDictionary<nint, (int Hr, uint DpiX)>? dpis = null,
         int missingInfoWin32Error = 1461,
-        int? enumReturnFalseError = null) : SystemMonitors.INativeMonitorApi
+        int? enumReturnFalseError = null,
+        Func<IReadOnlyDictionary<string, uint>>? adapterStatesProvider = null,
+        nint? setDpiContextResult = null) : SystemMonitors.INativeMonitorApi
     {
         public nint InitialContext { get; } = new(-2);
         public nint[] Handles { get; set; } = handles;
@@ -312,10 +415,13 @@ public sealed class UnitSystemMonitorsTests
         public nint SetThreadDpiAwarenessContext(nint dpiContext)
         {
             DpiContextHistory.Add(dpiContext);
-            return InitialContext;
+            return setDpiContextResult ?? InitialContext;
         }
 
-        public IReadOnlyDictionary<string, uint> ReadAdapterStateFlags() => adapterStates;
+        public IReadOnlyDictionary<string, uint> ReadAdapterStateFlags() =>
+            adapterStatesProvider is not null
+                ? adapterStatesProvider()
+                : adapterStates ?? new Dictionary<string, uint>();
 
         public bool EnumerateMonitors(Func<nint, bool> onMonitor, out int win32Error)
         {
@@ -341,12 +447,13 @@ public sealed class UnitSystemMonitorsTests
 
         public bool TryGetMonitorInfo(nint hMonitor, out SystemMonitors.RawMonitorInfo info, out int win32Error)
         {
-            if (infos.TryGetValue(hMonitor, out info))
+            if (infos is not null && infos.TryGetValue(hMonitor, out info))
             {
                 win32Error = 0;
                 return true;
             }
 
+            info = default;
             win32Error = missingInfoWin32Error;
             return false;
         }
@@ -354,7 +461,7 @@ public sealed class UnitSystemMonitorsTests
         public int GetDpiForMonitor(nint hMonitor, int dpiType, out uint dpiX, out uint dpiY)
         {
             Assert.Equal(SystemMonitors.MdtEffectiveDpi, dpiType);
-            (int hr, uint x) = dpis[hMonitor];
+            (int hr, uint x) = dpis![hMonitor];
             dpiX = x;
             dpiY = x;
             return hr;
