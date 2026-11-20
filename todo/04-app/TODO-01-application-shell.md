@@ -40,7 +40,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [x] |
 | 2 | §2 | Single instance and activation | §1 | [ ] |
 | 3 | §3 | Crash handling | §1 | [ ] |
-| 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [ ] |
+| 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [ ] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [ ] |
@@ -145,6 +145,9 @@ An unhandled exception in the tray app is logged, shown and ends the process (SP
 - [x] Commit: `theme: tokens generated into resource dictionaries`
 
 **Test checkpoint:** `python scripts/build-tokens.py --check` exits 0, and exits 1 after one colour in `src/Berth/Theme/Tokens.Dark.xaml` is changed by hand; `dotnet test --solution Berth.slnx --filter-class "*NoHexColourTests"` fails when a hex colour is added to a XAML file.
+
+> **Verified:** 2026-11-20 | §4 | 5a4b30a7d4e6484287ade79f017faa11f5f62c39
+> **Review:** `docs/reviews/d04-t01-s4.json`
 
 ## 5. WPF application object and theme
 

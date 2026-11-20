@@ -1,0 +1,87 @@
+{
+  "ref": "D04 T01 \u00a74",
+  "title": "Tokens generated into resource dictionaries",
+  "implementation_sha": "5a4b30a7d4e6484287ade79f017faa11f5f62c39",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/04-app/D04-T01-s4.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python scripts/build-tokens.py --check:0",
+    "python -m unittest discover -s scripts/tests:0",
+    "python -m unittest discover -s tests/scripts -p test_check_all.py:0",
+    "dotnet test --solution Berth.slnx -c Release --filter-class *TokenKeysTests --filter-class *NoHexColourTests --filter-class *LayerRuleTests:0",
+    "python scripts/design-lint.py:0"
+  ],
+  "completion": {
+    "report": "docs/reviews/04-app/D04-T01-s4.md",
+    "verdict": "reconciled",
+    "candidate": "5a4b30a7d4e6484287ade79f017faa11f5f62c39",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/04-app/D04-T01-s4.md",
+    "candidate": "0ec65644822a24aa9d13b2b18947977aab91b80e",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "0ec65644822a24aa9d13b2b18947977aab91b80e",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 8,
+  "pass_cap": 33
+}
