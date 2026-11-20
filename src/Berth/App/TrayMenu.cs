@@ -7,9 +7,9 @@ using Berth.Core.Model;
 namespace Berth.App;
 
 /// <summary>
-/// Right-click notification-area menu (SPEC §12): six entries in SPEC order, system renderer, live state refreshed on
-/// <see cref="ContextMenuStrip.Opening"/> (with shell <see cref="IDesktopIcons.AutoArrange"/> read off the UI thread so
-/// opening never freezes), background execution for desktop operations, and graceful drain on Exit.
+/// Right-click notification-area menu (SPEC §12): six entries in SPEC order, system renderer, live state refreshed
+/// off the UI thread on <see cref="ContextMenuStrip.Opening"/> (never blocking on shell or file contention),
+/// background execution for desktop operations, and graceful drain of all background work on Exit.
 /// </summary>
 internal sealed class TrayMenu : IDisposable
 {
@@ -19,7 +19,7 @@ internal sealed class TrayMenu : IDisposable
     private readonly IDesktopIcons _desktop;
     private readonly SettingsStore _settingsStore;
     private readonly SettingChanges _settingChanges;
-    private readonly Action<Action> _marshal;
+    private readonly Func<Action, bool> _tryMarshal;
 
     private readonly ContextMenuStrip _strip;
     private readonly ToolStripMenuItem _saveItem;
@@ -45,7 +45,7 @@ internal sealed class TrayMenu : IDisposable
         IDesktopIcons desktop,
         SettingsStore settingsStore,
         Log log,
-        Action<Action> marshal)
+        Func<Action, bool> tryMarshal)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(store);
@@ -53,7 +53,7 @@ internal sealed class TrayMenu : IDisposable
         ArgumentNullException.ThrowIfNull(desktop);
         ArgumentNullException.ThrowIfNull(settingsStore);
         ArgumentNullException.ThrowIfNull(log);
-        ArgumentNullException.ThrowIfNull(marshal);
+        ArgumentNullException.ThrowIfNull(tryMarshal);
 
         _service = service;
         _store = store;
@@ -61,7 +61,7 @@ internal sealed class TrayMenu : IDisposable
         _desktop = desktop;
         _settingsStore = settingsStore;
         _settingChanges = new SettingChanges(settingsStore, log);
-        _marshal = marshal;
+        _tryMarshal = tryMarshal;
 
         _strip = new ContextMenuStrip
         {
@@ -122,6 +122,12 @@ internal sealed class TrayMenu : IDisposable
 
     internal ToolStripMenuItem ExitItem => _exitItem;
 
+    /// <summary>
+    /// The active layout snapshot captured off the UI thread immediately after the most recent menu operation,
+    /// allowing <see cref="OperationFinished"/> subscribers to refresh the tray tooltip without file I/O on the UI thread.
+    /// </summary>
+    internal Layout? LastObservedActiveLayout { get; private set; }
+
     internal Task LastRefreshTask
     {
         get
@@ -146,8 +152,9 @@ internal sealed class TrayMenu : IDisposable
 
     /// <summary>
     /// Refreshes the dynamic enabled and checked states for the current arrangement and settings (SPEC §12).
-    /// Queries <see cref="IDesktopIcons.AutoArrange"/> off the UI thread while keeping Restore disabled until the
-    /// check finishes, discarding results from superseded openings.
+    /// Reads <c>settings.json</c>, the active layout, and <see cref="IDesktopIcons.AutoArrange"/> off the UI thread
+    /// while keeping Restore and Restore automatically disabled until the read finishes, discarding superseded openings
+    /// and tracking the work in the Exit drain count so dependencies stay alive until access ends.
     /// </summary>
     internal void RefreshState()
     {
@@ -157,6 +164,10 @@ internal sealed class TrayMenu : IDisposable
         {
             generation = ++_openGeneration;
             exiting = _exiting || _disposed;
+            if (!exiting)
+            {
+                _inFlightCount++;
+            }
         }
 
         if (exiting)
@@ -174,11 +185,10 @@ internal sealed class TrayMenu : IDisposable
             return;
         }
 
-        SettingsLoad loaded = _settingsStore.Load();
-        _restoreAutomaticallyItem.Checked = loaded.Value.RestoreAutomatically;
-
-        // Keep Restore disabled while the asynchronous shell check is pending so Opening never freezes the UI thread.
+        // Disable dynamic items while their background reads are pending so a late read cannot overwrite a click
+        // and Opening never blocks the UI thread on file or shell contention.
         _restoreItem.Enabled = false;
+        _restoreAutomaticallyItem.Enabled = false;
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_sync)
@@ -188,33 +198,67 @@ internal sealed class TrayMenu : IDisposable
 
         _ = Task.Run(() =>
         {
-            bool canRestore = CanRestoreCurrentArrangement();
-            _marshal(() =>
+            bool canRestore = false;
+            bool restoreAutomatically = false;
+            try
             {
-                try
+                SettingsLoad loaded = _settingsStore.Load();
+                restoreAutomatically = loaded.Value.RestoreAutomatically;
+                canRestore = CanRestoreCurrentArrangement();
+            }
+            catch (Exception)
+            {
+                canRestore = false;
+                restoreAutomatically = false;
+            }
+
+            bool marshalled = false;
+            try
+            {
+                marshalled = _tryMarshal(() =>
                 {
-                    bool apply;
-                    lock (_sync)
+                    Action? drainCallback = null;
+                    try
                     {
-                        apply = !_disposed && !_exiting && generation == _openGeneration;
+                        bool apply;
+                        lock (_sync)
+                        {
+                            apply = !_disposed && !_exiting && generation == _openGeneration;
+                        }
+
+                        if (apply)
+                        {
+                            _restoreItem.Enabled = canRestore;
+                            _restoreAutomaticallyItem.Checked = restoreAutomatically;
+                            _restoreAutomaticallyItem.Enabled = true;
+                        }
+                    }
+                    finally
+                    {
+                        drainCallback = CompleteInFlightWork();
+                        tcs.TrySetResult();
                     }
 
-                    if (apply)
-                    {
-                        _restoreItem.Enabled = canRestore;
-                    }
-                }
-                finally
-                {
-                    tcs.TrySetResult();
-                }
-            });
+                    drainCallback?.Invoke();
+                });
+            }
+            catch (Exception)
+            {
+                marshalled = false;
+            }
+
+            if (!marshalled)
+            {
+                Action? drainCallback = CompleteInFlightWork();
+                tcs.TrySetResult();
+                drainCallback?.Invoke();
+            }
         });
     }
 
     /// <summary>
     /// Stops accepting new menu clicks and runs <paramref name="onIdle"/> on the UI thread immediately if no
-    /// background menu operation is running, or as soon as all in-flight operations have delivered their completion.
+    /// background menu operation or opening refresh is running, or as soon as all in-flight work settles.
     /// </summary>
     internal void BeginDrain(Action onIdle)
     {
@@ -371,6 +415,7 @@ internal sealed class TrayMenu : IDisposable
         _ = Task.Run(() =>
         {
             OperationResult result;
+            Layout? activeLayout;
             try
             {
                 result = operation();
@@ -380,11 +425,27 @@ internal sealed class TrayMenu : IDisposable
                 result = OperationResult.Failed(FailureKind.Unexpected, path: null, ex.Message, null, ex);
             }
 
-            _marshal(() => CompleteOperationOnUiThread(result));
+            activeLayout = TrayIcon.FindActiveLayout(_store, _monitors);
+
+            bool marshalled = false;
+            try
+            {
+                marshalled = _tryMarshal(() => CompleteOperationOnUiThread(result, activeLayout));
+            }
+            catch (Exception)
+            {
+                marshalled = false;
+            }
+
+            if (!marshalled)
+            {
+                Action? drainCallback = CompleteInFlightWork();
+                drainCallback?.Invoke();
+            }
         });
     }
 
-    private void CompleteOperationOnUiThread(OperationResult result)
+    private void CompleteOperationOnUiThread(OperationResult result, Layout? activeLayout)
     {
         Action? drainCallback = null;
         try
@@ -397,26 +458,35 @@ internal sealed class TrayMenu : IDisposable
 
             if (!disposed)
             {
+                LastObservedActiveLayout = activeLayout;
                 OperationFinished?.Invoke(result);
             }
         }
         finally
         {
-            lock (_sync)
-            {
-                if (_inFlightCount > 0)
-                {
-                    _inFlightCount--;
-                }
-
-                if (_inFlightCount == 0 && _exiting && !_disposed && _whenIdle is not null)
-                {
-                    drainCallback = _whenIdle;
-                    _whenIdle = null;
-                }
-            }
+            drainCallback = CompleteInFlightWork();
         }
 
         drainCallback?.Invoke();
+    }
+
+    private Action? CompleteInFlightWork()
+    {
+        lock (_sync)
+        {
+            if (_inFlightCount > 0)
+            {
+                _inFlightCount--;
+            }
+
+            if (_inFlightCount == 0 && _exiting && !_disposed && _whenIdle is not null)
+            {
+                Action callback = _whenIdle;
+                _whenIdle = null;
+                return callback;
+            }
+
+            return null;
+        }
     }
 }

@@ -139,13 +139,55 @@ public sealed class TrayMenuTests(AppFixture appFixture)
         await secondRefresh.WaitAsync(TimeSpan.FromSeconds(5), ct);
         Assert.False(appFixture.Invoke(() => env.Menu.RestoreItem.Enabled));
 
-        // Release the stale first opening (which saw AutoArrange == false before the change? SetAutoArrange(false) wasn't read yet,
-        // so flip back to false before releasing first so first returns canRestore=true and would wrongly enable Restore if not discarded).
+        // Release the stale first opening (which returns canRestore=true and would wrongly enable Restore if not discarded).
         env.Desktop.SetAutoArrange(false);
         firstRelease.Set();
         await firstRefresh.WaitAsync(TimeSpan.FromSeconds(5), ct);
 
         Assert.False(appFixture.Invoke(() => env.Menu.RestoreItem.Enabled));
+    }
+
+    [Fact]
+    public async Task ExitDrainWaitsForInFlightOpeningRefreshBeforeRunningIdleCallback()
+    {
+        using var env = new TestHarness(appFixture);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        Assert.Equal(OperationKind.Saved, env.Service.Save("Docked").Kind);
+
+        using var entered = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        env.RecordingDesktop.BeforeAutoArrange = () =>
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Opening refresh gate was never released.");
+            }
+        };
+
+        Task refreshTask = appFixture.Invoke(() =>
+        {
+            env.RaiseOpening();
+            Assert.False(env.Menu.RestoreItem.Enabled);
+            Assert.False(env.Menu.RestoreAutomaticallyItem.Enabled);
+            return env.Menu.LastRefreshTask;
+        });
+
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(5), ct));
+
+        var idleRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        appFixture.Invoke(() =>
+        {
+            env.Menu.BeginDrain(() => idleRan.TrySetResult());
+        });
+
+        Assert.False(idleRan.Task.IsCompleted);
+        Assert.True(env.Menu.HasInFlightOperations);
+
+        release.Set();
+        await refreshTask.WaitAsync(TimeSpan.FromSeconds(5), ct);
+        await idleRan.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+        Assert.False(env.Menu.HasInFlightOperations);
     }
 
     [Fact]
@@ -390,6 +432,7 @@ public sealed class TrayMenuTests(AppFixture appFixture)
         Assert.Equal("True", report["iconVisibleBeforeRelease"]);
         Assert.Equal("False", report["exitedBeforeRelease"]);
         Assert.Equal("2", report["completedCount"]);
+        Assert.Equal("Saved", report["secondResultKind"]);
         Assert.Equal("False", report["visibleAfterExit"]);
         Assert.Equal("0", report["exitCode"]);
     }
@@ -419,7 +462,11 @@ public sealed class TrayMenuTests(AppFixture appFixture)
                 RecordingDesktop,
                 SettingsStore,
                 Log,
-                action => _appFixture.Invoke(action)));
+                action =>
+                {
+                    _appFixture.Invoke(action);
+                    return true;
+                }));
         }
 
         public BerthPaths Paths { get; }

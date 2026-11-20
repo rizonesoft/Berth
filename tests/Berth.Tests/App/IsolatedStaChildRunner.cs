@@ -257,6 +257,7 @@ internal static class IsolatedStaChildRunner
         bool exitedBeforeRelease = false;
         bool iconVisibleBeforeRelease = false;
         int completedCountBeforeRelease = -1;
+        OperationKind? secondResultKind = null;
 
         int exitCode = TrayApp.RunWithInstance(
             openWindow: false,
@@ -300,7 +301,11 @@ internal static class IsolatedStaChildRunner
 
                     // Trigger 2: Hold the next Save in flight, click Exit on the attached menu, verify it waits, then release.
                     desktop.ArmGate();
-                    capturedMenu.OperationFinished += _ => completedCount++;
+                    capturedMenu.OperationFinished += r =>
+                    {
+                        secondResultKind = r.Kind;
+                        completedCount++;
+                    };
                     capturedMenu.SaveItem.PerformClick();
 
                     _ = Task.Run(() =>
@@ -332,6 +337,7 @@ internal static class IsolatedStaChildRunner
                 $"completedCountBeforeRelease={completedCountBeforeRelease}",
                 $"iconVisibleBeforeRelease={iconVisibleBeforeRelease}",
                 $"completedCount={completedCount}",
+                $"secondResultKind={secondResultKind}",
                 $"exitedBeforeRelease={exitedBeforeRelease}",
                 $"visibleAfterExit={visibleAfterExit}",
                 $"exitCode={exitCode}",

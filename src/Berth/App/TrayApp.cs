@@ -120,19 +120,21 @@ internal static class TrayApp
             IMonitors effectiveMonitors = monitors ?? effectiveComposition.Monitors;
             var settingsStore = new SettingsStore(effectiveComposition.Paths);
 
-            void MarshalToUi(Action action)
+            bool TryMarshalToUi(Action action)
             {
-                if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+                if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
                 {
-                    if (app.Dispatcher.CheckAccess())
-                    {
-                        action();
-                    }
-                    else
-                    {
-                        _ = app.Dispatcher.BeginInvoke(action);
-                    }
+                    return false;
                 }
+
+                if (app.Dispatcher.CheckAccess())
+                {
+                    action();
+                    return true;
+                }
+
+                _ = app.Dispatcher.BeginInvoke(action);
+                return true;
             }
 
             Layout? initialActive = TrayIcon.FindActiveLayout(effectiveComposition.Store, effectiveMonitors);
@@ -142,7 +144,7 @@ internal static class TrayApp
                 initialActive,
                 effectiveClock.GetUtcNow(),
                 effectiveZone,
-                marshal: MarshalToUi);
+                marshal: action => _ = TryMarshalToUi(action));
             activeTrayIcon = trayIcon;
 
             using var trayMenu = new TrayMenu(
@@ -152,11 +154,11 @@ internal static class TrayApp
                 effectiveComposition.Desktop,
                 settingsStore,
                 effectiveComposition.Log,
-                MarshalToUi);
+                TryMarshalToUi);
 
             trayMenu.OperationFinished += _ =>
             {
-                trayIcon.TryRefreshTooltip(effectiveComposition.Store, effectiveMonitors, effectiveClock, effectiveZone);
+                trayIcon.TrySetTooltip(trayMenu.LastObservedActiveLayout, effectiveClock.GetUtcNow(), effectiveZone);
             };
 
             trayMenu.ExitRequested += () =>

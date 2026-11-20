@@ -97,6 +97,23 @@ internal sealed class TrayIcon : IDisposable
         SetTooltip(active, clock.GetUtcNow(), zone);
     }
 
+    /// <summary>Updates the tooltip text directly if the icon has not been disposed; returns <see langword="false"/> if already disposed.</summary>
+    internal bool TrySetTooltip(Layout? active, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            _notifyIcon.Text = TrayText.Tooltip(active, now, zone);
+            return true;
+        }
+    }
+
     /// <summary>Refreshes the tooltip if the icon has not been disposed; returns <see langword="false"/> if already disposed.</summary>
     internal bool TryRefreshTooltip(LayoutStore store, IMonitors monitors, TimeProvider clock, TimeZoneInfo zone)
     {
