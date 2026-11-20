@@ -93,6 +93,25 @@ public sealed class ScopedDesktopIconsTests
         Assert.Empty(fixture.MovedItems);
         Assert.Equal([@"C:\Desktop\Probe.txt"], fixture.ParsingNameReadIds);
         fixture.AssertAllResourcesReleased();
+
+        // Scoped shell write where coordinate conversion overflows: 0 beforeMove callbacks, 0 moves, all resources released.
+        var negOriginMonitors = new FixedMonitors([new(-1920, 0, 1920, 1080, 100, Primary: true)]);
+        var overflowFixture = new ScopedShellFixture(
+        [
+            new ShellItem(@"C:\Desktop\Owner Notes.txt", "Owner Notes", 10, 20),
+            new ShellItem(@"C:\Desktop\Probe.txt", "BERTH-TEST-PROBE-01", 50, 60),
+        ]);
+        using ShellDesktopIcons overflowShell = overflowFixture.CreateShell(negOriginMonitors);
+        var overflowScoped = new ScopedDesktopIcons(overflowShell, Prefix);
+        int overflowCallbacks = 0;
+        Assert.Throws<OverflowException>(() =>
+            overflowScoped.SetPositions(
+                [new(@"C:\Desktop\Probe.txt", "BERTH-TEST-PROBE-01", int.MaxValue, 100)],
+                () => overflowCallbacks++));
+        Assert.Equal(0, overflowCallbacks);
+        Assert.Empty(overflowFixture.MovedItems);
+        Assert.Equal([@"C:\Desktop\Probe.txt"], overflowFixture.ParsingNameReadIds);
+        overflowFixture.AssertAllResourcesReleased();
     }
 
     [Fact]
@@ -477,16 +496,12 @@ public sealed class ScopedDesktopIconsTests
             {
                 Assert.Contains(pidl, fixture._livePidls);
                 ShellItem item = fixture._pidlToItem[pidl];
-                string text;
-                if (uFlags == ShellConstants.SHGDN_FORPARSING)
+                string text = uFlags switch
                 {
-                    fixture.ParsingNameReadIds.Add(item.Id);
-                    text = item.Id;
-                }
-                else
-                {
-                    text = item.DisplayName;
-                }
+                    ShellConstants.SHGDN_FORPARSING => RecordParsingName(item),
+                    ShellConstants.SHGDN_NORMAL => item.DisplayName,
+                    _ => throw new ArgumentOutOfRangeException(nameof(uFlags), uFlags, "Unexpected SHGDN flag."),
+                };
 
                 pName = new StrRet
                 {
@@ -496,6 +511,12 @@ public sealed class ScopedDesktopIconsTests
             }
 
             public void SetNameOf(nint hwnd, nint pidl, string pszName, uint uFlags, out nint ppidlOut) => ppidlOut = nint.Zero;
+
+            private string RecordParsingName(ShellItem item)
+            {
+                fixture.ParsingNameReadIds.Add(item.Id);
+                return item.Id;
+            }
         }
 
         private sealed class FakeEnumIdList(ScopedShellFixture fixture) : IEnumIDList
