@@ -91,7 +91,7 @@ Sections: 11 | Checklist items: 72
 | ------ | ----------- | --------------------------------------------- | ----------------------------- | ----- |
 | [x]    | D04 T01 §1  | Entry routing and the first-run rule          | none                          | 6     |
 | [x]    | D04 T01 §2  | Single instance and activation                | none                          | 7     |
-| [ ]    | D04 T01 §3  | Crash handling                                | none                          | 5     |
+| [x]    | D04 T01 §3  | Crash handling                                | none                          | 5     |
 | [x]    | D04 T01 §4  | Tokens generated into resource dictionaries   | none                          | 8     |
 | [ ]    | D04 T01 §5  | WPF application object and theme              | windows-host, display-session | 6     |
 | [x]    | D04 T01 §6  | Taskbar theme detection                       | none                          | 4     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 53/88 verified sections, 1 ready to run now.
+Progress: 54/88 verified sections, 1 ready to run now.
 
 Checklist: 307/521 items completed (includes Commit items).

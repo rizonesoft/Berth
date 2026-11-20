@@ -39,7 +39,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Entry routing and the first-run rule | D03 T01 §3, D01 T01 §6 | [x] |
 | 2 | §2 | Single instance and activation | §1 | [x] |
-| 3 | §3 | Crash handling | §1 | [ ] |
+| 3 | §3 | Crash handling | §1 | [x] |
 | 4 | §4 | Tokens generated into resource dictionaries | D00 T01 §4 | [x] |
 | 5 | §5 | WPF application object and theme | §1, §2, §3, §4 | [ ] |
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
@@ -126,6 +126,9 @@ An unhandled exception in the tray app is logged, shown and ends the process (SP
 - [x] Commit: `app: crash handling`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*CrashHandlerTests"` passes, and fails when the user name is no longer redacted.
+
+> **Verified:** 2026-11-20 | §3 | a86c6f8a222c3597831964a576ed734018b309cc
+> **Review:** `docs/reviews/d04-t01-s3.json`
 
 ## 4. Tokens generated into resource dictionaries
 
