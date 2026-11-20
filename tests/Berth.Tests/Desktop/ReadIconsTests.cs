@@ -105,13 +105,9 @@ public sealed class ReadIconsTests
                 new FixtureItem(dupPath, "Notes (dup)", new NativePoint { X = 900, Y = 900 }),
             ]);
 
-            // Construct via the public (IMonitors, Log) constructor so disconnecting Log.Warn forwarding fails this test.
-            using var icons = new ShellDesktopIcons(monitors, log);
-            IReadOnlyList<IconPosition> result = icons.RunOnWorker(() =>
-            {
-                using DesktopView desktop = fixture.OpenDesktopView();
-                return icons.ReadIconsFrom(desktop, fixture.FreeCoTaskMem, fixture.RecordComRelease);
-            });
+            // Construct via the shared (IMonitors, Log, openView) chain used by public (IMonitors, Log) and call public ReadIcons().
+            using var icons = new ShellDesktopIcons(monitors, log, fixture.OpenDesktopView, fixture.FreeCoTaskMem, fixture.RecordComRelease);
+            IReadOnlyList<IconPosition> result = icons.ReadIcons();
 
             Assert.Equal(3, fixture.AllocationEvents);
             Assert.Equal(2, result.Count);

@@ -24,12 +24,22 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
     private readonly Action<string>? _onMemberExecuted;
 
     public ShellDesktopIcons(IMonitors monitors, Log log)
+        : this(monitors, log, DesktopView.Open)
+    {
+    }
+
+    internal ShellDesktopIcons(
+        IMonitors monitors,
+        Log log,
+        Func<DesktopView> openView,
+        Action<nint>? freeCoTaskMem = null,
+        Action<object>? releaseComObject = null)
         : this(
-            DesktopView.Open,
+            openView,
             monitors ?? throw new ArgumentNullException(nameof(monitors)),
             (log ?? throw new ArgumentNullException(nameof(log))).Warn,
-            Marshal.FreeCoTaskMem,
-            DefaultReleaseComObject,
+            freeCoTaskMem ?? Marshal.FreeCoTaskMem,
+            releaseComObject ?? DefaultReleaseComObject,
             onMemberExecuted: null)
     {
     }
@@ -74,18 +84,6 @@ internal sealed partial class ShellDesktopIcons : IDesktopIcons, IDisposable
 
     public IReadOnlyList<IconPosition> ReadIcons() =>
         RunMemberWithView(nameof(ReadIcons), ReadIconsFromView);
-
-    internal IReadOnlyList<IconPosition> ReadIconsFrom(
-        DesktopView desktop,
-        Action<nint>? freeCoTaskMem = null,
-        Action<object>? releaseComObject = null)
-    {
-        ArgumentNullException.ThrowIfNull(desktop);
-        return _worker.Run(() => ReadIconsFromView(
-            desktop,
-            freeCoTaskMem ?? _freeCoTaskMem,
-            releaseComObject ?? _releaseComObject));
-    }
 
     public void SetPositions(IReadOnlyList<IconPosition> icons)
     {
