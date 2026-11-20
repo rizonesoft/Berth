@@ -65,6 +65,16 @@ internal sealed class TrayIcon : IDisposable
 
     internal Size IconSize => _notifyIcon.Icon?.Size ?? Size.Empty;
 
+    /// <summary>Attaches or clears the right-click context menu on the notification-area icon.</summary>
+    internal void SetContextMenu(ContextMenuStrip? menu)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _notifyIcon.ContextMenuStrip = menu;
+        }
+    }
+
     /// <summary>Updates the tooltip text directly from <paramref name="active"/>.</summary>
     public void SetTooltip(Layout? active, DateTimeOffset now, TimeZoneInfo zone)
     {
@@ -85,6 +95,27 @@ internal sealed class TrayIcon : IDisposable
 
         Layout? active = FindActiveLayout(store, monitors);
         SetTooltip(active, clock.GetUtcNow(), zone);
+    }
+
+    /// <summary>Refreshes the tooltip if the icon has not been disposed; returns <see langword="false"/> if already disposed.</summary>
+    internal bool TryRefreshTooltip(LayoutStore store, IMonitors monitors, TimeProvider clock, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(monitors);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(zone);
+
+        Layout? active = FindActiveLayout(store, monitors);
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            _notifyIcon.Text = TrayText.Tooltip(active, clock.GetUtcNow(), zone);
+            return true;
+        }
     }
 
     /// <summary>Loads the embedded tray icon for <paramref name="isLightTaskbar"/> at <paramref name="size"/>.</summary>
@@ -129,6 +160,7 @@ internal sealed class TrayIcon : IDisposable
             _disposed = true;
             _theme.Changed -= OnThemeChanged;
             _notifyIcon.MouseClick -= OnNotifyIconMouseClick;
+            _notifyIcon.ContextMenuStrip = null;
             _notifyIcon.Visible = false;
             _notifyIcon.Icon = null;
             _notifyIcon.Dispose();

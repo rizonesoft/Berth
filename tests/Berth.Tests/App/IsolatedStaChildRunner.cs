@@ -21,6 +21,7 @@ internal static class IsolatedStaChildRunner
     public const string TimerShutdownScenario = "tray-timer-shutdown";
     public const string DispatcherCrashScenario = "tray-dispatcher-crash";
     public const string PrimaryStartupTrayScenario = "tray-primary-startup";
+    public const string MenuSaveAndExitDrainScenario = "tray-menu-save-and-exit-drain";
 
     public static int RunMain(string[] args)
     {
@@ -169,6 +170,8 @@ internal static class IsolatedStaChildRunner
 
             PrimaryStartupTrayScenario => RunPrimaryStartupTrayScenario(paths, log, instanceName),
 
+            MenuSaveAndExitDrainScenario => RunMenuSaveAndExitDrainScenario(paths, log, instanceName),
+
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
     }
@@ -226,6 +229,164 @@ internal static class IsolatedStaChildRunner
                     ]);
                 app.Shutdown(0);
             });
+    }
+
+    private static int RunMenuSaveAndExitDrainScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(new MonitorInfo(0, 0, 1920, 1080, 100, true));
+        using var desktop = new GatedDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(
+            Environment.GetEnvironmentVariable(RegPathEnvVar)
+            ?? @"Software\Berth.Tests\MissingTrayTheme");
+
+        TrayIcon? capturedIcon = null;
+        TrayMenu? capturedMenu = null;
+        string initialTooltip = string.Empty;
+        string tooltipAfterSave = string.Empty;
+        bool attachedToNotifyIcon = false;
+        int completedCount = 0;
+        bool exitedBeforeRelease = false;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon =>
+            {
+                capturedIcon = icon;
+                initialTooltip = icon.TooltipText;
+            },
+            onTrayMenuCreated: menu =>
+            {
+                capturedMenu = menu;
+                attachedToNotifyIcon = ReferenceEquals(capturedIcon?.NotifyIcon.ContextMenuStrip, menu.Strip);
+            },
+            onAppStartup: app =>
+            {
+                if (capturedIcon is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                // Trigger 1: Save via the real attached menu item and observe production tooltip refresh.
+                void OnFirstCompleted(OperationResult firstResult)
+                {
+                    _ = firstResult;
+                    capturedMenu.OperationFinished -= OnFirstCompleted;
+                    completedCount++;
+                    tooltipAfterSave = capturedIcon.TooltipText;
+
+                    // Trigger 2: Hold the next Save in flight, click Exit on the attached menu, verify it waits, then release.
+                    desktop.ArmGate();
+                    capturedMenu.OperationFinished += _ => completedCount++;
+                    capturedMenu.SaveItem.PerformClick();
+
+                    _ = Task.Run(() =>
+                    {
+                        desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            capturedMenu.ExitItem.PerformClick();
+                            exitedBeforeRelease = app.Dispatcher.HasShutdownStarted;
+                        });
+                        Thread.Sleep(50);
+                        desktop.ReleaseGate();
+                    });
+                }
+
+                capturedMenu.OperationFinished += OnFirstCompleted;
+                capturedMenu.SaveItem.PerformClick();
+            });
+
+        bool visibleAfterExit = capturedIcon?.IsVisible ?? true;
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"attachedToNotifyIcon={attachedToNotifyIcon}",
+                $"initialTooltip={initialTooltip}",
+                $"tooltipAfterSave={tooltipAfterSave}",
+                $"completedCount={completedCount}",
+                $"exitedBeforeRelease={exitedBeforeRelease}",
+                $"visibleAfterExit={visibleAfterExit}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private sealed class GatedDesktopIcons(params IconPosition[] initial) : IDesktopIcons, IDisposable
+    {
+        private readonly Berth.Tests.Fakes.FakeDesktopIcons _inner = new(initial);
+        private ManualResetEventSlim? _entered;
+        private ManualResetEventSlim? _release;
+
+        public void ArmGate()
+        {
+            _entered?.Dispose();
+            _release?.Dispose();
+            _entered = new ManualResetEventSlim(false);
+            _release = new ManualResetEventSlim(false);
+        }
+
+        public void WaitUntilEntered(TimeSpan timeout)
+        {
+            if (_entered is not null && !_entered.Wait(timeout))
+            {
+                throw new TimeoutException("In-flight desktop read did not start in time.");
+            }
+        }
+
+        public void ReleaseGate() => _release?.Set();
+
+        public void Dispose()
+        {
+            _entered?.Dispose();
+            _release?.Dispose();
+        }
+
+        public bool AutoArrange => ((IDesktopIcons)_inner).AutoArrange;
+
+        public IReadOnlyList<IconPosition> ReadIcons()
+        {
+            ManualResetEventSlim? entered = _entered;
+            ManualResetEventSlim? release = _release;
+            if (entered is not null && release is not null)
+            {
+                _entered = null;
+                _release = null;
+                entered.Set();
+                release.Wait(TimeSpan.FromSeconds(5));
+            }
+
+            return ((IDesktopIcons)_inner).ReadIcons();
+        }
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons) => ((IDesktopIcons)_inner).SetPositions(icons);
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove) =>
+            ((IDesktopIcons)_inner).SetPositions(icons, beforeMove);
+
+        public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)_inner).TryTurnAutoArrangeOff();
     }
 
     private sealed class FixedChildClock(DateTimeOffset utcNow) : TimeProvider

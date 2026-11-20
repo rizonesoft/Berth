@@ -38,7 +38,8 @@ internal static class TrayApp
                 return true;
             },
             runPrimary: null,
-            paths: paths);
+            paths: paths,
+            getenv: getenv);
     }
 
     internal static int RunWithInstance(
@@ -57,7 +58,10 @@ internal static class TrayApp
         TimeZoneInfo? zone = null,
         TaskbarTheme? taskbarTheme = null,
         Action<TrayIcon>? onTrayIconCreated = null,
-        Action<int>? exitProcess = null)
+        Action<int>? exitProcess = null,
+        Func<string, string?>? getenv = null,
+        Composition? composition = null,
+        Action<TrayMenu>? onTrayMenuCreated = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -106,31 +110,68 @@ internal static class TrayApp
             TaskbarTheme effectiveTheme = taskbarTheme ?? new TaskbarTheme();
             TimeProvider effectiveClock = clock ?? TimeProvider.System;
             TimeZoneInfo effectiveZone = zone ?? TimeZoneInfo.Local;
-            Layout? initialActive = paths is not null
-                ? TrayIcon.FindActiveLayout(new LayoutStore(paths), monitors ?? new SystemMonitors())
+            BerthPaths effectivePaths = composition?.Paths
+                ?? paths
+                ?? BerthPaths.FromEnvironment(getenv ?? Environment.GetEnvironmentVariable);
+            using Composition? ownedComposition = composition is null
+                ? Composition.Create(effectivePaths, log, getenv, effectiveClock)
                 : null;
+            Composition effectiveComposition = composition ?? ownedComposition!;
+            IMonitors effectiveMonitors = monitors ?? effectiveComposition.Monitors;
+            var settingsStore = new SettingsStore(effectiveComposition.Paths);
+
+            void MarshalToUi(Action action)
+            {
+                if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+                {
+                    if (app.Dispatcher.CheckAccess())
+                    {
+                        action();
+                    }
+                    else
+                    {
+                        _ = app.Dispatcher.BeginInvoke(action);
+                    }
+                }
+            }
+
+            Layout? initialActive = TrayIcon.FindActiveLayout(effectiveComposition.Store, effectiveMonitors);
 
             using var trayIcon = new TrayIcon(
                 effectiveTheme,
                 initialActive,
                 effectiveClock.GetUtcNow(),
                 effectiveZone,
-                marshal: action =>
+                marshal: MarshalToUi);
+            activeTrayIcon = trayIcon;
+
+            using var trayMenu = new TrayMenu(
+                effectiveComposition.Service,
+                effectiveComposition.Store,
+                effectiveMonitors,
+                effectiveComposition.Desktop,
+                settingsStore,
+                effectiveComposition.Log,
+                MarshalToUi);
+
+            trayMenu.OperationFinished += _ =>
+            {
+                trayIcon.TryRefreshTooltip(effectiveComposition.Store, effectiveMonitors, effectiveClock, effectiveZone);
+            };
+
+            trayMenu.ExitRequested += () =>
+                trayMenu.BeginDrain(() =>
                 {
+                    trayIcon.Dispose();
                     if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
                     {
-                        if (app.Dispatcher.CheckAccess())
-                        {
-                            action();
-                        }
-                        else
-                        {
-                            _ = app.Dispatcher.BeginInvoke(action);
-                        }
+                        app.Shutdown(0);
                     }
                 });
-            activeTrayIcon = trayIcon;
+
+            trayIcon.SetContextMenu(trayMenu.Strip);
             onTrayIconCreated?.Invoke(trayIcon);
+            onTrayMenuCreated?.Invoke(trayMenu);
 
             void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) =>
                 HandleUserPreferenceChanged(effectiveTheme, e.Category);
