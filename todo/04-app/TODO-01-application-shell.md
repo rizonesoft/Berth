@@ -45,7 +45,7 @@ depends_on: ["layout-core", "desktop-access", "command-line"]
 | 6 | §6 | Taskbar theme detection | D00 T01 §3 | [x] |
 | 7 | §7 | Tray icon and tooltip | §5, §6, D01 T01 §17 | [x] |
 | 8 | §8 | Tray menu | §7, D01 T01 §11, D01 T01 §18 | [x] |
-| 9 | §9 | Main window frame with two panes | §5 | [ ] |
+| 9 | §9 | Main window frame with two panes | §5 | [x] |
 | 10 | §10 | Window placement that persists | §9, D02 T01 §6 | [ ] |
 | 11 | §11 | Off-screen rendering of the window for review | §9 | [ ] |
 
@@ -294,17 +294,20 @@ The window's frame: title, icon, sizes, the 250 px layouts pane, the divider and
 1. Add `MainWindow` in `src/Berth/Window/MainWindow.xaml`. Done when: it opens at the token sizes with two panes.
 2. Wire open, hide and activate. Done when: closing hides it and the tray reopens it.
 
-- [ ] Add `src/Berth/Window/MainWindow.xaml` and `.xaml.cs`: title `Berth`, the application icon, `Width` and `Height` from `Berth.WindowDefaultWidth` and `Berth.WindowDefaultHeight`, `MinWidth` and `MinHeight` from their tokens, a `Grid` with a 250 px first column (`Berth.LayoutsPaneWidth`), a 1 px divider in the theme's divider brush, and a star column, each holding a named empty `ContentControl` (`LayoutsHost`, `DetailHost`). Done when: a test on the app fixture shows the window and reads `ActualWidth` 980, `ActualHeight` 640 and the first column's `ActualWidth` 250 at 100% scale. Cheaper substitute: literal numbers in the XAML (SPEC §1).
-- [ ] Closing the window cancels the close and hides it, unless the application is shutting down. Done when: a test calls `Close()` and sees `IsVisible` `false` and the window still usable by `Show()`; and `Exit` from the menu still ends the run. Cheaper substitute: letting the window close, after which reopening throws.
-- [ ] `Esc` does nothing (SPEC §4). Done when: a test sends `Key.Escape` through `RaiseEvent` and the window stays visible. Cheaper substitute: a cancel button binding that hides the window.
-- [ ] Add `MainWindow.BringToFront()`: `Show()`, restore from minimised, `Activate()`, and briefly set and clear `Topmost` when activation is refused. Done when: a test minimises the window, calls it, and reads `WindowState.Normal` and `IsVisible` `true`. Cheaper substitute: `Show()` alone, which leaves a minimised window minimised.
-- [ ] In `TrayApp`, create the window lazily on the first open, and call `BringToFront` for `TrayIcon.OpenRequested`, `TrayMenu.OpenRequested`, `SingleInstance.Activated` and the first-run plan. Done when: a test raises each source against a fake window factory and counts one creation and four `BringToFront` calls. Cheaper substitute: creating the window at startup, which costs memory in a tray-only session.
-- [ ] Add `tests/Berth.Tests/Window/MainWindowFrameTests.cs`. Done when: all pass, and the close test fails when `OnClosing` stops cancelling. Cheaper substitute: checking by hand.
-- [ ] Commit: `window: main window frame with two panes`
+- [x] Add `src/Berth/Window/MainWindow.xaml` and `.xaml.cs`: title `Berth`, the application icon, `Width` and `Height` from `Berth.WindowDefaultWidth` and `Berth.WindowDefaultHeight`, `MinWidth` and `MinHeight` from their tokens, a `Grid` with a 250 px first column (`Berth.LayoutsPaneWidth`), a 1 px divider in the theme's divider brush, and a star column, each holding a named empty `ContentControl` (`LayoutsHost`, `DetailHost`). Done when: a test on the app fixture shows the window and reads `ActualWidth` 980, `ActualHeight` 640 and the first column's `ActualWidth` 250 at 100% scale. Cheaper substitute: literal numbers in the XAML (SPEC §1).
+- [x] Closing the window cancels the close and hides it, unless the application is shutting down. Done when: a test calls `Close()` and sees `IsVisible` `false` and the window still usable by `Show()`; and `Exit` from the menu still ends the run. Cheaper substitute: letting the window close, after which reopening throws.
+- [x] `Esc` does nothing (SPEC §4). Done when: a test sends `Key.Escape` through `RaiseEvent` and the window stays visible. Cheaper substitute: a cancel button binding that hides the window.
+- [x] Add `MainWindow.BringToFront()`: `Show()`, restore from minimised, `Activate()`, and briefly set and clear `Topmost` when activation is refused. Done when: a test minimises the window, calls it, and reads `WindowState.Normal` and `IsVisible` `true`. Cheaper substitute: `Show()` alone, which leaves a minimised window minimised.
+- [x] In `TrayApp`, create the window lazily on the first open, and call `BringToFront` for `TrayIcon.OpenRequested`, `TrayMenu.OpenRequested`, `SingleInstance.Activated` and the first-run plan. Done when: a test raises each source against a fake window factory and counts one creation and four `BringToFront` calls. Cheaper substitute: creating the window at startup, which costs memory in a tray-only session.
+- [x] Add `tests/Berth.Tests/Window/MainWindowFrameTests.cs`. Done when: all pass, and the close test fails when `OnClosing` stops cancelling. Cheaper substitute: checking by hand.
+- [x] Commit: `window: main window frame with two panes`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MainWindowFrameTests"` passes, and fails when closing the window no longer hides it.
 
 > **Started:** 2026-11-20
+
+> **Verified:** 2026-11-20 | §9 | dccc53cfc4ed11ca2128657f9dd3310041f2f69a
+> **Review:** `docs/reviews/d04-t01-s9.json`
 
 ## 10. Window placement that persists
 
