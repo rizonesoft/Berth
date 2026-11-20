@@ -107,6 +107,8 @@ The left pane: heading, one row per layout, the Active badge and the selection (
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*LayoutsPaneTests"` passes, and fails when the Active badge appears on a row that is not active.
 
+> **Started:** 2026-11-20
+
 ## 3. Detail header and action buttons
 
 The right pane's header: title, the monitors line, and Restore, Save current layout and More, which differ by the kind of row selected (SPEC §6).

@@ -114,6 +114,7 @@ def render_high_contrast_dictionary(
 def render_shared_dictionary(tokens: dict[str, Any], source_label: str) -> str:
     sizes: dict[str, int | float] = tokens["size"]
     radii: dict[str, int | float] = tokens["radius"]
+    spacings: dict[str, str] = tokens.get("spacing", {})
     timings: dict[str, int | float] = tokens["timing"]
     type_section: dict[str, Any] = tokens["type"]
 
@@ -135,6 +136,13 @@ def render_shared_dictionary(tokens: dict[str, Any], source_label: str) -> str:
     for key, val in radii.items():
         lines.append(
             f'    <CornerRadius x:Key="Berth.Radius{escape(pascal(key))}">{format_number(val)}</CornerRadius>'
+        )
+
+    for key, val in spacings.items():
+        if not isinstance(val, str) or not val.strip():
+            raise ValueError(f"Expected non-empty Thickness string for spacing '{key}', got {val!r}")
+        lines.append(
+            f'    <Thickness x:Key="Berth.Space.{escape(pascal(key))}">{escape(val)}</Thickness>'
         )
 
     for key, val in timings.items():

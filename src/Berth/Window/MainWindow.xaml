@@ -2,6 +2,7 @@
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Berth.Window"
         Title="Berth"
         Icon="pack://application:,,,/berth;component/Assets/berth.ico"
         Width="{DynamicResource Berth.WindowDefaultWidth}"
@@ -18,7 +19,9 @@
         <ContentControl x:Name="LayoutsHost"
                         Grid.Column="0"
                         Width="{DynamicResource Berth.LayoutsPaneWidth}"
-                        Focusable="False" />
+                        Focusable="False">
+            <local:LayoutsPane x:Name="LayoutsPaneControl" />
+        </ContentControl>
 
         <Border x:Name="PaneDivider"
                 Grid.Column="1"

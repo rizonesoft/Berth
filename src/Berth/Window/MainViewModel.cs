@@ -21,6 +21,7 @@ internal sealed class MainViewModel : ObservableObject
     private readonly Func<Action, Task> _marshalToUiAsync;
 
     private int _refreshInFlight;
+    private bool _isApplyingSnapshot;
     private LayoutRow? _selected;
     private string? _lastKnownSelectedKey;
     private DesktopState _desktopState;
@@ -84,7 +85,7 @@ internal sealed class MainViewModel : ObservableObject
                 {
                     _lastKnownSelectedKey = value.Key;
                 }
-                else
+                else if (!_isApplyingSnapshot)
                 {
                     _lastKnownSelectedKey = null;
                 }
@@ -252,10 +253,18 @@ internal sealed class MainViewModel : ObservableObject
         bool rowsUnchanged = Rows.Count == nextRows.Count && Rows.SequenceEqual(nextRows);
         if (!rowsUnchanged)
         {
-            Rows.Clear();
-            foreach (LayoutRow row in nextRows)
+            _isApplyingSnapshot = true;
+            try
             {
-                Rows.Add(row);
+                Rows.Clear();
+                foreach (LayoutRow row in nextRows)
+                {
+                    Rows.Add(row);
+                }
+            }
+            finally
+            {
+                _isApplyingSnapshot = false;
             }
         }
 

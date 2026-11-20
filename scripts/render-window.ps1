@@ -17,7 +17,20 @@ try {
         exit $LASTEXITCODE
     }
 
-    $expectedNames = @('frame-light.png', 'frame-dark.png')
+    $expectedNames = @(
+        'frame-light.png',
+        'frame-dark.png',
+        'layouts-none-light.png',
+        'layouts-none-dark.png',
+        'layouts-one-light.png',
+        'layouts-one-dark.png',
+        'layouts-several-light.png',
+        'layouts-several-dark.png',
+        'layouts-active-saved-light.png',
+        'layouts-active-saved-dark.png',
+        'layouts-active-unsaved-light.png',
+        'layouts-active-unsaved-dark.png'
+    )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name
         if (-not (Test-Path -LiteralPath $stagedFile) -or (Get-Item -LiteralPath $stagedFile).Length -le 0) {

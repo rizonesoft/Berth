@@ -24,6 +24,9 @@ public sealed class WindowRendererTests(AppFixture appFixture)
             var window = new MainWindow();
             try
             {
+                // Explicitly clear pane hosts so frame-light/frame-dark stay the empty two-pane frame baseline.
+                window.LayoutsHost.Content = null;
+                window.DetailHost.Content = null;
                 WindowRenderer.Render(window.RootGrid, 980, 640, lightPath, RenderTheme.Light);
                 WindowRenderer.Render(window.RootGrid, 980, 640, darkPath, RenderTheme.Dark);
             }
