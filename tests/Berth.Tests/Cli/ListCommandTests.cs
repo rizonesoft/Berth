@@ -103,6 +103,24 @@ public sealed class ListCommandTests
             $"* 東京  2 monitors  42 icons  2026-11-15 09:14{Environment.NewLine}" +
             $"  AB    1 monitor  1 icon  2026-11-15 09:14{Environment.NewLine}";
         Assert.Equal(expected, output.ToString());
+
+        // U+231A (WATCH, East Asian Width W -> 2 cells) vs "AB" (2 cells): zero extra padding on either row.
+        using var watchData = new TestData();
+        BerthPaths watchPaths = BerthPaths.ForRoot(watchData.Root);
+        var watchStore = new LayoutStore(watchPaths);
+        watchStore.Save(MakeLayout(ArrangementA, "\u231A", when, 42));
+        watchStore.Save(MakeLayout(ArrangementB, "AB", when, 1));
+
+        var watchOut = new StringWriter();
+        var watchErr = new StringWriter();
+        int watchCode = CliRunner.RunList(watchStore, watchPaths, new FakeMonitors(ArrangementA), log: null, watchOut, watchErr, UtcPlusTwo);
+
+        Assert.Equal(0, watchCode);
+        Assert.Equal(string.Empty, watchErr.ToString());
+        Assert.Equal(
+            $"* \u231A  2 monitors  42 icons  2026-11-15 09:14{Environment.NewLine}" +
+            $"  AB  1 monitor  1 icon  2026-11-15 09:14{Environment.NewLine}",
+            watchOut.ToString());
     }
 
     [Fact]
