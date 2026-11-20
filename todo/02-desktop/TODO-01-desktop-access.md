@@ -44,7 +44,7 @@ depends_on: ["layout-core"]
 | 4 | §3 | Reading every icon's identity and position | §9, §6, D01 T01 §8 | [ ] |
 | 5 | §4 | Setting icon positions | §3 | [ ] |
 | 6 | §5 | Auto arrange read and clear | §9 | [x] |
-| 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [ ] |
+| 7 | §6 | Monitor bounds, scale and primary | D01 T01 §8 | [x] |
 | 8 | §10 | Desktop scoped to icons with a name prefix | D01 T01 §8 | [ ] |
 | 9 | §7 | Real-desktop round trip on a probe icon | §4, §5, §6, §10, D01 T01 §11 | [ ] |
 | 10 | §8 | One exception for an unreachable desktop | §3, §4, §5 | [ ] |
@@ -192,9 +192,12 @@ Berth detects auto arrange and can turn it off on the user's click (SPEC §9).
 - [x] Return monitors in `MonitorNumbering.Order` order (`D01 T01 §13`: sorted by `X` then `Y`). Done when: unit tests with unsorted multi-monitor input (including negative `X` and `Y` and equal `X` tie-breaking by `Y`) and the live `RealDesktop` test assert the returned list equals `MonitorNumbering.Order(result)`. Cheaper substitute: enumeration order, which Windows does not promise.
 - [x] Throw `DesktopUnavailableException` when no monitor is returned (locked or disconnected session), when `EnumDisplayMonitors` or `GetMonitorInfoW` fails (preserving `Win32Exception` as `InnerException`), when `GetDpiForMonitor` returns a non-zero HRESULT (preserving `Marshal.GetExceptionForHR` as `InnerException`) or `dpiX == 0`, when any monitor has non-positive width/height or scale `<= 0`, or when the enumerated set does not have exactly one primary monitor; when a second monitor fails inside the enumeration callback after a first monitor succeeded, stop enumeration cleanly, let no partial list escape, and throw `DesktopUnavailableException` preserving the second monitor's error as `InnerException`. **Corrected 2026-11-20:** specified native failure mapping (`EnumDisplayMonitors`, `GetMonitorInfoW`, `GetDpiForMonitor`), callback-state error capture on a failing second monitor (`plan review P1`), and bounds/primary invariants alongside the empty-list case so a partial or corrupt enumeration never produces a wrong arrangement key. Done when: unit tests over the internal raw-list and native-seam overloads assert `DesktopUnavailableException` (with inner exception preserved where applicable) for each failure case, including a 2-monitor callback where monitor 1 succeeds and monitor 2 fails. Cheaper substitute: returning an empty list or silently dropping a monitor whose info/DPI query failed.
 - [x] Add `tests/Berth.Tests/Desktop/SystemMonitorsTests.cs` with the live read in `[Collection(DesktopCollectionDefinition.Name)]` marked `[Trait("Category", "RealDesktop")]` (skipping only when `!Sta.HasInteractiveDesktopSession`) plus unit tests for the 2-monitor native-seam full-field verification, no-caching across two `Read()` calls, mirroring/unattached pseudo-monitor exclusion, `MonitorNumbering` ordering, DPI rounding, empty list, missing/duplicate primary, non-positive size, and native `EnumDisplayMonitors`/`GetMonitorInfoW`/`GetDpiForMonitor` failures (including 1st-succeeds/2nd-fails callback containment). **Corrected 2026-11-20:** added `DesktopCollectionDefinition.Name` serialization and `Sta.HasInteractiveDesktopSession` guard (`AGENTS.md`, 2026-11-18) plus all 5 `astra` plan-review test cases. Done when: all pass with `0` skipped on the build machine, and the tests fail when `Primary` is never set, when `rcWork` is read instead of `rcMonitor`, when a mirroring device is included, when `Read()` caches its first result, or when a 2nd-monitor failure escapes as a partial list. Cheaper substitute: asserting only a non-empty list.
-- [ ] Commit: `desktop: monitor bounds, scale and primary`
+- [x] Commit: `desktop: monitor bounds, scale and primary`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx -c Release --filter-class "*SystemMonitorsTests" --filter-class "*LayerRuleTests"` passes with `0` skipped on the build machine, and fails when `Primary` is never set, when `rcWork` is used instead of `rcMonitor`, when ordering is omitted, when mirroring pseudo-monitors are included, when `Read()` caches its first result, or when an empty list or 2nd-monitor native failure does not throw `DesktopUnavailableException`.
+
+> **Verified:** 2026-11-20 | §6 | d941963ccfb00bba606da90ca14040d2b59a0b3a
+> **Review:** `docs/reviews/d02-t01-s6.json`
 
 ## 7. Real-desktop round trip on a probe icon
 

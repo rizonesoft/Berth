@@ -1,0 +1,84 @@
+{
+  "ref": "D02 T01 \u00a76",
+  "title": "Monitor bounds, scale and primary",
+  "implementation_sha": "d941963ccfb00bba606da90ca14040d2b59a0b3a",
+  "date": "2026-11-20",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/02-desktop/D02-T01-s6.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SystemMonitorsTests --filter-class *LayerRuleTests -> Passed! total: 57, failed: 0, succeeded: 57, skipped: 0",
+    "CI build.yml + plan.yml at d941963ccfb0 -> green (https://github.com/rizonesoft/Berth/actions/runs/44725871404, https://github.com/rizonesoft/Berth/actions/runs/44725871256)"
+  ],
+  "completion": {
+    "report": "docs/reviews/02-desktop/D02-T01-s6.md",
+    "verdict": "reconciled",
+    "candidate": "d941963ccfb00bba606da90ca14040d2b59a0b3a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/02-desktop/D02-T01-s6.md",
+    "candidate": "74e5e4c060476f92d3c411c49f0ade5d134c114e",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "74e5e4c060476f92d3c411c49f0ade5d134c114e",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
