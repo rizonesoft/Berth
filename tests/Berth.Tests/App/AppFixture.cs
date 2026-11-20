@@ -43,6 +43,13 @@ public sealed class AppFixture : IDisposable
 
     public int ExitCode { get; private set; } = -1;
 
+    /// <summary>Resources captured during <see cref="BerthApplication"/> startup BEFORE any test can call <c>Apply*</c>.</summary>
+    internal double? InitialWindowDefaultWidth { get; private set; }
+
+    internal bool InitialMarkerBrushResolved { get; private set; }
+
+    internal bool InitialFluentButtonStyleResolved { get; private set; }
+
     /// <summary>Executes <paramref name="action"/> synchronously on the STA application dispatcher.</summary>
     public void Invoke(Action action)
     {
@@ -101,6 +108,9 @@ public sealed class AppFixture : IDisposable
             app.Startup += (_, _) =>
             {
                 _app = app;
+                InitialWindowDefaultWidth = app.TryFindResource("Berth.WindowDefaultWidth") as double?;
+                InitialMarkerBrushResolved = app.TryFindResource("Berth.MarkerInPlace") is System.Windows.Media.SolidColorBrush;
+                InitialFluentButtonStyleResolved = app.TryFindResource(typeof(System.Windows.Controls.Button)) is not null;
                 _ready.Set();
             };
 

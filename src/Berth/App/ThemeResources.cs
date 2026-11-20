@@ -63,11 +63,6 @@ internal static class ThemeResources
                 return appDword != 0;
             }
 
-            if (appValue is not null)
-            {
-                return false;
-            }
-
             object? systemValue = readValue("SystemUsesLightTheme");
             return systemValue is int sysDword && sysDword != 0;
         }

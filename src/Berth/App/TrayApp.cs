@@ -41,7 +41,9 @@ internal static class TrayApp
         Func<SingleInstance> createInstance,
         Log log,
         Func<string, bool> showCrashMessage,
-        Func<SingleInstance, CrashHandler, int>? runPrimary)
+        Func<SingleInstance, CrashHandler, int>? runPrimary,
+        Action? onBeforeReclaim = null,
+        Action<BerthApplication>? onAppStartup = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -54,7 +56,7 @@ internal static class TrayApp
         using SingleInstance instance = createInstance();
         if (!instance.TryClaim())
         {
-            SecondaryOutcome outcome = instance.RunSecondary();
+            SecondaryOutcome outcome = instance.RunSecondary(onBeforeReclaim);
             if (outcome == SecondaryOutcome.ActivatedExisting)
             {
                 return CliExit.Done;
@@ -67,14 +69,27 @@ internal static class TrayApp
         }
 
         var crashHandler = new CrashHandler(log, showCrashMessage);
-        if (runPrimary is not null)
+        try
         {
-            return runPrimary(instance, crashHandler);
-        }
+            if (runPrimary is not null)
+            {
+                return runPrimary(instance, crashHandler);
+            }
 
-        var app = new BerthApplication();
-        using IDisposable crashAttachment = crashHandler.Attach(app);
-        app.InitializeTheme();
-        return app.Run();
+            var app = new BerthApplication();
+            using IDisposable crashAttachment = crashHandler.Attach(app);
+            if (onAppStartup is not null)
+            {
+                app.Startup += (_, _) => onAppStartup(app);
+            }
+
+            app.InitializeTheme();
+            return app.Run();
+        }
+        catch (Exception ex)
+        {
+            crashHandler.Handle(ex, "TrayApp.Startup", showDialog: true);
+            return CliExit.Error;
+        }
     }
 }

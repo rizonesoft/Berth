@@ -27,28 +27,28 @@ internal sealed class BerthApplication : WpfApplication
         _readAppsUseLightTheme = readAppsUseLightTheme ?? (() => ThemeResources.ReadAppsUseLightTheme());
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-#pragma warning disable WPF0001 // WPF ThemeMode is experimental in .NET 11; SPEC §3 requires ThemeMode.System.
-        ThemeMode = ThemeMode.System;
-#pragma warning restore WPF0001
     }
 
     /// <summary>The colour theme currently merged into <see cref="WpfApplication.Resources"/>.</summary>
     public ColorTheme CurrentColorTheme { get; private set; }
 
-    /// <summary>Merges the initial token dictionaries and subscribes to Windows theme and High Contrast changes.</summary>
+    /// <summary>Subscribes to Windows theme and High Contrast changes, enables <see cref="ThemeMode.System"/>, and merges the initial token dictionaries.</summary>
     public void InitializeTheme()
     {
-        if (!_themeInitialized)
-        {
-            _themeInitialized = true;
-            ApplySystemTheme();
-        }
-
         if (!_subscribed)
         {
             _subscribed = true;
             SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
             SystemEvents.UserPreferenceChanged += OnSystemUserPreferenceChanged;
+        }
+
+        if (!_themeInitialized)
+        {
+            _themeInitialized = true;
+#pragma warning disable WPF0001 // WPF ThemeMode is experimental in .NET 11; SPEC §3 requires ThemeMode.System.
+            ThemeMode = ThemeMode.System;
+#pragma warning restore WPF0001
+            ApplySystemTheme();
         }
     }
 
@@ -77,8 +77,8 @@ internal sealed class BerthApplication : WpfApplication
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
         InitializeTheme();
+        base.OnStartup(e);
     }
 
     protected override void OnExit(ExitEventArgs e)

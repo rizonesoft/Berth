@@ -13,6 +13,11 @@ internal static class Program
             return HelperMain.Run(args[1..]);
         }
 
+        if (args.Length > 0 && args[0] == App.IsolatedStaChildRunner.Switch)
+        {
+            return App.IsolatedStaChildRunner.RunMain(args[1..]);
+        }
+
         if (args.Any(arg => arg == "--server" || arg == "--internal-msbuild-node"))
         {
             return Xunit.MicrosoftTestingPlatform.TestPlatformTestFramework

@@ -362,19 +362,21 @@ public sealed class StartupPlanProcessTests
 
         using BerthProcess first = BerthProcess.Start(data.Root, [], extraEnvironment: env);
 
-        // Wait until the first child owns the named instance mutex before launching the second child.
+        // Observe the named mutex passively (never claiming it or binding a pipe) until the first child owns it.
+        string mutexName = $@"Local\Berth.App.{instanceName}";
         DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         bool firstClaimed = false;
         while (DateTime.UtcNow < deadline)
         {
-            using var probe = new SingleInstance(instanceName);
-            if (!probe.TryClaim())
+            Assert.False(first.HasExited, "First berth.exe child exited unexpectedly before claiming the instance.");
+            if (Mutex.TryOpenExisting(mutexName, out Mutex? existing))
             {
+                existing.Dispose();
                 firstClaimed = true;
                 break;
             }
 
-            Thread.Sleep(50);
+            Thread.Sleep(25);
         }
 
         Assert.True(firstClaimed, "First berth.exe child did not claim the single-instance mutex within 10 seconds.");
@@ -385,11 +387,6 @@ public sealed class StartupPlanProcessTests
         Assert.Equal(0, secondResult.ExitCode);
         Assert.Equal(string.Empty, secondResult.StandardOutput);
         Assert.Equal(string.Empty, secondResult.StandardError);
-
-        // Confirm the first instance is still running after the second signalled it and exited.
-        using (var postProbe = new SingleInstance(instanceName))
-        {
-            Assert.False(postProbe.TryClaim(), "Primary berth.exe should still be running after secondary exited.");
-        }
+        Assert.False(first.HasExited, "Primary berth.exe should still be running after secondary exited.");
     }
 }
