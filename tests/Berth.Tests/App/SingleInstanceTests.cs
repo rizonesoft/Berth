@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Principal;
-using System.Text;
 using Berth.App;
 
 namespace Berth.Tests.App;
@@ -46,25 +46,95 @@ public sealed class SingleInstanceTests
         using var first = new SingleInstance(name);
         using var second = new SingleInstance(name);
 
+        using var recordedPending = new ManualResetEventSlim(false);
+        first.PendingActivationRecorded += () => recordedPending.Set();
+
         Assert.True(first.TryClaim());
         Assert.False(second.TryClaim());
 
-        // Signal BEFORE any subscriber attaches to Activated.
+        // Signal BEFORE any subscriber attaches, and wait deterministically for the server to store it as pending.
         Assert.True(second.SignalFirst());
+        Assert.True(recordedPending.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Server did not record pending activation.");
 
-        // Wait briefly for the background pipe read to finish, then subscribe and verify delivery once.
         using var delivered = new ManualResetEventSlim(false);
         int count = 0;
-        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
         first.Activated += () =>
         {
             Interlocked.Increment(ref count);
             delivered.Set();
         };
 
-        Assert.True(delivered.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Pending activation was not delivered to subscriber.");
+        Assert.True(delivered.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Pending activation was not replayed to subscriber.");
         Assert.Equal(1, Volatile.Read(ref count));
-        Assert.True(DateTime.UtcNow <= deadline + TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void FailedPipeBindReleasesMutexSoReplacementCanClaim()
+    {
+        string name = UniqueName();
+        int sessionId = Process.GetCurrentProcess().SessionId;
+        string pipeName = $"Berth.App.{name}.{sessionId}";
+
+        // Reserve the single-instance pipe endpoint with maxNumberOfServerInstances: 1 before TryClaim.
+        using (var occupied = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.In,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous))
+        {
+            using var failed = new SingleInstance(name, sessionId: sessionId);
+            Assert.Throws<IOException>(() => failed.TryClaim());
+        }
+
+        // After releasing the reserved pipe, a replacement must be able to claim the mutex and listen cleanly.
+        using var replacement = new SingleInstance(name, sessionId: sessionId);
+        Assert.True(replacement.TryClaim());
+    }
+
+    [Fact]
+    public void ThrowingOrDisposingSubscriberDoesNotStopDeliveryOrDeadlock()
+    {
+        string name = UniqueName();
+        using var first = new SingleInstance(name);
+        Assert.True(first.TryClaim());
+
+        using var secondDelivered = new ManualResetEventSlim(false);
+        int callCount = 0;
+        first.Activated += () =>
+        {
+            if (Interlocked.Increment(ref callCount) == 1)
+            {
+                throw new InvalidOperationException("Simulated subscriber failure.");
+            }
+
+            secondDelivered.Set();
+        };
+
+        using var caller = new SingleInstance(name);
+        Assert.True(caller.SignalFirst());
+        Assert.True(caller.SignalFirst());
+        Assert.True(secondDelivered.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Listener stopped delivering after a subscriber threw.");
+        Assert.Equal(2, Volatile.Read(ref callCount));
+
+        // Subscriber calling Dispose() inside Activated must not deadlock.
+        string disposeName = UniqueName();
+        var selfDisposing = new SingleInstance(disposeName);
+        Assert.True(selfDisposing.TryClaim());
+        using var disposedInCallback = new ManualResetEventSlim(false);
+        selfDisposing.Activated += () =>
+        {
+            selfDisposing.Dispose();
+            disposedInCallback.Set();
+        };
+
+        using var trigger = new SingleInstance(disposeName);
+        Assert.True(trigger.SignalFirst());
+        Assert.True(disposedInCallback.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Disposing inside Activated deadlocked.");
+
+        // Confirm mutex and pipe are free for a replacement after self-disposal.
+        using var replacement = new SingleInstance(disposeName);
+        Assert.True(replacement.TryClaim());
     }
 
     [Fact]
@@ -134,30 +204,29 @@ public sealed class SingleInstanceTests
         // 4. Malformed command ("hello") must be rejected.
         SendRaw(expectedPipeName, "hello"u8.ToArray());
 
-        // 5. Client that holds pipe open without sending EOF must time out after clientReadTimeout without hanging listener.
+        // 5. Client that holds pipe open WITHOUT closing must be evicted by server's clientReadTimeout,
+        // allowing a separate valid fragmented client to connect and trigger Activated while slowClient is STILL open!
         using (var slowClient = new NamedPipeClientStream(".", expectedPipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly))
         {
             slowClient.Connect(1000);
             slowClient.Write("acti"u8);
             slowClient.Flush();
-            // Hold open past the 250ms clientReadTimeout so server aborts this client and returns to accept.
-            Thread.Sleep(400);
+
+            // Keep slowClient open while a separate valid fragmented client connects and succeeds after the 250ms timeout.
+            using (var fragmentedClient = new NamedPipeClientStream(".", expectedPipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly))
+            {
+                fragmentedClient.Connect(2000);
+                fragmentedClient.Write("acti"u8);
+                fragmentedClient.Flush();
+                fragmentedClient.Write("vate"u8);
+                fragmentedClient.Flush();
+            }
+
+            Assert.True(validOne.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Fragmented valid 'activate' did not raise Activated while slow client stayed open.");
+            Assert.Equal(1, Volatile.Read(ref count));
         }
 
-        // 6. Valid fragmented "activate" across two writes must succeed!
-        using (var fragmentedClient = new NamedPipeClientStream(".", expectedPipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly))
-        {
-            fragmentedClient.Connect(1000);
-            fragmentedClient.Write("acti"u8);
-            fragmentedClient.Flush();
-            fragmentedClient.Write("vate"u8);
-            fragmentedClient.Flush();
-        }
-
-        Assert.True(validOne.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Fragmented valid 'activate' did not raise Activated.");
-        Assert.Equal(1, Volatile.Read(ref count));
-
-        // 7. Follow with a normal SignalFirst() and verify exact count = 2.
+        // 6. Follow with a normal SignalFirst() and verify exact count = 2.
         using var secondary = new SingleInstance(name, sessionId: customSessionId);
         Assert.True(secondary.SignalFirst());
         Assert.True(validTwo.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "Second valid 'activate' did not raise Activated.");
@@ -247,7 +316,7 @@ public sealed class SingleInstanceTests
             hangingClient.Flush();
 
             // Dispose must cancel the active read promptly without waiting for the 5s clientReadTimeout.
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();
             busyFirst.Dispose();
             sw.Stop();
             Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2), $"Dispose took {sw.Elapsed.TotalMilliseconds:F0} ms while client held pipe open.");
@@ -278,7 +347,7 @@ public sealed class SingleInstanceTests
         }
         catch (IOException)
         {
-            // Server may close the pipe early once MaxCommandBytes is exceeded.
+            // Server may close the pipe early once the 8-byte command length is exceeded.
         }
     }
 

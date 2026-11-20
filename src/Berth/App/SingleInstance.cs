@@ -32,17 +32,17 @@ internal sealed class SingleInstance : IDisposable
 
     private readonly TimeSpan _connectTimeout;
     private readonly TimeSpan _clientReadTimeout;
-    private readonly Lock _stateLock = new();
-    private readonly ManualResetEventSlim _releaseMutex = new(initialState: false);
+    private readonly Lock _lifecycleLock = new();
+    private readonly Lock _eventLock = new();
 
     private Action? _activated;
     private bool _hasPendingActivation;
     private bool _claimed;
     private bool _disposed;
+    private ManualResetEventSlim? _releaseMutex;
     private Thread? _mutexThread;
     private CancellationTokenSource? _listenerCts;
     private Task? _listenerTask;
-    private ManualResetEventSlim? _listenerReady;
 
     public SingleInstance(
         string name,
@@ -78,9 +78,13 @@ internal sealed class SingleInstance : IDisposable
 
     internal string PipeName { get; }
 
+    /// <summary>Test hook raised after an activation arrives with no subscriber attached and is stored as pending.</summary>
+    internal event Action? PendingActivationRecorded;
+
     /// <summary>
-    /// Raised when a second instance sends <c>activate</c>. If an activation arrived before the first
-    /// subscriber attached, that subscriber is invoked once immediately on subscription.
+    /// Raised on a thread-pool worker when a second instance sends <c>activate</c>. If an activation arrived before
+    /// the first subscriber attached, that subscriber is invoked once on a thread-pool worker on subscription.
+    /// Subscribers must marshal UI work to their own dispatcher; exceptions in subscribers never stop delivery.
     /// </summary>
     public event Action? Activated
     {
@@ -92,7 +96,7 @@ internal sealed class SingleInstance : IDisposable
             }
 
             bool replayPending;
-            lock (_stateLock)
+            lock (_eventLock)
             {
                 _activated += value;
                 replayPending = _hasPendingActivation;
@@ -101,7 +105,7 @@ internal sealed class SingleInstance : IDisposable
 
             if (replayPending)
             {
-                value();
+                DispatchCallback(value);
             }
         }
         remove
@@ -111,7 +115,7 @@ internal sealed class SingleInstance : IDisposable
                 return;
             }
 
-            lock (_stateLock)
+            lock (_eventLock)
             {
                 _activated -= value;
             }
@@ -136,106 +140,112 @@ internal sealed class SingleInstance : IDisposable
     }
 
     /// <summary>
-    /// Attempts to claim the per-session named mutex and start the activation pipe listener.
+    /// Attempts to claim the per-session named mutex and bind the activation pipe listener.
     /// Uses a dedicated background thread to own the mutex so two <see cref="SingleInstance"/> objects on the same
     /// thread never recursively re-acquire it and <see cref="Dispose"/> always releases it on its owning thread.
+    /// Serialized with <see cref="Dispose"/> so a claim never outlives disposal.
     /// </summary>
     public bool TryClaim()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        lock (_stateLock)
+        lock (_lifecycleLock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_claimed)
             {
                 return true;
             }
-        }
 
-        using var claimDone = new ManualResetEventSlim(initialState: false);
-        bool acquired = false;
-        Exception? claimError = null;
+            var releaseMutex = new ManualResetEventSlim(initialState: false);
+            using var claimDone = new ManualResetEventSlim(initialState: false);
+            bool acquired = false;
+            Exception? claimError = null;
 
-        var ownerThread = new Thread(() =>
-        {
-            Mutex? mutex = null;
-            bool owns = false;
-            try
+            var ownerThread = new Thread(() =>
             {
-                mutex = new Mutex(initiallyOwned: false, MutexName);
+                Mutex? mutex = null;
+                bool owns = false;
                 try
                 {
-                    owns = mutex.WaitOne(0);
-                }
-                catch (AbandonedMutexException)
-                {
-                    // Previous owner exited without releasing while another handle kept the named mutex alive.
-                    owns = true;
-                }
-
-                acquired = owns;
-                claimDone.Set();
-
-                if (owns)
-                {
-                    _releaseMutex.Wait();
-                }
-            }
-            catch (Exception ex)
-            {
-                claimError = ex;
-                claimDone.Set();
-            }
-            finally
-            {
-                if (owns && mutex is not null)
-                {
+                    mutex = new Mutex(initiallyOwned: false, MutexName);
                     try
+                    {
+                        owns = mutex.WaitOne(0);
+                    }
+                    catch (AbandonedMutexException)
+                    {
+                        // Previous owner exited without releasing while another handle kept the named mutex alive.
+                        owns = true;
+                    }
+
+                    acquired = owns;
+                    claimDone.Set();
+
+                    if (owns)
+                    {
+                        releaseMutex.Wait();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    claimError = ex;
+                    claimDone.Set();
+                }
+                finally
+                {
+                    if (owns && mutex is not null)
                     {
                         mutex.ReleaseMutex();
                     }
-                    catch (ApplicationException)
-                    {
-                        // Ignore if somehow no longer owned on teardown.
-                    }
+
+                    mutex?.Dispose();
                 }
+            })
+            {
+                IsBackground = true,
+                Name = $"Berth.SingleInstance.Mutex.{Name}",
+            };
 
-                mutex?.Dispose();
+            ownerThread.Start();
+            claimDone.Wait();
+
+            if (claimError is not null)
+            {
+                releaseMutex.Set();
+                ownerThread.Join();
+                releaseMutex.Dispose();
+                throw new IOException($"Failed to claim single-instance mutex '{MutexName}': {claimError.Message}", claimError);
             }
-        })
-        {
-            IsBackground = true,
-            Name = $"Berth.SingleInstance.Mutex.{Name}",
-        };
 
-        ownerThread.Start();
-        claimDone.Wait();
+            if (!acquired)
+            {
+                ownerThread.Join();
+                releaseMutex.Dispose();
+                return false;
+            }
 
-        if (claimError is not null)
-        {
-            ownerThread.Join();
-            throw new IOException($"Failed to claim single-instance mutex '{MutexName}': {claimError.Message}", claimError);
-        }
+            // Bind the initial pipe server synchronously BEFORE reporting a successful claim so a bind failure
+            // immediately releases mutex ownership instead of leaving a dead primary holding the mutex.
+            NamedPipeServerStream initialServer;
+            try
+            {
+                initialServer = CreatePipeServer();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                releaseMutex.Set();
+                ownerThread.Join();
+                releaseMutex.Dispose();
+                throw new IOException($"Failed to bind single-instance pipe '{PipeName}': {ex.Message}", ex);
+            }
 
-        if (!acquired)
-        {
-            ownerThread.Join();
-            return false;
-        }
-
-        var cts = new CancellationTokenSource();
-        var ready = new ManualResetEventSlim(initialState: false);
-
-        lock (_stateLock)
-        {
+            var cts = new CancellationTokenSource();
             _claimed = true;
+            _releaseMutex = releaseMutex;
             _mutexThread = ownerThread;
             _listenerCts = cts;
-            _listenerReady = ready;
-            _listenerTask = Task.Run(() => ListenLoopAsync(ready, cts.Token));
+            _listenerTask = Task.Run(() => ListenLoopAsync(initialServer, cts.Token));
+            return true;
         }
-
-        ready.Wait();
-        return true;
     }
 
     /// <summary>
@@ -289,9 +299,9 @@ internal sealed class SingleInstance : IDisposable
         CancellationTokenSource? cts;
         Task? listenerTask;
         Thread? mutexThread;
-        ManualResetEventSlim? ready;
+        ManualResetEventSlim? releaseMutex;
 
-        lock (_stateLock)
+        lock (_lifecycleLock)
         {
             if (_disposed)
             {
@@ -303,11 +313,11 @@ internal sealed class SingleInstance : IDisposable
             cts = _listenerCts;
             listenerTask = _listenerTask;
             mutexThread = _mutexThread;
-            ready = _listenerReady;
+            releaseMutex = _releaseMutex;
             _listenerCts = null;
             _listenerTask = null;
             _mutexThread = null;
-            _listenerReady = null;
+            _releaseMutex = null;
         }
 
         cts?.Cancel();
@@ -325,33 +335,62 @@ internal sealed class SingleInstance : IDisposable
         }
 
         cts?.Dispose();
-        ready?.Dispose();
 
-        _releaseMutex.Set();
-        mutexThread?.Join();
-        _releaseMutex.Dispose();
+        if (releaseMutex is not null)
+        {
+            releaseMutex.Set();
+            mutexThread?.Join();
+            releaseMutex.Dispose();
+        }
     }
 
-    private async Task ListenLoopAsync(ManualResetEventSlim ready, CancellationToken shutdownToken)
+    private NamedPipeServerStream CreatePipeServer() =>
+        new(
+            PipeName,
+            PipeDirection.In,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
+
+    private async Task ListenLoopAsync(NamedPipeServerStream initialServer, CancellationToken shutdownToken)
     {
-        bool signalledReady = false;
-        try
+        NamedPipeServerStream? nextServer = initialServer;
+        while (!shutdownToken.IsCancellationRequested)
         {
-            while (!shutdownToken.IsCancellationRequested)
+            NamedPipeServerStream server;
+            if (nextServer is not null)
             {
-                using var server = new NamedPipeServerStream(
-                    PipeName,
-                    PipeDirection.In,
-                    maxNumberOfServerInstances: 1,
-                    PipeTransmissionMode.Byte,
-                    PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
-
-                if (!signalledReady)
+                server = nextServer;
+                nextServer = null;
+            }
+            else
+            {
+                try
                 {
-                    signalledReady = true;
-                    ready.Set();
+                    server = CreatePipeServer();
                 }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    if (shutdownToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
 
+                    try
+                    {
+                        await Task.Delay(50, shutdownToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+            }
+
+            using (server)
+            {
                 try
                 {
                     await server.WaitForConnectionAsync(shutdownToken).ConfigureAwait(false);
@@ -372,13 +411,8 @@ internal sealed class SingleInstance : IDisposable
                 }
             }
         }
-        finally
-        {
-            if (!signalledReady)
-            {
-                ready.Set();
-            }
-        }
+
+        nextServer?.Dispose();
     }
 
     private async Task<bool> ReadActivateCommandAsync(NamedPipeServerStream server, CancellationToken shutdownToken)
@@ -386,14 +420,15 @@ internal sealed class SingleInstance : IDisposable
         using var clientCts = CancellationTokenSource.CreateLinkedTokenSource(shutdownToken);
         clientCts.CancelAfter(_clientReadTimeout);
 
-        byte[] buffer = new byte[MaxCommandBytes + 1];
+        // Strictly bounded to MaxCommandBytes (64 bytes); reject as soon as a 9th byte arrives.
+        byte[] buffer = new byte[MaxCommandBytes];
         int totalRead = 0;
 
         try
         {
-            while (totalRead <= MaxCommandBytes)
+            while (totalRead < MaxCommandBytes)
             {
-                int remaining = buffer.Length - totalRead;
+                int remaining = MaxCommandBytes - totalRead;
                 int bytesRead = await server.ReadAsync(buffer.AsMemory(totalRead, remaining), clientCts.Token).ConfigureAwait(false);
                 if (bytesRead == 0)
                 {
@@ -401,7 +436,7 @@ internal sealed class SingleInstance : IDisposable
                 }
 
                 totalRead += bytesRead;
-                if (totalRead > MaxCommandBytes)
+                if (totalRead > ActivateCommand.Length)
                 {
                     return false;
                 }
@@ -419,7 +454,7 @@ internal sealed class SingleInstance : IDisposable
     private void RaiseActivated()
     {
         Action? handler;
-        lock (_stateLock)
+        lock (_eventLock)
         {
             if (_disposed)
             {
@@ -430,10 +465,29 @@ internal sealed class SingleInstance : IDisposable
             if (handler is null)
             {
                 _hasPendingActivation = true;
+                PendingActivationRecorded?.Invoke();
                 return;
             }
         }
 
-        handler();
+        DispatchCallback(handler);
+    }
+
+    private static void DispatchCallback(Action handler)
+    {
+        _ = Task.Run(() =>
+        {
+            foreach (Delegate target in handler.GetInvocationList())
+            {
+                try
+                {
+                    ((Action)target)();
+                }
+                catch (Exception)
+                {
+                    // A failing subscriber must never fault the listener or prevent later activations.
+                }
+            }
+        });
     }
 }

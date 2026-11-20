@@ -169,8 +169,15 @@ internal sealed class BerthProcess : IDisposable
             }
         }
 
-        if (!info.Environment.Keys.Any(k => string.Equals(k, "BERTH_INSTANCE", StringComparison.OrdinalIgnoreCase)))
+        string? existingInstanceKey = info.Environment.Keys.FirstOrDefault(
+            k => string.Equals(k, "BERTH_INSTANCE", StringComparison.OrdinalIgnoreCase));
+        if (existingInstanceKey is null || string.IsNullOrWhiteSpace(info.Environment[existingInstanceKey]))
         {
+            if (existingInstanceKey is not null)
+            {
+                info.Environment.Remove(existingInstanceKey);
+            }
+
             info.Environment["BERTH_INSTANCE"] = "test-" + Guid.NewGuid().ToString("N");
         }
 
