@@ -79,16 +79,14 @@ public sealed class CrashHandlerTests
             "DispatcherUnhandledException");
 
         Assert.NotNull(shown);
-        Assert.Contains("<user>", shown, StringComparison.Ordinal);
-        Assert.Contains("<profile>", shown, StringComparison.Ordinal);
-        Assert.DoesNotContain(currentUser, shown, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(currentProfile, shown, StringComparison.OrdinalIgnoreCase);
+        string expectedSentence = "Something went wrong: Boom for <user> under <profile>\\Desktop. The details are in the log.";
+        Assert.Equal(expectedSentence, shown.Split('\n')[0]);
 
+        string[] logLines = File.ReadAllLines(paths.LogFile);
+        Assert.Contains($" FAIL DispatcherUnhandledException: {expectedSentence}", logLines[0], StringComparison.Ordinal);
         string fullLog = File.ReadAllText(paths.LogFile);
-        Assert.Contains("<user>", fullLog, StringComparison.Ordinal);
-        Assert.Contains("<profile>", fullLog, StringComparison.Ordinal);
-        Assert.DoesNotContain(currentUser, fullLog, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(currentProfile, fullLog, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Boom for <user> under <profile>\\Desktop", fullLog, StringComparison.Ordinal);
+        Assert.DoesNotContain($"Boom for {currentUser} under {currentProfile}", fullLog, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
