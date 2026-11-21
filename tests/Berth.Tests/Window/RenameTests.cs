@@ -250,35 +250,13 @@ public sealed class RenameTests(AppFixture appFixture)
                 if (corruptNextWrite)
                 {
                     corruptNextWrite = false;
-                    File.WriteAllText(paths.LayoutFile(keyA), "{ corrupted");
+                    Layout written = store.Find(keyA)!;
+                    store.Save(written with { Name = "Tampered" });
                 }
             });
         var vm = CreateViewModel(store, desktop, monitors, service);
         await vm.RefreshAsync();
 
-        // 1. Late duplicate introduced on disk AFTER initial validation -> status shows duplicate with NO Retry!
-        SaveLayout(store, [MonDualA, MonDualB], "LateConflict", FixedNow, new IconPosition("id-1", "One", 100, 100));
-        await vm.Detail.RenameAsync(keyA, "lateconflict");
-        Assert.Equal("Another layout already has this name.", vm.Status.Sentence);
-        Assert.Equal(StatusAction.None, vm.Status.Action);
-        Assert.Equal("Laptop", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
-
-        // 2. Read-back mismatch via AfterWrite seam -> exact §18 failure sentence + Retry; Retry renames captured key!
-        corruptNextWrite = true;
-        await vm.Detail.RenameAsync(keyA, "Workstation");
-        Assert.StartsWith("Berth could not write ", vm.Status.Sentence);
-        Assert.Equal(StatusAction.Retry, vm.Status.Action);
-        Assert.NotEqual("Workstation", vm.Detail.Title);
-
-        // Restore valid file on disk and click Retry -> succeeds with captured keyA and "Workstation"!
-        File.Delete(paths.LayoutFile(keyA));
-        SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
-        vm.Status.ActionCommand.Execute(null);
-        await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-        Assert.Equal("Workstation", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
-        Assert.Equal("Workstation", vm.Detail.Title);
-
-        // 3. Target deleted while modal dialog is open + poll selects fallback -> captured keyA fails cleanly, keyB untouched!
         MainWindow? window = null;
         Exception? modalError = null;
         try
@@ -297,42 +275,79 @@ public sealed class RenameTests(AppFixture appFixture)
                 return w;
             });
 
-            appFixture.Invoke(() =>
+            void SubmitThroughModal(string text, Action? beforeEnter = null)
             {
-                var peer = new MenuItemAutomationPeer(window!.DetailHeaderControl.RenameMenuItem);
-                ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
-
-                WpfApplication.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+                modalError = null;
+                appFixture.Invoke(() =>
                 {
-                    RenameDialog? dialog = WpfApplication.Current.Windows.OfType<RenameDialog>().SingleOrDefault(d => d.IsVisible);
-                    if (dialog is null)
-                    {
-                        return;
-                    }
+                    var peer = new MenuItemAutomationPeer(window!.DetailHeaderControl.RenameMenuItem);
+                    ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
 
-                    try
+                    WpfApplication.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
                     {
-                        // Simulate deletion + fallback selection change while modal is open!
-                        File.Delete(paths.LayoutFile(keyA));
-                        vm.Selected = vm.Rows.Single(r => r.Key == keyB);
-                        dialog.NameBox.Text = "Ghost";
-                        AccessKeyManager.ProcessKey(null, "\r", false);
-                    }
-                    catch (Exception ex)
-                    {
-                        modalError = ex;
-                        dialog.Close();
-                    }
+                        RenameDialog? dialog = WpfApplication.Current.Windows.OfType<RenameDialog>().SingleOrDefault(d => d.IsVisible);
+                        if (dialog is null)
+                        {
+                            return;
+                        }
+
+                        try
+                        {
+                            dialog.NameBox.Text = text;
+                            beforeEnter?.Invoke();
+                            AccessKeyManager.ProcessKey(null, "\r", false);
+                        }
+                        catch (Exception ex)
+                        {
+                            modalError = ex;
+                            dialog.Close();
+                        }
+                    });
+
+                    window!.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
                 });
 
-                window!.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
-            });
-
-            if (modalError is not null)
-            {
-                throw modalError;
+                if (modalError is not null)
+                {
+                    throw modalError;
+                }
             }
 
+            // 1. Late duplicate introduced on disk AFTER modal validation -> exact duplicate sentence with NO Retry!
+            SubmitThroughModal(
+                "lateconflict",
+                beforeEnter: () => SaveLayout(store, [MonDualA, MonDualB], "LateConflict", FixedNow, new IconPosition("id-1", "One", 100, 100)));
+            await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal("Another layout already has this name.", vm.Status.Sentence);
+            Assert.Equal(StatusAction.None, vm.Status.Action);
+            Assert.Equal("Laptop", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
+
+            // 2. Read-back mismatch via AfterWrite seam through modal -> exact full §18 sentence + Retry!
+            corruptNextWrite = true;
+            SubmitThroughModal("Workstation");
+            await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(
+                $"Berth could not write {paths.LayoutFile(keyA)}: The layout file read back after saving does not match what was written.",
+                vm.Status.Sentence);
+            Assert.Equal(StatusAction.Retry, vm.Status.Action);
+            Assert.NotEqual("Workstation", vm.Detail.Title);
+
+            // Restore valid file on disk and click Retry -> succeeds with captured keyA and "Workstation"!
+            File.Delete(paths.LayoutFile(keyA));
+            SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
+            vm.Status.ActionCommand.Execute(null);
+            await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal("Workstation", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
+            Assert.Equal("Workstation", vm.Detail.Title);
+
+            // 3. Target deleted while modal dialog is open + fallback selected -> captured keyA fails cleanly, keyB untouched!
+            SubmitThroughModal(
+                "Ghost",
+                beforeEnter: () =>
+                {
+                    File.Delete(paths.LayoutFile(keyA));
+                    vm.Selected = vm.Rows.Single(r => r.Key == keyB);
+                });
             await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             Assert.Equal("This monitor arrangement has no saved layout.", vm.Status.Sentence);
             Assert.Equal("LateConflict", store.LoadAll().Layouts.Single(l => l.Key == keyB).Name);
