@@ -83,6 +83,7 @@ internal sealed class AutoRestore : IDisposable
     private long _generation;
     private string? _armedReason;
     private bool _running;
+    private bool _restoring;
     private Task _activeTask = Task.CompletedTask;
     private bool _retriggerPending;
     private string? _retriggerReason;
@@ -109,6 +110,27 @@ internal sealed class AutoRestore : IDisposable
         _clock = clock ?? TimeProvider.System;
         _runOffUiThread = runOffUiThread ?? (work => Task.Run(work));
     }
+
+    /// <summary>
+    /// Whether an automatic <see cref="LayoutService.Restore"/> call is currently executing (never true during the
+    /// settle interval or when <see cref="Settings.RestoreAutomatically"/> is off).
+    /// </summary>
+    public bool IsRestoring
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _restoring;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raised when an automatic <see cref="LayoutService.Restore"/> starts (<see langword="true"/>) and finishes
+    /// (<see langword="false"/>), so the open window can show "Working" and disable header actions (SPEC §§6, 8).
+    /// </summary>
+    public event Action<bool>? RunningChanged;
 
     /// <summary>
     /// Raised after an automatic restore runs (never when <see cref="Settings.RestoreAutomatically"/> is off).
@@ -283,7 +305,38 @@ internal sealed class AutoRestore : IDisposable
             {
                 if (_settings.Load().Value.RestoreAutomatically)
                 {
-                    OperationResult result = _service.Restore("automatic, " + reason);
+                    bool notifyBusy;
+                    lock (_sync)
+                    {
+                        _restoring = true;
+                        notifyBusy = !_disposed;
+                    }
+
+                    if (notifyBusy)
+                    {
+                        RunningChanged?.Invoke(true);
+                    }
+
+                    OperationResult result;
+                    try
+                    {
+                        result = _service.Restore("automatic, " + reason);
+                    }
+                    finally
+                    {
+                        bool notifyIdle;
+                        lock (_sync)
+                        {
+                            _restoring = false;
+                            notifyIdle = !_disposed;
+                        }
+
+                        if (notifyIdle)
+                        {
+                            RunningChanged?.Invoke(false);
+                        }
+                    }
+
                     bool silent = result.Kind == OperationKind.Refused && result.Refusal == Refusal.NoLayout;
                     bool shouldNotify;
                     lock (_sync)

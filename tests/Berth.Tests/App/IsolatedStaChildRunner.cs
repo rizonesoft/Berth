@@ -34,6 +34,8 @@ internal static class IsolatedStaChildRunner
     public const string AutoRestoreDirectShutdownScenario = "auto-restore-direct-shutdown";
     public const string AutoRestoreBalloonScenario = "auto-restore-balloon";
     public const string TrayReaddOnExplorerRestartScenario = "tray-readd-explorer-restart";
+    public const string AutoRestoreWindowScenario = "auto-restore-window";
+    public const string AutoRestoreMidOpenAndTrayOnlyScenario = "auto-restore-mid-open-tray-only";
 
     public static int RunMain(string[] args)
     {
@@ -207,6 +209,10 @@ internal static class IsolatedStaChildRunner
             AutoRestoreBalloonScenario => RunAutoRestoreBalloonScenario(paths, log, instanceName),
 
             TrayReaddOnExplorerRestartScenario => RunTrayReaddOnExplorerRestartScenario(paths, log, instanceName),
+
+            AutoRestoreWindowScenario => RunAutoRestoreWindowScenario(paths, log, instanceName),
+
+            AutoRestoreMidOpenAndTrayOnlyScenario => RunAutoRestoreMidOpenAndTrayOnlyScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -1892,6 +1898,575 @@ internal static class IsolatedStaChildRunner
             ]);
 
         return exitCode;
+    }
+
+    private static int RunAutoRestoreWindowScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var monA = new MonitorInfo(0, 0, 1920, 1080, 100, true);
+        var monB1 = new MonitorInfo(0, 0, 2560, 1440, 100, true);
+        var monB2 = new MonitorInfo(2560, 0, 1920, 1080, 100, false);
+        var monC = new MonitorInfo(0, 0, 1600, 900, 100, true);
+
+        IconPosition[] savedA =
+        [
+            new("a-1", "Alpha", 100, 100),
+            new("a-2", "Beta", 200, 100),
+        ];
+        IconPosition[] savedB =
+        [
+            new("b-1", "One", 120, 120),
+            new("b-2", "Two", 240, 120),
+            new("b-3", "Three", 360, 120),
+        ];
+        IconPosition[] movedB =
+        [
+            new("b-1", "One", 900, 120),
+            new("b-2", "Two", 900, 240),
+            new("b-3", "Three", 900, 360),
+        ];
+
+        string keyA = ArrangementKey.From([monA]);
+        string keyB = ArrangementKey.From([monB1, monB2]);
+        string keyC = ArrangementKey.From([monC]);
+
+        var store = new LayoutStore(paths);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, keyA, "Laptop", fixedNow, [monA], [.. savedA], null));
+        store.Save(new Layout(Layout.CurrentSchemaVersion, keyB, "Docked", fixedNow, [monB1, monB2], [.. savedB], null));
+        var settingsStore = new SettingsStore(paths);
+        _ = settingsStore.Update(s => s with { RestoreAutomatically = true });
+
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(monA);
+        using var desktop = new SwappableGatedDesktopIcons(savedA);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        SystemEvents? capturedEvents = null;
+        AutoRestore? capturedAutoRestore = null;
+        TrayIcon? capturedIcon = null;
+        int balloonCount = 0;
+
+        bool idleDuringSettle = false;
+        string workingSentence = string.Empty;
+        bool restoreDisabledWhileWorking = false;
+        bool saveDisabledWhileWorking = false;
+        string restoredSentence = string.Empty;
+        bool undoVisible = false;
+        string selectedAfterRestore = string.Empty;
+        int inPlaceAfterRestore = -1;
+        int movedAfterRestore = -1;
+        string sentenceAfterUnchangedRefresh = string.Empty;
+        bool undoStillVisibleAfterUnchangedRefresh = false;
+        string sentenceAfterUndo = string.Empty;
+        string undoPositions = string.Empty;
+        string tooltipAfterB = string.Empty;
+        string tooltipAfterRenameWithoutDisplayChange = string.Empty;
+        string tooltipAfterUnsavedC = string.Empty;
+        bool cLayoutCreated = false;
+        bool silentForC = false;
+        string hiddenReopenSentence = string.Empty;
+        bool hiddenReopenUndoVisible = false;
+        bool hiddenDesktopRestored = false;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: true,
+            Settings.Default with { RestoreAutomatically = true },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon => capturedIcon = icon,
+            onSystemEventsCreated: events => capturedEvents = events,
+            displayChangeSettle: TimeSpan.FromMilliseconds(120),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(120),
+            onAutoRestoreCreated: ar => capturedAutoRestore = ar,
+            showBalloon: (_, _, _) => Interlocked.Increment(ref balloonCount),
+            onAppStartup: app =>
+            {
+                Berth.Window.MainWindow? win = app.Windows.OfType<Berth.Window.MainWindow>().FirstOrDefault();
+                if (win is null || capturedEvents is null || capturedAutoRestore is null || capturedIcon is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                var timerArmed = new ManualResetEventSlim(false);
+                var finishedCount = 0;
+                bool lastSilent = false;
+                var finishedGate = new ManualResetEventSlim(false);
+
+                capturedAutoRestore.TimerArmed += (_, _) => timerArmed.Set();
+                capturedAutoRestore.Finished += (_, _, silent) =>
+                {
+                    lastSilent = silent;
+                    Interlocked.Increment(ref finishedCount);
+                    finishedGate.Set();
+                };
+
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        var vm = app.Dispatcher.Invoke(() => (Berth.Window.MainViewModel)win.DataContext);
+                        vm.RefreshAsync().GetAwaiter().GetResult();
+
+                        // 1. Switch monitors from A to B with 3 moved icons, arm gate to observe Working + disabled controls.
+                        monitors.Monitors = [monB1, monB2];
+                        desktop.ReplaceIcons(movedB);
+                        desktop.ArmGate();
+                        timerArmed.Reset();
+                        finishedGate.Reset();
+
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!timerArmed.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoRestore timer did not arm.");
+                        }
+
+                        // During settle interval, window must remain idle.
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            idleDuringSettle = !vm.Detail.IsBusy && win.StatusLineControl.SentenceText.Text != "Working";
+                        });
+
+                        if (!desktop.WaitUntilEntered(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoRestore did not enter SetPositions gate.");
+                        }
+
+                        // While SetPositions is in flight, wait briefly for UI busy marshal.
+                        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            bool isBusy = app.Dispatcher.Invoke(() => vm.Detail.IsBusy);
+                            if (isBusy)
+                            {
+                                break;
+                            }
+
+                            Thread.Sleep(10);
+                        }
+
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            win.UpdateLayout();
+                            workingSentence = win.StatusLineControl.SentenceText.Text;
+                            restoreDisabledWhileWorking = !win.DetailHeaderControl.RestoreButton.IsEnabled;
+                            saveDisabledWhileWorking = !win.DetailHeaderControl.SaveButton.IsEnabled;
+                        });
+
+                        desktop.ReleaseGate();
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoRestore did not finish.");
+                        }
+
+                        // Wait for OnExternalOperationFinishedAsync to publish result on UI thread.
+                        deadline = DateTime.UtcNow.AddSeconds(5);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            string sentence = app.Dispatcher.Invoke(() => win.StatusLineControl.SentenceText.Text);
+                            if (sentence == "Restored 3 icons.")
+                            {
+                                break;
+                            }
+
+                            Thread.Sleep(15);
+                        }
+
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            win.UpdateLayout();
+                            restoredSentence = win.StatusLineControl.SentenceText.Text;
+                            undoVisible = win.StatusLineControl.ActionButton.Visibility == System.Windows.Visibility.Visible
+                                && Equals(win.StatusLineControl.ActionButton.Content, "Undo");
+                            selectedAfterRestore = vm.Selected?.Name ?? string.Empty;
+                            inPlaceAfterRestore = vm.Comparison?.InPlace ?? -1;
+                            movedAfterRestore = vm.Comparison?.Moved ?? -1;
+                            tooltipAfterB = capturedIcon.TooltipText;
+                        });
+
+                        // Verify status + Undo survive an unchanged RefreshAsync.
+                        vm.RefreshAsync().GetAwaiter().GetResult();
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            win.UpdateLayout();
+                            sentenceAfterUnchangedRefresh = win.StatusLineControl.SentenceText.Text;
+                            undoStillVisibleAfterUnchangedRefresh =
+                                win.StatusLineControl.ActionButton.Visibility == System.Windows.Visibility.Visible
+                                && Equals(win.StatusLineControl.ActionButton.Content, "Undo");
+                        });
+
+                        // 2. Invoke Undo via UI Automation InvokePattern (flush Input priority so ButtonAutomationPeer click executes).
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(win.StatusLineControl.ActionButton);
+                            var provider = (System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                                System.Windows.Automation.Peers.PatternInterface.Invoke);
+                            provider.Invoke();
+                            win.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
+                        });
+                        vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+
+                        IReadOnlyList<IconPosition> afterUndo = ((IDesktopIcons)desktop).ReadIcons();
+                        undoPositions = string.Join(",", afterUndo.Select(i => $"{i.X}:{i.Y}"));
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            win.UpdateLayout();
+                            sentenceAfterUndo = win.StatusLineControl.SentenceText.Text;
+                        });
+
+                        // 3. Rename B on disk WITHOUT another WM_DISPLAYCHANGE, trigger AutoRestore directly -> Finished must refresh tooltip!
+                        store.Save(new Layout(Layout.CurrentSchemaVersion, keyB, "Docked Renamed", fixedNow, [monB1, monB2], [.. savedB], null));
+                        finishedGate.Reset();
+                        capturedAutoRestore.Trigger("display change", TimeSpan.FromMilliseconds(40));
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoRestore after rename did not finish.");
+                        }
+
+                        deadline = DateTime.UtcNow.AddSeconds(5);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            string tip = app.Dispatcher.Invoke(() => capturedIcon.TooltipText);
+                            if (tip.Contains("Docked Renamed", StringComparison.Ordinal))
+                            {
+                                tooltipAfterRenameWithoutDisplayChange = tip;
+                                break;
+                            }
+
+                            Thread.Sleep(15);
+                        }
+
+                        // 4. Switch monitors to unsaved arrangement C and post WM_DISPLAYCHANGE -> silent NoLayout + no-layout tooltip.
+                        monitors.Monitors = [monC];
+                        finishedGate.Reset();
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoRestore for unsaved C did not finish.");
+                        }
+
+                        silentForC = lastSilent;
+                        cLayoutCreated = store.Find(keyC) is not null;
+                        deadline = DateTime.UtcNow.AddSeconds(5);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            string tip = app.Dispatcher.Invoke(() => capturedIcon.TooltipText);
+                            if (tip == "Berth: no layout for this monitor arrangement")
+                            {
+                                tooltipAfterUnsavedC = tip;
+                                break;
+                            }
+
+                            Thread.Sleep(15);
+                        }
+
+                        // 5. Hide the window, switch back to B with moved icons, trigger automatic restore while hidden, then reopen.
+                        app.Dispatcher.Invoke(() => win.Close());
+                        monitors.Monitors = [monB1, monB2];
+                        desktop.ReplaceIcons(movedB);
+                        finishedGate.Reset();
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Hidden-window AutoRestore did not finish.");
+                        }
+
+                        IReadOnlyList<IconPosition> afterHiddenRestore = ((IDesktopIcons)desktop).ReadIcons();
+                        hiddenDesktopRestored = afterHiddenRestore.Select(i => i.X).SequenceEqual([120, 240, 360]);
+
+                        // Drain UI queue before reopening so any wrongly-queued hidden completion would have landed.
+                        app.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                        app.Dispatcher.Invoke(() => win.BringToFront());
+                        vm.RefreshAsync().GetAwaiter().GetResult();
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            win.UpdateLayout();
+                            hiddenReopenSentence = win.StatusLineControl.SentenceText.Text;
+                            hiddenReopenUndoVisible = win.StatusLineControl.ActionButton.Visibility == System.Windows.Visibility.Visible;
+                            win.CloseForShutdown();
+                            app.Shutdown(0);
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                    finally
+                    {
+                        desktop.ReleaseGate();
+                    }
+                });
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"idleDuringSettle={idleDuringSettle}",
+                $"workingSentence={workingSentence}",
+                $"restoreDisabledWhileWorking={restoreDisabledWhileWorking}",
+                $"saveDisabledWhileWorking={saveDisabledWhileWorking}",
+                $"restoredSentence={restoredSentence}",
+                $"undoVisible={undoVisible}",
+                $"selectedAfterRestore={selectedAfterRestore}",
+                $"inPlaceAfterRestore={inPlaceAfterRestore}",
+                $"movedAfterRestore={movedAfterRestore}",
+                $"sentenceAfterUnchangedRefresh={sentenceAfterUnchangedRefresh}",
+                $"undoStillVisibleAfterUnchangedRefresh={undoStillVisibleAfterUnchangedRefresh}",
+                $"sentenceAfterUndo={sentenceAfterUndo}",
+                $"undoPositions={undoPositions}",
+                $"tooltipAfterB={tooltipAfterB}",
+                $"tooltipAfterRenameWithoutDisplayChange={tooltipAfterRenameWithoutDisplayChange}",
+                $"tooltipAfterUnsavedC={tooltipAfterUnsavedC}",
+                $"cLayoutCreated={cLayoutCreated}",
+                $"silentForC={silentForC}",
+                $"balloonCount={Volatile.Read(ref balloonCount)}",
+                $"hiddenDesktopRestored={hiddenDesktopRestored}",
+                $"hiddenReopenSentence={hiddenReopenSentence}",
+                $"hiddenReopenUndoVisible={hiddenReopenUndoVisible}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunAutoRestoreMidOpenAndTrayOnlyScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        var mon = new MonitorInfo(0, 0, 1920, 1080, 100, true);
+        IconPosition[] saved =
+        [
+            new("m-1", "One", 100, 100),
+            new("m-2", "Two", 200, 100),
+            new("m-3", "Three", 300, 100),
+        ];
+        IconPosition[] moved =
+        [
+            new("m-1", "One", 800, 100),
+            new("m-2", "Two", 800, 200),
+            new("m-3", "Three", 800, 300),
+        ];
+        string key = ArrangementKey.From([mon]);
+
+        var store = new LayoutStore(paths);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, key, "Desk", fixedNow, [mon], [.. saved], null));
+        var settingsStore = new SettingsStore(paths);
+        _ = settingsStore.Update(s => s with { RestoreAutomatically = true });
+
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(mon);
+        using var desktop = new SwappableGatedDesktopIcons(moved);
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        SystemEvents? capturedEvents = null;
+        AutoRestore? capturedAutoRestore = null;
+        TrayMenu? capturedMenu = null;
+
+        int windowsAfterTrayOnlyRestore = -1;
+        bool midOpenSawBusy = false;
+        bool midOpenRestoreDisabled = false;
+        string midOpenRecoveredSentence = string.Empty;
+        bool midOpenRecoveredUndo = false;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default with { RestoreAutomatically = true },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            onSystemEventsCreated: events => capturedEvents = events,
+            displayChangeSettle: TimeSpan.FromMilliseconds(40),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(40),
+            onAutoRestoreCreated: ar => capturedAutoRestore = ar,
+            onAppStartup: app =>
+            {
+                if (capturedEvents is null || capturedAutoRestore is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                var finishedGate = new ManualResetEventSlim(false);
+                capturedAutoRestore.Finished += (_, _, _) => finishedGate.Set();
+
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        // 1. Tray-only startup: automatic restore finishes without creating or activating a window.
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Tray-only AutoRestore did not finish.");
+                        }
+
+                        app.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+                        windowsAfterTrayOnlyRestore = app.Dispatcher.Invoke(() => app.Windows.Count);
+
+                        // 2. Move icons again, hold automatic restore mid-flight, open window mid-restore!
+                        desktop.ReplaceIcons(moved);
+                        desktop.ArmGate();
+                        finishedGate.Reset();
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!desktop.WaitUntilEntered(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Mid-open AutoRestore did not enter gate.");
+                        }
+
+                        Berth.Window.MainWindow? win = null;
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            capturedMenu.OpenItem.PerformClick();
+                            win = app.Windows.OfType<Berth.Window.MainWindow>().FirstOrDefault();
+                            if (win is not null)
+                            {
+                                var vm = (Berth.Window.MainViewModel)win.DataContext;
+                                win.UpdateLayout();
+                                midOpenSawBusy = vm.Detail.IsBusy && win.StatusLineControl.SentenceText.Text == "Working";
+                                midOpenRestoreDisabled = !win.DetailHeaderControl.RestoreButton.IsEnabled;
+                            }
+                        });
+
+                        desktop.ReleaseGate();
+                        if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Mid-open AutoRestore did not finish.");
+                        }
+
+                        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+                        while (DateTime.UtcNow < deadline && win is not null)
+                        {
+                            string s = app.Dispatcher.Invoke(() => win.StatusLineControl.SentenceText.Text);
+                            if (s == "Restored 3 icons.")
+                            {
+                                break;
+                            }
+
+                            Thread.Sleep(15);
+                        }
+
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            if (win is not null)
+                            {
+                                win.UpdateLayout();
+                                midOpenRecoveredSentence = win.StatusLineControl.SentenceText.Text;
+                                midOpenRecoveredUndo = win.StatusLineControl.ActionButton.Visibility == System.Windows.Visibility.Visible;
+                                win.CloseForShutdown();
+                            }
+
+                            app.Shutdown(0);
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                    finally
+                    {
+                        desktop.ReleaseGate();
+                    }
+                });
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"windowsAfterTrayOnlyRestore={windowsAfterTrayOnlyRestore}",
+                $"midOpenSawBusy={midOpenSawBusy}",
+                $"midOpenRestoreDisabled={midOpenRestoreDisabled}",
+                $"midOpenRecoveredSentence={midOpenRecoveredSentence}",
+                $"midOpenRecoveredUndo={midOpenRecoveredUndo}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private sealed class SwappableGatedDesktopIcons(params IconPosition[] initial) : IDesktopIcons, IDisposable
+    {
+        private readonly ManualResetEventSlim _entered = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+        private Berth.Tests.Fakes.FakeDesktopIcons _inner = new(initial);
+        private int _gateArmed;
+
+        public void ReplaceIcons(params IconPosition[] icons) =>
+            Volatile.Write(ref _inner, new Berth.Tests.Fakes.FakeDesktopIcons(icons));
+
+        public void ArmGate()
+        {
+            _entered.Reset();
+            _release.Reset();
+            Volatile.Write(ref _gateArmed, 1);
+        }
+
+        public bool WaitUntilEntered(TimeSpan timeout) => _entered.Wait(timeout);
+
+        public void ReleaseGate() => _release.Set();
+
+        public bool AutoArrange => ((IDesktopIcons)Volatile.Read(ref _inner)).AutoArrange;
+
+        public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)Volatile.Read(ref _inner)).ReadIcons();
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons) =>
+            SetPositions(icons, () => { });
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove)
+        {
+            if (Interlocked.Exchange(ref _gateArmed, 0) == 1)
+            {
+                _entered.Set();
+                _release.Wait(TimeSpan.FromSeconds(10));
+            }
+
+            ((IDesktopIcons)Volatile.Read(ref _inner)).SetPositions(icons, beforeMove);
+        }
+
+        public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)Volatile.Read(ref _inner)).TryTurnAutoArrangeOff();
+
+        public void Dispose()
+        {
+            _release.Set();
+            _entered.Dispose();
+            _release.Dispose();
+        }
     }
 
     private sealed class DisposeTrackingDesktopIcons(

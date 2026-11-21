@@ -171,14 +171,16 @@ An automatic restore is visible afterwards: in the status line with "Undo" when 
 1. Route `AutoRestore.Finished` to the window. Done when: the status line shows the result.
 2. Refresh the window and tooltip. Done when: the map shows icons in place after the restore.
 
-- [ ] In `TrayApp`, pass every non-silent `AutoRestore.Finished` result to `StatusViewModel.SetResult` when the window exists, on the UI thread, and call `MainViewModel.Refresh()`. Done when: a test on the app fixture with the window open triggers an automatic restore and reads `Restored 3 icons.` and a visible `Undo`. Cheaper substitute: updating the status line from the background thread.
-- [ ] `Undo` after an automatic restore works exactly as after a manual one. Done when: the same test clicks `Undo` and the fake desktop returns to its pre-restore positions. Cheaper substitute: none needed.
-- [ ] After a monitor change, refresh the tray tooltip so it names the new arrangement's layout or says there is none. Done when: a test changes the fake monitors, triggers, and reads the new tooltip. Cheaper substitute: a tooltip that keeps naming the old arrangement.
-- [ ] Add a render test writing `status-auto-restored` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/App/AutoRestoreWindowTests.cs`. Done when: all pass, and the status test fails when the result is not routed to the window. Cheaper substitute: none needed.
+- [x] In `TrayApp`, pass every non-silent `AutoRestore.Finished` result to `StatusViewModel.SetResult` when the window exists, on the UI thread, and call `MainViewModel.Refresh()`. Done when: a test on the app fixture with the window open triggers an automatic restore and reads `Restored 3 icons.` and a visible `Undo`. Cheaper substitute: updating the status line from the background thread.
+- [x] `Undo` after an automatic restore works exactly as after a manual one. Done when: the same test clicks `Undo` and the fake desktop returns to its pre-restore positions. Cheaper substitute: none needed.
+- [x] After a monitor change, refresh the tray tooltip so it names the new arrangement's layout or says there is none. Done when: a test changes the fake monitors, triggers, and reads the new tooltip. Cheaper substitute: a tooltip that keeps naming the old arrangement.
+- [x] Add a render test writing `status-auto-restored` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/App/AutoRestoreWindowTests.cs`. Done when: all pass, and the status test fails when the result is not routed to the window. Cheaper substitute: none needed.
 - [ ] Commit: `app: automatic restore shown in the window and tooltip`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*AutoRestoreWindowTests"` passes, and fails when an automatic restore leaves the open window's status line unchanged.
+
+> **Started:** 2026-11-21
 
 ## Verification
 

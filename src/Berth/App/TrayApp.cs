@@ -196,8 +196,17 @@ internal static class TrayApp
                 });
             }
 
+            AutoRestore? activeAutoRestore = null;
+
             Func<IMainWindow> effectiveCreateMainWindow = createMainWindow
-                ?? (() => CreateProductionMainWindow(app, settingsStore, effectiveComposition, effectiveMonitors, effectiveClock, trayMenu));
+                ?? (() => CreateProductionMainWindow(
+                    app,
+                    settingsStore,
+                    effectiveComposition,
+                    effectiveMonitors,
+                    effectiveClock,
+                    trayMenu,
+                    activeAutoRestore));
             IMainWindow? mainWindow = null;
             bool firstWindowOpenedNotified = false;
             bool exitRequested = false;
@@ -229,8 +238,6 @@ internal static class TrayApp
                     _ = trayIcon.TrySetTooltip(trayMenu.LastObservedActiveLayout, effectiveClock.GetUtcNow(), effectiveZone);
                 }
             };
-
-            AutoRestore? activeAutoRestore = null;
 
             trayMenu.ExitRequested += () =>
             {
@@ -278,6 +285,7 @@ internal static class TrayApp
             activeAutoRestore = autoRestore;
             autoRestore.Finished += (result, _, silent) =>
             {
+                ScheduleTooltipRefresh();
                 if (!silent && BalloonPolicy.For(result) is { } balloon)
                 {
                     trayIcon.ShowBalloon(balloon.Title, balloon.Text);
@@ -372,7 +380,8 @@ internal static class TrayApp
         Composition composition,
         IMonitors monitors,
         TimeProvider clock,
-        TrayMenu? trayMenu = null)
+        TrayMenu? trayMenu = null,
+        AutoRestore? autoRestore = null)
     {
         var viewModel = new MainViewModel(
             composition.Store,
@@ -416,11 +425,42 @@ internal static class TrayApp
             viewModel: viewModel,
             poller: poller);
 
+        bool windowClosed = false;
+
+        void SyncExternalBusy()
+        {
+            if (windowClosed || app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            viewModel.Detail.SetExternalBusy(
+                (trayMenu?.IsOperationBusy ?? false) || (autoRestore?.IsRestoring ?? false));
+        }
+
+        void MarshalSyncExternalBusy()
+        {
+            if (windowClosed || app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            if (app.Dispatcher.CheckAccess())
+            {
+                SyncExternalBusy();
+            }
+            else
+            {
+                _ = app.Dispatcher.BeginInvoke(SyncExternalBusy);
+            }
+        }
+
+        SyncExternalBusy();
+
         if (trayMenu is not null)
         {
-            viewModel.Detail.SetExternalBusy(trayMenu.IsOperationBusy);
-            trayMenu.SetExternalBusyProvider(() => viewModel.Detail.IsLocalBusy);
-            void OnTrayBusyChanged(bool busy) => viewModel.Detail.SetExternalBusy(busy);
+            trayMenu.SetExternalBusyProvider(() => viewModel.Detail.IsLocalBusy || (autoRestore?.IsRestoring ?? false));
+            void OnTrayBusyChanged(bool _) => MarshalSyncExternalBusy();
             void OnTrayCompleted(WindowOperationKind kind, OperationResult result) =>
                 _ = viewModel.OnExternalOperationFinishedAsync(kind, result);
             trayMenu.OperationBusyChanged += OnTrayBusyChanged;
@@ -431,6 +471,56 @@ internal static class TrayApp
                 trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
                 trayMenu.OperationCompleted -= OnTrayCompleted;
             };
+        }
+
+        if (autoRestore is not null)
+        {
+            void OnAutoRestoreRunningChanged(bool _) => MarshalSyncExternalBusy();
+            void OnAutoRestoreFinished(OperationResult result, string reason, bool silent)
+            {
+                _ = reason;
+                if (silent || windowClosed || app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
+                {
+                    return;
+                }
+
+                _ = app.Dispatcher.BeginInvoke(() =>
+                {
+                    if (windowClosed || !window.IsVisible)
+                    {
+                        return;
+                    }
+
+                    _ = viewModel.OnExternalOperationFinishedAsync(
+                        WindowOperationKind.Restore,
+                        result,
+                        shouldPublish: () => !windowClosed && window.IsVisible);
+                });
+            }
+
+            void OnWindowIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+            {
+                if (!window.IsVisible)
+                {
+                    viewModel.CancelPendingExternalOperations();
+                }
+            }
+
+            autoRestore.RunningChanged += OnAutoRestoreRunningChanged;
+            autoRestore.Finished += OnAutoRestoreFinished;
+            window.IsVisibleChanged += OnWindowIsVisibleChanged;
+            window.Closed += (_, _) =>
+            {
+                windowClosed = true;
+                viewModel.CancelPendingExternalOperations();
+                autoRestore.RunningChanged -= OnAutoRestoreRunningChanged;
+                autoRestore.Finished -= OnAutoRestoreFinished;
+                window.IsVisibleChanged -= OnWindowIsVisibleChanged;
+            };
+        }
+        else
+        {
+            window.Closed += (_, _) => windowClosed = true;
         }
 
         return window;

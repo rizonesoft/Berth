@@ -60,6 +60,8 @@ try {
         'status-working-dark.png',
         'status-restored-light.png',
         'status-restored-dark.png',
+        'status-auto-restored-light.png',
+        'status-auto-restored-dark.png',
         'status-restored-partial-light.png',
         'status-restored-partial-dark.png',
         'status-undone-light.png',

@@ -358,7 +358,7 @@ internal sealed class LayoutService(
         IconState[] states = [.. layout.Icons.Select(saved => LayoutComparison.StateOf(saved, now.GetValueOrDefault(saved.Id)))];
         int inPlace = states.Count(s => s == IconState.InPlace), notPlaced = states.Count(s => s == IconState.Moved), missing = states.Count(s => s == IconState.Missing);
 
-        return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin);
+        return OperationResult.Restored(layout.Name, layout.Icons.Length, inPlace, notPlaced, missing, origin, layout.Key);
     }
 
     private OperationResult UndoLocked()

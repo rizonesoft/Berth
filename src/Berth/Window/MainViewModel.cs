@@ -30,6 +30,7 @@ internal sealed class MainViewModel : ObservableObject
     private bool _lastCanUndo;
     private volatile bool _checkCanUndoOnPoll;
     private long _operationEpoch;
+    private long _selectionEpoch;
     private LayoutRow? _selected;
     private string? _lastKnownSelectedKey;
     private string? _pendingSelectedKey;
@@ -177,11 +178,13 @@ internal sealed class MainViewModel : ObservableObject
                     if (!_isApplyingSnapshot)
                     {
                         _pendingSelectedKey = null;
+                        Interlocked.Increment(ref _selectionEpoch);
                     }
                 }
                 else if (!_isApplyingSnapshot)
                 {
                     _lastKnownSelectedKey = null;
+                    Interlocked.Increment(ref _selectionEpoch);
                 }
 
                 RebuildComparison();
@@ -240,10 +243,29 @@ internal sealed class MainViewModel : ObservableObject
     public async Task RefreshAfterOperationAsync(string? selectKey = null) =>
         _ = await RefreshAfterOperationCoreAsync(selectKey).ConfigureAwait(false);
 
-    private async Task<bool> RefreshAfterOperationCoreAsync(string? selectKey)
+    /// <summary>
+    /// Invalidates any in-flight external completion (for example when the window is hidden or closed) so a delayed
+    /// automatic restore never surfaces as a fresh result on reopen or touches a closed window.
+    /// </summary>
+    internal void CancelPendingExternalOperations()
+    {
+        Interlocked.Increment(ref _operationEpoch);
+        _pendingSelectedKey = null;
+    }
+
+    private async Task<bool> RefreshAfterOperationCoreAsync(
+        string? selectKey,
+        long? expectedEpoch = null,
+        long? expectedSelectionEpoch = null,
+        Func<bool>? shouldContinue = null)
     {
         while (true)
         {
+            if (expectedEpoch.HasValue && Volatile.Read(ref _operationEpoch) != expectedEpoch.Value)
+            {
+                return false;
+            }
+
             Task? existing;
             TaskCompletionSource<bool>? gate = null;
             lock (_refreshGate)
@@ -270,13 +292,40 @@ internal sealed class MainViewModel : ObservableObject
                 continue;
             }
 
-            if (selectKey is not null)
+            if (selectKey is not null || expectedEpoch.HasValue || shouldContinue is not null)
             {
+                bool proceed = true;
                 await _marshalToUiAsync(() =>
                 {
-                    _pendingSelectedKey = selectKey;
-                    _lastKnownSelectedKey = selectKey;
+                    if ((expectedEpoch.HasValue && Volatile.Read(ref _operationEpoch) != expectedEpoch.Value)
+                        || (shouldContinue is not null && !shouldContinue()))
+                    {
+                        proceed = false;
+                        return;
+                    }
+
+                    if (selectKey is not null
+                        && (!expectedSelectionEpoch.HasValue
+                            || Volatile.Read(ref _selectionEpoch) == expectedSelectionEpoch.Value))
+                    {
+                        _pendingSelectedKey = selectKey;
+                        _lastKnownSelectedKey = selectKey;
+                    }
                 }).ConfigureAwait(false);
+
+                if (!proceed)
+                {
+                    lock (_refreshGate)
+                    {
+                        if (ReferenceEquals(_activeRefreshTask, gate!.Task))
+                        {
+                            _activeRefreshTask = null;
+                        }
+                    }
+
+                    gate!.TrySetResult(false);
+                    return false;
+                }
             }
 
             _ = RunRefreshCoreAsync(gate!, includeCanUndo: true);
@@ -449,23 +498,37 @@ internal sealed class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Refreshes the window's comparison baseline after a tray-initiated operation finishes and publishes the result
-    /// to <see cref="Status"/> with Undo/Retry support (SPEC §8). Discards superseded completions if a newer operation
-    /// started while the refresh was in flight.
+    /// Refreshes the window's comparison baseline after a tray or automatic operation finishes and publishes the result
+    /// to <see cref="Status"/> with Undo/Retry support (SPEC §8, §16). Discards superseded completions if a newer
+    /// operation started or <paramref name="shouldPublish"/> became false while the refresh was in flight.
     /// </summary>
-    internal async Task OnExternalOperationFinishedAsync(WindowOperationKind kind, OperationResult result)
+    internal async Task OnExternalOperationFinishedAsync(
+        WindowOperationKind kind,
+        OperationResult result,
+        Func<bool>? shouldPublish = null)
     {
         ArgumentNullException.ThrowIfNull(result);
 
         long epoch = Interlocked.Increment(ref _operationEpoch);
-        string? selectKey = kind == WindowOperationKind.Save && result.Done ? result.ArrangementKey : null;
+        long selectionEpoch = Volatile.Read(ref _selectionEpoch);
+        string? selectKey = (kind is WindowOperationKind.Save or WindowOperationKind.Restore)
+            && !string.IsNullOrWhiteSpace(result.ArrangementKey)
+            ? result.ArrangementKey
+            : null;
+        bool refreshed = false;
         try
         {
-            await RefreshAfterOperationAsync(selectKey).ConfigureAwait(false);
+            refreshed = await RefreshAfterOperationCoreAsync(
+                selectKey,
+                expectedEpoch: epoch,
+                expectedSelectionEpoch: selectionEpoch,
+                shouldContinue: shouldPublish).ConfigureAwait(false);
         }
         catch (Exception)
         {
-            // Still surface the tray operation result in the status line even if refresh fails.
+            // Still surface the external operation result in the status line even if refresh fails,
+            // without offering Undo from a stale _lastCanUndo value.
+            refreshed = false;
         }
 
         WindowOperationRequest? retryRequest = null;
@@ -486,12 +549,14 @@ internal sealed class MainViewModel : ObservableObject
 
         await _marshalToUiAsync(() =>
         {
-            if (Detail.IsBusy || Volatile.Read(ref _operationEpoch) != epoch)
+            if (Detail.IsBusy
+                || Volatile.Read(ref _operationEpoch) != epoch
+                || (shouldPublish is not null && !shouldPublish()))
             {
                 return;
             }
 
-            Status.SetResult(result, _lastCanUndo, retryRequest);
+            Status.SetResult(result, refreshed && _lastCanUndo, retryRequest);
         }).ConfigureAwait(false);
     }
 
