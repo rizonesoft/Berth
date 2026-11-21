@@ -1,0 +1,67 @@
+name: release
+
+# Builds, tests, publishes the single-file berth.exe, uploads the artifact, and on a version tag push
+# drafts a GitHub release with the changelog section and both files attached.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, publish and draft release
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Run all gates
+        run: pwsh scripts/check-all.ps1
+      - name: Publish single-file executable
+        run: pwsh scripts/publish.ps1
+      - name: Verify published binary and checksum
+        run: |
+          $exe = (Resolve-Path 'artifacts/berth.exe').Path
+          $shaFile = (Resolve-Path 'artifacts/berth.exe.sha256').Path
+          $actualHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sidecar = (Get-Content -LiteralPath $shaFile -Raw).Trim()
+          if ($sidecar -ne "$actualHash  berth.exe") {
+            throw "Checksum mismatch: expected '$actualHash  berth.exe', got '$sidecar'"
+          }
+          $versionOut = (& $exe --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "Published berth.exe --version exited with $LASTEXITCODE"
+          }
+          [xml]$props = Get-Content -LiteralPath 'Directory.Build.props'
+          $expectedVersion = "Berth $($props.Project.PropertyGroup.Version.Trim())"
+          if ($versionOut -ne $expectedVersion) {
+            throw "Version mismatch: expected '$expectedVersion', got '$versionOut'"
+          }
+          Write-Output "Verified $versionOut ($actualHash)"
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: berth-win-x64
+          path: |
+            artifacts/berth.exe
+            artifacts/berth.exe.sha256
+          if-no-files-found: error
+      - name: Draft GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/create-draft-release.py --tag "${{ github.ref_name }}"

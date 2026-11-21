@@ -91,6 +91,8 @@ A tag builds, tests and drafts a release. Publishing the draft is the owner's st
 
 **Test checkpoint:** `gh run list --workflow release.yml --limit 1 --json conclusion` reports `success` for the manual run, and `python -m unittest discover -s scripts/tests` passes with the changelog script's test, which fails when the wrong version's section is returned.
 
+> **Started:** 2026-11-21
+
 ## 3. README for the built app with real screenshots
 
 The README stops describing a plan and describes the program (`README.md`).
