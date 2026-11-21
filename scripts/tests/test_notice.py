@@ -15,6 +15,14 @@ PACKAGES_PROPS = ROOT / "Directory.Packages.props"
 CHANGELOG_PATH = ROOT / "CHANGELOG.md"
 README_PATH = ROOT / "README.md"
 
+SHIPPED_HEADING = "Shipped in berth.exe"
+REPO_ONLY_HEADING = "Repository and test suite (not shipped in berth.exe)"
+
+EXPECTED_PACKAGE_LICENCES = {
+    "Microsoft.CodeAnalysis.CSharp": "MIT",
+    "xunit.v3": "Apache-2.0",
+}
+
 
 def _load_extract_section():
     spec = importlib.util.spec_from_file_location("changelog_section", ROOT / "scripts" / "changelog-section.py")
@@ -25,9 +33,6 @@ def _load_extract_section():
 
 
 extract_changelog_section = _load_extract_section()
-
-SHIPPED_HEADING = "Shipped in berth.exe"
-REPO_ONLY_HEADING = "Repository and test suite (not shipped in berth.exe)"
 
 
 def _local_name(tag: str) -> str:
@@ -92,6 +97,10 @@ def check_notice(
     test_only_refs: set[str],
 ) -> list[str]:
     errors: list[str] = []
+    for idx, line in enumerate(notice_markdown.splitlines(), start=1):
+        if line.strip().startswith("|") and len(line) > 120:
+            errors.append(f"NOTICE.md line {idx} exceeds 120 characters ({len(line)})")
+
     sections = parse_notice_sections(notice_markdown)
     shipped = sections.get(SHIPPED_HEADING, {})
     repo_only = sections.get(REPO_ONLY_HEADING, {})
@@ -105,12 +114,19 @@ def check_notice(
         ver, lic, usage = all_entries[pkg]
         if expected_ver and ver != expected_ver:
             errors.append(f"version mismatch for {pkg}: expected {expected_ver}, got {ver}")
-        if not lic:
+        expected_lic = EXPECTED_PACKAGE_LICENCES.get(pkg)
+        if expected_lic is not None:
+            if lic != expected_lic:
+                errors.append(f"licence mismatch for {pkg}: expected {expected_lic}, got {lic}")
+        elif not lic:
             errors.append(f"missing licence for {pkg}")
         if not usage:
             errors.append(f"missing usage description for {pkg}")
-        if pkg in test_only_refs and pkg in shipped:
-            errors.append(f"test-only package {pkg} must not be listed under '{SHIPPED_HEADING}'")
+        if pkg in test_only_refs:
+            if pkg in shipped:
+                errors.append(f"test-only package {pkg} must not be listed under '{SHIPPED_HEADING}'")
+            if "tests/" not in usage or re.search(r"\b(shipped|bundled)\b.*\bberth\.exe\b", usage, re.IGNORECASE):
+                errors.append(f"test-only package {pkg} usage must identify tests/ and never claim shipping in berth.exe")
         if pkg in app_refs and pkg not in shipped:
             errors.append(f"app package {pkg} must be listed under '{SHIPPED_HEADING}'")
 
@@ -118,7 +134,7 @@ def check_notice(
         if pkg not in all_entries:
             errors.append(f"referenced package missing from NOTICE.md: {pkg}")
 
-    # Check required non-NuGet components, their licences, and their usage descriptions.
+    # Check required non-NuGet shipped components and upstream notice links.
     required_shipped = (
         (".NET 11 Runtime", "MIT", "berth.exe"),
         (".NET 11 Windows Desktop Runtime", "MIT", "berth.exe"),
@@ -133,14 +149,23 @@ def check_notice(
         if usage_hint.lower() not in usage.lower():
             errors.append(f"usage for {comp} must explain where it is used ({usage_hint})")
 
-    if "Contributor Covenant" not in repo_only:
-        errors.append("missing Contributor Covenant entry in NOTICE.md")
-    else:
-        _, lic, usage = repo_only["Contributor Covenant"]
-        if "CC BY 4.0" not in lic:
-            errors.append(f"unexpected licence for Contributor Covenant: {lic}")
-        if "CODE_OF_CONDUCT.md" not in usage:
-            errors.append("Contributor Covenant usage must reference CODE_OF_CONDUCT.md")
+    if "https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT" not in notice_markdown:
+        errors.append("NOTICE.md must link the upstream .NET Runtime THIRD-PARTY-NOTICES.TXT")
+
+    # Check required repository-only non-NuGet components.
+    required_repo_only = (
+        ("Pillow", "MIT-CMU", "assets/build.py"),
+        ("Contributor Covenant", "CC BY 4.0", "CODE_OF_CONDUCT.md"),
+    )
+    for comp, expected_lic, usage_hint in required_repo_only:
+        if comp not in repo_only:
+            errors.append(f"missing {comp} entry in NOTICE.md")
+            continue
+        _, lic, usage = repo_only[comp]
+        if expected_lic not in lic:
+            errors.append(f"unexpected licence for {comp}: {lic}")
+        if usage_hint not in usage:
+            errors.append(f"{comp} usage must reference {usage_hint}")
 
     return errors
 
@@ -160,11 +185,15 @@ def check_changelog_010(changelog_markdown: str) -> list[str]:
         "assets/",
         "design/SPEC.md",
         "docs/plans/2026-11-15-berth-foundation.md",
-        "https://github.com/rizonesoft/Berth/blob/v0.1.0/NOTICE.md",
     )
     for phrase in required_phrases:
         if phrase not in section:
             errors.append(f"0.1.0 changelog section missing required content: {phrase}")
+
+    expected_notice_link = r"\[[^\]]+\]\(https://github\.com/rizonesoft/Berth/blob/v0\.1\.0/NOTICE\.md\)"
+    if not re.search(expected_notice_link, section):
+        errors.append("0.1.0 changelog section must link to https://github.com/rizonesoft/Berth/blob/v0.1.0/NOTICE.md")
+
     return errors
 
 
@@ -195,23 +224,33 @@ class NoticeAndChangelogTests(unittest.TestCase):
         errs = check_notice(without_xunit, central, app_refs, test_only_refs)
         self.assertTrue(any("xunit.v3" in e for e in errs))
 
+        # Wrong licence or false shipping claim on xunit.v3 must fail even inside the repository-only table.
+        bad_xunit = text.replace(
+            "| xunit.v3 | 4.0.3 | Apache-2.0 | `tests/Berth.Tests` only: automated unit and UI test suite |",
+            "| xunit.v3 | 4.0.3 | MIT | bundled in berth.exe |",
+        )
+        self.assertNotEqual(bad_xunit, text)
+        errs = check_notice(bad_xunit, central, app_refs, test_only_refs)
+        self.assertTrue(any("licence mismatch for xunit.v3" in e for e in errs))
+        self.assertTrue(any("never claim shipping in berth.exe" in e for e in errs))
+
         # Missing bundled .NET runtime must fail.
         without_runtime = "\n".join(line for line in text.splitlines() if ".NET 11 Runtime" not in line)
         errs = check_notice(without_runtime, central, app_refs, test_only_refs)
         self.assertTrue(any(".NET 11 Runtime" in e for e in errs))
 
-        # Missing Contributor Covenant must fail.
-        without_coc = "\n".join(line for line in text.splitlines() if "Contributor Covenant" not in line)
-        errs = check_notice(without_coc, central, app_refs, test_only_refs)
-        self.assertTrue(any("Contributor Covenant" in e for e in errs))
+        # Missing Pillow or Contributor Covenant must fail.
+        for comp in ("Pillow", "Contributor Covenant"):
+            stripped = "\n".join(line for line in text.splitlines() if comp not in line)
+            errs = check_notice(stripped, central, app_refs, test_only_refs)
+            self.assertTrue(any(comp in e for e in errs), f"Missing {comp} should have failed")
 
-        # Listing a test-only package under Shipped in berth.exe must fail.
-        misclassified = text.replace(
-            "| .NET 11 Windows Desktop Runtime | 11.0 | MIT | Bundled for WPF main window and Windows Forms tray icon in `berth.exe` |",
-            "| .NET 11 Windows Desktop Runtime | 11.0 | MIT | Bundled for WPF main window and Windows Forms tray icon in `berth.exe` |\n"
-            "| xunit.v3 | 4.0.3 | Apache-2.0 | Shipped in berth.exe |",
-        )
-        errs = check_notice(misclassified, central, app_refs, test_only_refs)
+        # Listing a test-only package under Shipped in berth.exe must fail (anchored on section heading).
+        lines = text.splitlines()
+        shipped_idx = next(i for i, l in enumerate(lines) if l.strip() == f"## {SHIPPED_HEADING}")
+        table_sep_idx = next(i for i in range(shipped_idx, len(lines)) if lines[i].strip().startswith("| ---"))
+        lines.insert(table_sep_idx + 1, "| xunit.v3 | 4.0.3 | Apache-2.0 | `tests/Berth.Tests` only |")
+        errs = check_notice("\n".join(lines), central, app_refs, test_only_refs)
         self.assertTrue(any("must not be listed under" in e and "xunit.v3" in e for e in errs))
 
     def test_changelog_010_extracts_cleanly_undated_and_dated_and_rejects_omissions(self) -> None:
@@ -221,6 +260,14 @@ class NoticeAndChangelogTests(unittest.TestCase):
         # Confirm compatibility with the dated heading D99 T01 §3 creates.
         dated = text.replace("## 0.1.0", "## 0.1.0 - 2026-11-21", 1)
         self.assertEqual(check_changelog_010(dated), [])
+
+        # Spoofed link destination with expected URL only in visible text must fail.
+        spoofed = text.replace(
+            "[NOTICE.md](https://github.com/rizonesoft/Berth/blob/v0.1.0/NOTICE.md)",
+            "[https://github.com/rizonesoft/Berth/blob/v0.1.0/NOTICE.md](https://example.org/)",
+        )
+        self.assertNotEqual(spoofed, text)
+        self.assertTrue(check_changelog_010(spoofed))
 
         # Removing any required summary or the NOTICE.md tag link must fail.
         for phrase in ("Automatic restore", "Command line", "NOTICE.md"):
