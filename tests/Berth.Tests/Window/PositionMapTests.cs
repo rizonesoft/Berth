@@ -158,11 +158,16 @@ public sealed class PositionMapTests(AppFixture appFixture)
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
         var store = new LayoutStore(paths);
 
-        // Rightmost narrow portrait primary + vertically stacked top monitor.
-        MonitorInfo[] arrangement = [MonTop, MonSingle, MonPortraitPrimary];
-        SaveLayout(store, arrangement, "Studio", new IconPosition("id-1", "One", 500, 400));
+        // Three equal 1920 x 1080 monitors side by side with the primary on the right (tightest horizontal label case).
+        MonitorInfo[] threeWide =
+        [
+            new(0, 0, 1920, 1080, 100, false),
+            new(1920, 0, 1920, 1080, 100, false),
+            new(3840, 0, 1920, 1080, 100, true),
+        ];
+        SaveLayout(store, threeWide, "Triple", new IconPosition("id-1", "One", 500, 400));
 
-        var monitors = new FakeMonitors(arrangement);
+        var monitors = new FakeMonitors(threeWide);
         var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 500, 400));
         var vm = CreateViewModel(store, desktop, monitors);
         await vm.RefreshAsync();
@@ -175,25 +180,42 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 RenderMeasureAndArrange(window, 980, 640);
                 PositionMap map = window.PositionMapControl;
                 double wideScale = map.CurrentGeometry.Scale;
-                double wideCenterX = map.MarkerItems[0].CenterX;
+                WpfPoint wideVisualCenter = MeasureFirstMarkerCenterInViewport(map);
 
-                // Resize down to minimum window size 760 x 520.
-                RenderMeasureAndArrange(window, 760, 520);
+                // Resize down to minimum window size 760 x 520 and verify at both 96 DPI (100%) and 144 DPI (150%).
+                RenderMeasureAndArrange(window, 760, 520, dpi: 96);
                 double narrowScale = map.CurrentGeometry.Scale;
-                double narrowCenterX = map.MarkerItems[0].CenterX;
+                WpfPoint narrowVisualCenter96 = MeasureFirstMarkerCenterInViewport(map);
+                MapPoint expectedNarrow = map.CurrentGeometry.ToPanel(500, 400);
 
                 Assert.True(map.MapCard.ActualHeight >= 220d, $"Expected MapCard >= 220 DIP, got {map.MapCard.ActualHeight}.");
                 Assert.True(narrowScale < wideScale, $"Expected scale to shrink on narrower window ({narrowScale} < {wideScale}).");
-                Assert.NotEqual(wideCenterX, narrowCenterX);
+                Assert.NotEqual(wideVisualCenter.X, narrowVisualCenter96.X);
+                Assert.InRange(Math.Abs(narrowVisualCenter96.X - expectedNarrow.X), 0d, 0.5d);
+                Assert.InRange(Math.Abs(narrowVisualCenter96.Y - expectedNarrow.Y), 0d, 0.5d);
 
-                // Every rendered label (including rightmost portrait primary) must fit inside the padded viewport.
+                // Verify rendered alignment at 150% DPI (144 DPI) as well.
+                RenderMeasureAndArrange(window, 760, 520, dpi: 144);
+                WpfPoint narrowVisualCenter144 = MeasureFirstMarkerCenterInViewport(map);
+                Assert.InRange(Math.Abs(narrowVisualCenter144.X - expectedNarrow.X), 0d, 0.5d);
+                Assert.InRange(Math.Abs(narrowVisualCenter144.Y - expectedNarrow.Y), 0d, 0.5d);
+
+                // All three labels must be inside the padded viewport and MUST NOT intersect one another.
                 Assert.Equal(3, map.Surface.RenderedLabels.Count);
-                foreach (RenderedMonitorLabel label in map.Surface.RenderedLabels)
+                for (int i = 0; i < map.Surface.RenderedLabels.Count; i++)
                 {
-                    Assert.True(label.Bounds.Left >= 0d, $"Label '{label.Text}' clipped left at {label.Bounds.Left}.");
+                    RenderedMonitorLabel a = map.Surface.RenderedLabels[i];
+                    Assert.True(a.Bounds.Left >= 0d, $"Label '{a.Text}' clipped left at {a.Bounds.Left}.");
                     Assert.True(
-                        label.Bounds.Right <= map.MapViewport.ActualWidth - 24d + 0.5d,
-                        $"Label '{label.Text}' clipped right at {label.Bounds.Right} > {map.MapViewport.ActualWidth - 24d}.");
+                        a.Bounds.Right <= map.MapViewport.ActualWidth - 24d + 0.5d,
+                        $"Label '{a.Text}' clipped right at {a.Bounds.Right} > {map.MapViewport.ActualWidth - 24d}.");
+                    for (int j = i + 1; j < map.Surface.RenderedLabels.Count; j++)
+                    {
+                        RenderedMonitorLabel b = map.Surface.RenderedLabels[j];
+                        Assert.False(
+                            a.Bounds.IntersectsWith(b.Bounds),
+                            $"Labels '{a.Text}' ({a.Bounds}) and '{b.Text}' ({b.Bounds}) overlapped at 760 DIP.");
+                    }
                 }
             }
             finally
@@ -216,10 +238,6 @@ public sealed class PositionMapTests(AppFixture appFixture)
         var vm = CreateViewModel(store, desktop, monitors);
         await vm.RefreshAsync();
 
-        string lightPath = Path.Combine(data.Root, "live-light.png");
-        string darkPath = Path.Combine(data.Root, "live-dark.png");
-        string hcPath = Path.Combine(data.Root, "live-hc.png");
-
         appFixture.Invoke(() =>
         {
             var window = new MainWindow { DataContext = vm };
@@ -227,12 +245,26 @@ public sealed class PositionMapTests(AppFixture appFixture)
             Berth.App.ColorTheme originalTheme = berthApp.CurrentColorTheme;
             try
             {
-                WindowRenderer.Render(window.RootGrid, 980, 640, lightPath, RenderTheme.Light);
-                window.PositionMapControl.RefreshThemeVisuals();
-                WindowRenderer.Render(window.RootGrid, 980, 640, darkPath, RenderTheme.Dark);
+                // Switch theme on the SAME loaded control WITHOUT calling any manual refresh helper:
+                // DependencyProperty DynamicResource bindings must update every painted brush and repaint MapSurface!
+                berthApp.ApplyColorTheme(Berth.App.ColorTheme.Light);
+                byte[] lightSurface = RenderSurfaceBytes(window);
+                var lightGrid = window.PositionMapControl.Surface.GridBrush;
+                var lightFill = window.PositionMapControl.Surface.MonitorFill;
+                var lightStroke = window.PositionMapControl.Surface.MonitorStroke;
+                var lightLabel = window.PositionMapControl.Surface.LabelBrush;
+
+                berthApp.ApplyColorTheme(Berth.App.ColorTheme.Dark);
+                byte[] darkSurface = RenderSurfaceBytes(window);
+                Assert.NotSame(lightGrid, window.PositionMapControl.Surface.GridBrush);
+                Assert.NotSame(lightFill, window.PositionMapControl.Surface.MonitorFill);
+                Assert.NotSame(lightStroke, window.PositionMapControl.Surface.MonitorStroke);
+                Assert.NotSame(lightLabel, window.PositionMapControl.Surface.LabelBrush);
+                Assert.False(lightSurface.AsSpan().SequenceEqual(darkSurface));
+
                 berthApp.ApplyColorTheme(Berth.App.ColorTheme.HighContrast);
-                window.PositionMapControl.RefreshThemeVisuals();
-                WindowRenderer.Render(window.RootGrid, 980, 640, hcPath, theme: null);
+                byte[] hcSurface = RenderSurfaceBytes(window);
+                Assert.False(darkSurface.AsSpan().SequenceEqual(hcSurface));
             }
             finally
             {
@@ -240,12 +272,6 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 window.CloseForShutdown();
             }
         });
-
-        byte[] lightBytes = File.ReadAllBytes(lightPath);
-        byte[] darkBytes = File.ReadAllBytes(darkPath);
-        byte[] hcBytes = File.ReadAllBytes(hcPath);
-        Assert.False(lightBytes.AsSpan().SequenceEqual(darkBytes));
-        Assert.False(darkBytes.AsSpan().SequenceEqual(hcBytes));
     }
 
     [Fact]
@@ -319,15 +345,39 @@ public sealed class PositionMapTests(AppFixture appFixture)
         store.Save(new Layout(Layout.CurrentSchemaVersion, key, name, FixedNow, [.. monitors], [.. icons], null));
     }
 
-    private static void RenderMeasureAndArrange(MainWindow window, double width = 980, double height = 640)
+    private static void RenderMeasureAndArrange(MainWindow window, double width = 980, double height = 640, double dpi = 96)
     {
         window.RootGrid.Measure(new WpfSize(width, height));
         window.RootGrid.Arrange(new Rect(0, 0, width, height));
         window.RootGrid.UpdateLayout();
 
         // Trigger OnRender on MapSurface off-screen so RenderedMonitorRects and RenderedLabels are populated.
-        var rtb = new RenderTargetBitmap((int)width, (int)height, 96, 96, PixelFormats.Pbgra32);
+        int pxW = (int)Math.Round(width * dpi / 96d);
+        int pxH = (int)Math.Round(height * dpi / 96d);
+        var rtb = new RenderTargetBitmap(pxW, pxH, dpi, dpi, PixelFormats.Pbgra32);
         rtb.Render(window.RootGrid);
+    }
+
+    private static WpfPoint MeasureFirstMarkerCenterInViewport(PositionMap map)
+    {
+        WpfListBoxItem container = RealizeItems(map.MarkersList)[0];
+        Border visual = Assert.IsType<Border>(FindDescendant<Border>(container, "MarkerVisual"));
+        return visual.TranslatePoint(new WpfPoint(visual.ActualWidth / 2d, visual.ActualHeight / 2d), map.MapViewport);
+    }
+
+    private static byte[] RenderSurfaceBytes(MainWindow window)
+    {
+        window.RootGrid.Measure(new WpfSize(980, 640));
+        window.RootGrid.Arrange(new Rect(0, 0, 980, 640));
+        window.RootGrid.UpdateLayout();
+        MapSurface surface = window.PositionMapControl.Surface;
+        int w = Math.Max(1, (int)Math.Round(surface.ActualWidth));
+        int h = Math.Max(1, (int)Math.Round(surface.ActualHeight));
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(surface);
+        byte[] pixels = new byte[w * h * 4];
+        rtb.CopyPixels(pixels, w * 4, 0);
+        return pixels;
     }
 
     private static WpfListBoxItem[] RealizeItems(System.Windows.Controls.ListBox listBox)

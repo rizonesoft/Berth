@@ -118,10 +118,11 @@ public sealed class MapGeometryTests
         // Far outside right -> clamped to right's inclusive bottom-right (2999, 999).
         Assert.Equal(new ClampedDesktopPoint(2999, 999, true), MapGeometry.Clamp(999999, 999999, [left, right]));
 
-        // Equidistant gap (x = 1500 is 501 from left's 999 and 500 from right's 2000 -> right wins;
-        // x = 1499 is 500 from left's 999 and 501 from right's 2000 -> left wins).
-        Assert.Equal(new ClampedDesktopPoint(2000, 500, true), MapGeometry.Clamp(1500, 500, [left, right]));
-        Assert.Equal(new ClampedDesktopPoint(999, 500, true), MapGeometry.Clamp(1499, 500, [left, right]));
+        // True equidistant gap: left inclusive edge is X=999, right starts at X=2001 -> X=1500 is exactly 501 px from
+        // both, so MonitorNumbering.Order tie-break selects monitor 1 (left, X=999).
+        var rightTie = new MonitorInfo(2001, 0, 1000, 1000, 100, false);
+        Assert.Equal(new ClampedDesktopPoint(999, 500, true), MapGeometry.Clamp(1500, 500, [left, rightTie]));
+        Assert.Equal(new ClampedDesktopPoint(2001, 500, true), MapGeometry.Clamp(1501, 500, [left, rightTie]));
 
         // Shared edge (adjacent monitors): x = 1000 belongs to the right monitor (inclusive [1000, 1999]).
         var adjRight = new MonitorInfo(1000, 0, 1000, 1000, 100, false);

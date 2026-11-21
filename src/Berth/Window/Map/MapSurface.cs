@@ -16,28 +16,94 @@ internal readonly record struct RenderedMonitorLabel(int Number, string Text, Re
 
 /// <summary>
 /// Custom drawing layer behind the marker <see cref="System.Windows.Controls.ListBox"/> (SPEC §7): renders the faint
-/// grid, each monitor rectangle to scale, and each monitor label above its top-left corner from theme tokens only.
+/// grid, each monitor rectangle to scale, and collision-free monitor labels from theme tokens. Brushes are exposed as
+/// <see cref="DependencyProperty"/>s with <see cref="FrameworkPropertyMetadataOptions.AffectsRender"/> so live Light,
+/// Dark, and High Contrast theme changes repaint automatically without manual invalidation.
 /// </summary>
 internal sealed class MapSurface : FrameworkElement
 {
-    private const double LabelBottomGap = 4d;
+    public static readonly DependencyProperty GridBrushProperty = DependencyProperty.Register(
+        nameof(GridBrush),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    private IReadOnlyList<MonitorInfo> _monitors = [];
+    public static readonly DependencyProperty MonitorFillProperty = DependencyProperty.Register(
+        nameof(MonitorFill),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty MonitorStrokeProperty = DependencyProperty.Register(
+        nameof(MonitorStroke),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty LabelBrushProperty = DependencyProperty.Register(
+        nameof(LabelBrush),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Gray, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private IReadOnlyList<MonitorInfo> _orderedMonitors = [];
     private MapGeometry _geometry = MapGeometry.Empty;
     private double _padding = 24d;
     private readonly List<RenderedMonitorLabel> _renderedLabels = [];
     private readonly List<Rect> _renderedMonitorRects = [];
 
+    public WpfBrush GridBrush
+    {
+        get => (WpfBrush)GetValue(GridBrushProperty);
+        set => SetValue(GridBrushProperty, value);
+    }
+
+    public WpfBrush MonitorFill
+    {
+        get => (WpfBrush)GetValue(MonitorFillProperty);
+        set => SetValue(MonitorFillProperty, value);
+    }
+
+    public WpfBrush MonitorStroke
+    {
+        get => (WpfBrush)GetValue(MonitorStrokeProperty);
+        set => SetValue(MonitorStrokeProperty, value);
+    }
+
+    public WpfBrush LabelBrush
+    {
+        get => (WpfBrush)GetValue(LabelBrushProperty);
+        set => SetValue(LabelBrushProperty, value);
+    }
+
     public IReadOnlyList<RenderedMonitorLabel> RenderedLabels => _renderedLabels;
 
     public IReadOnlyList<Rect> RenderedMonitorRects => _renderedMonitorRects;
 
-    public void Update(IReadOnlyList<MonitorInfo> monitors, MapGeometry geometry, double padding)
+    public void Update(IReadOnlyList<MonitorInfo> orderedMonitors, MapGeometry geometry, double padding)
     {
-        _monitors = monitors;
+        _orderedMonitors = orderedMonitors;
         _geometry = geometry;
         _padding = padding;
         InvalidateVisual();
+    }
+
+    /// <summary>Measures the vertical reserve needed for one line of mono monitor label plus token gap.</summary>
+    public double MeasureLabelReserve()
+    {
+        WpfFontFamily monoFamily = ResolveFontFamily("Berth.Type.FamilyMono", new WpfFontFamily("Consolas"));
+        double monoFontSize = ResolveStyleFontSize("Berth.Type.Mono", 12d);
+        double pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        double gap = ResolveLabelGap();
+        var sample = new FormattedText(
+            "1 \u00B7 2560 \u00D7 1440 \u00B7 primary",
+            CultureInfo.InvariantCulture,
+            System.Windows.FlowDirection.LeftToRight,
+            new WpfTypeface(monoFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+            monoFontSize,
+            LabelBrush ?? WpfBrushes.Gray,
+            pixelsPerDip);
+        return Math.Ceiling(sample.Height + gap);
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -57,10 +123,11 @@ internal sealed class MapSurface : FrameworkElement
         double pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         double halfPixel = 0.5d / pixelsPerDip;
         double gridStep = ResolveDouble("Berth.MapGridStep", 20d);
-        WpfBrush gridBrush = ResolveBrush("Berth.MapGrid", WpfBrushes.Transparent);
+        double gridStroke = ResolveThicknessLeft("Berth.Space.BorderThin", 1d);
+        WpfBrush gridBrush = GridBrush ?? ResolveBrush("Berth.MapGrid", WpfBrushes.Transparent);
         if (gridStep > 0d)
         {
-            var gridPen = new WpfPen(gridBrush, 1d);
+            var gridPen = new WpfPen(gridBrush, gridStroke);
             if (gridPen.CanFreeze)
             {
                 gridPen.Freeze();
@@ -68,25 +135,24 @@ internal sealed class MapSurface : FrameworkElement
 
             for (double x = gridStep; x < width; x += gridStep)
             {
-                double snappedX = Math.Floor(x * pixelsPerDip) / pixelsPerDip + halfPixel;
+                double snappedX = (Math.Floor(x * pixelsPerDip) / pixelsPerDip) + halfPixel;
                 dc.DrawLine(gridPen, new WpfPoint(snappedX, 0d), new WpfPoint(snappedX, height));
             }
 
             for (double y = gridStep; y < height; y += gridStep)
             {
-                double snappedY = Math.Floor(y * pixelsPerDip) / pixelsPerDip + halfPixel;
+                double snappedY = (Math.Floor(y * pixelsPerDip) / pixelsPerDip) + halfPixel;
                 dc.DrawLine(gridPen, new WpfPoint(0d, snappedY), new WpfPoint(width, snappedY));
             }
         }
 
-        if (!_geometry.HasGeometry || _monitors.Count == 0)
+        if (!_geometry.HasGeometry || _orderedMonitors.Count == 0)
         {
             return;
         }
 
-        IReadOnlyList<MonitorInfo> ordered = MonitorNumbering.Order(_monitors);
-        WpfBrush monitorFill = ResolveBrush("Berth.MonitorFill", WpfBrushes.Transparent);
-        WpfBrush monitorStroke = ResolveBrush("Berth.MonitorStroke", WpfBrushes.Transparent);
+        WpfBrush monitorFill = MonitorFill ?? ResolveBrush("Berth.MonitorFill", WpfBrushes.Transparent);
+        WpfBrush monitorStroke = MonitorStroke ?? ResolveBrush("Berth.MonitorStroke", WpfBrushes.Transparent);
         double strokeThickness = ResolveDouble("Berth.MonitorStrokeThickness", 1.5d);
         double monitorRadius = ResolveCornerRadius("Berth.RadiusMonitor", 6d);
         var monitorPen = new WpfPen(monitorStroke, strokeThickness);
@@ -96,26 +162,28 @@ internal sealed class MapSurface : FrameworkElement
         }
 
         // Pass 1: draw every monitor rectangle first so stacked monitors never paint over a lower monitor's label.
-        var rects = new Rect[ordered.Count];
-        for (int i = 0; i < ordered.Count; i++)
+        var rects = new Rect[_orderedMonitors.Count];
+        for (int i = 0; i < _orderedMonitors.Count; i++)
         {
-            MapRect mr = _geometry.MonitorRect(ordered[i]);
+            MapRect mr = _geometry.MonitorRect(_orderedMonitors[i]);
             var rect = new Rect(mr.X, mr.Y, Math.Max(0d, mr.Width), Math.Max(0d, mr.Height));
             rects[i] = rect;
             _renderedMonitorRects.Add(rect);
             dc.DrawRoundedRectangle(monitorFill, monitorPen, rect, monitorRadius, monitorRadius);
         }
 
-        // Pass 2: draw every monitor label above its top-left corner, clamped horizontally inside the padded card.
+        // Pass 2: measure and lay out monitor labels together so no two labels overlap and none are ellipsized (SPEC §3).
         WpfFontFamily monoFamily = ResolveFontFamily("Berth.Type.FamilyMono", new WpfFontFamily("Consolas"));
         double monoFontSize = ResolveStyleFontSize("Berth.Type.Mono", 12d);
-        WpfBrush labelBrush = ResolveBrush("Berth.TextSecondary", WpfBrushes.Gray);
+        WpfBrush labelBrush = LabelBrush ?? ResolveBrush("Berth.TextSecondary", WpfBrushes.Gray);
+        double labelGap = ResolveLabelGap();
         var typeface = new WpfTypeface(monoFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        double cardContentWidth = Math.Max(1d, width - (2d * _padding));
 
-        for (int i = 0; i < ordered.Count; i++)
+        var placedBounds = new List<Rect>(_orderedMonitors.Count);
+        for (int i = 0; i < _orderedMonitors.Count; i++)
         {
-            string text = MapGeometry.FormatMonitorLabel(i + 1, ordered[i]);
-            double maxAvailableWidth = Math.Max(1d, width - (2d * _padding));
+            string text = MapGeometry.FormatMonitorLabel(i + 1, _orderedMonitors[i]);
             var formatted = new FormattedText(
                 text,
                 CultureInfo.InvariantCulture,
@@ -125,13 +193,13 @@ internal sealed class MapSurface : FrameworkElement
                 labelBrush,
                 pixelsPerDip)
             {
-                MaxTextWidth = maxAvailableWidth,
-                Trimming = TextTrimming.CharacterEllipsis,
-                MaxLineCount = 1,
+                MaxTextWidth = cardContentWidth,
             };
 
+            double labelWidth = formatted.Width;
+            double labelHeight = formatted.Height;
             double labelX = rects[i].X;
-            double maxLeft = Math.Max(_padding, width - _padding - formatted.Width);
+            double maxLeft = Math.Max(_padding, width - _padding - labelWidth);
             if (labelX > maxLeft)
             {
                 labelX = maxLeft;
@@ -142,14 +210,45 @@ internal sealed class MapSurface : FrameworkElement
                 labelX = _padding;
             }
 
-            double labelY = Math.Max(2d, rects[i].Y - formatted.Height - LabelBottomGap);
-            dc.DrawText(formatted, new WpfPoint(labelX, labelY));
-            _renderedLabels.Add(new RenderedMonitorLabel(
-                i + 1,
-                text,
-                new Rect(labelX, labelY, formatted.Width, formatted.Height)));
+            double labelY = Math.Max(labelGap, rects[i].Y - labelHeight - labelGap);
+            var candidate = new Rect(labelX, labelY, labelWidth, labelHeight);
+
+            // Resolve horizontal/vertical collisions against previously placed labels by stepping upward cleanly.
+            bool moved;
+            int guard = 0;
+            do
+            {
+                moved = false;
+                foreach (Rect prev in placedBounds)
+                {
+                    if (candidate.IntersectsWith(prev))
+                    {
+                        double liftedY = prev.Top - labelHeight - labelGap;
+                        if (liftedY >= 0d)
+                        {
+                            candidate = new Rect(candidate.X, liftedY, labelWidth, labelHeight);
+                        }
+                        else
+                        {
+                            // Fallback if there is no room above: place below the previous label.
+                            candidate = new Rect(candidate.X, prev.Bottom + labelGap, labelWidth, labelHeight);
+                        }
+
+                        moved = true;
+                        break;
+                    }
+                }
+            }
+            while (moved && ++guard < 8);
+
+            placedBounds.Add(candidate);
+            dc.DrawText(formatted, new WpfPoint(candidate.X, candidate.Y));
+            _renderedLabels.Add(new RenderedMonitorLabel(i + 1, text, candidate));
         }
     }
+
+    private double ResolveLabelGap() =>
+        Math.Max(2d, ResolveThicknessTop("Berth.Space.SubtitleTop", 2d) * 2d);
 
     private WpfBrush ResolveBrush(string key, WpfBrush fallback) =>
         TryFindResource(key) as WpfBrush ?? fallback;
@@ -159,6 +258,12 @@ internal sealed class MapSurface : FrameworkElement
 
     private double ResolveCornerRadius(string key, double fallback) =>
         TryFindResource(key) is CornerRadius r && double.IsFinite(r.TopLeft) ? r.TopLeft : fallback;
+
+    private double ResolveThicknessLeft(string key, double fallback) =>
+        TryFindResource(key) is Thickness t && double.IsFinite(t.Left) && t.Left > 0d ? t.Left : fallback;
+
+    private double ResolveThicknessTop(string key, double fallback) =>
+        TryFindResource(key) is Thickness t && double.IsFinite(t.Top) && t.Top > 0d ? t.Top : fallback;
 
     private WpfFontFamily ResolveFontFamily(string key, WpfFontFamily fallback) =>
         TryFindResource(key) as WpfFontFamily ?? fallback;

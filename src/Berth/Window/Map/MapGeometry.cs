@@ -149,7 +149,21 @@ internal sealed class MapGeometry
             return new ClampedDesktopPoint(x, y, OffScreen: false);
         }
 
-        IReadOnlyList<MonitorInfo> ordered = MonitorNumbering.Order(monitors);
+        return ClampOrdered(x, y, MonitorNumbering.Order(monitors));
+    }
+
+    /// <summary>
+    /// Overload of <see cref="Clamp"/> for callers that already hold <paramref name="ordered"/> in
+    /// <see cref="MonitorNumbering.Order"/>, avoiding repeated sorts per icon.
+    /// </summary>
+    public static ClampedDesktopPoint ClampOrdered(int x, int y, IReadOnlyList<MonitorInfo> ordered)
+    {
+        ArgumentNullException.ThrowIfNull(ordered);
+        if (ordered.Count == 0)
+        {
+            return new ClampedDesktopPoint(x, y, OffScreen: false);
+        }
+
         (int number, bool offScreen) = MonitorNumbering.Locate(ordered, x, y);
         if (!offScreen)
         {

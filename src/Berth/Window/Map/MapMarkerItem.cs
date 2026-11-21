@@ -11,16 +11,19 @@ internal sealed class MapMarkerItem : ObservableObject
     private double _centerX;
     private double _centerY;
 
-    public MapMarkerItem(ComparedIcon icon, int zIndex, bool offScreen)
+    public MapMarkerItem(ComparedIcon icon, int zIndex, ClampedDesktopPoint clamped)
     {
         Icon = icon;
         ZIndex = zIndex;
-        OffScreen = offScreen;
+        Clamped = clamped;
+        OffScreen = icon.OffScreen || clamped.OffScreen;
     }
 
     public ComparedIcon Icon { get; }
 
     public int ZIndex { get; }
+
+    public ClampedDesktopPoint Clamped { get; }
 
     public bool OffScreen { get; }
 

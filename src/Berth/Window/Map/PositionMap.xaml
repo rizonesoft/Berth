@@ -18,7 +18,12 @@
                 </Grid.RowDefinitions>
 
                 <Grid x:Name="MapViewport" Grid.Row="0" SizeChanged="OnViewportSizeChanged">
-                    <map:MapSurface x:Name="Surface" IsHitTestVisible="False" />
+                    <map:MapSurface x:Name="Surface"
+                                    IsHitTestVisible="False"
+                                    GridBrush="{DynamicResource Berth.MapGrid}"
+                                    MonitorFill="{DynamicResource Berth.MonitorFill}"
+                                    MonitorStroke="{DynamicResource Berth.MonitorStroke}"
+                                    LabelBrush="{DynamicResource Berth.TextSecondary}" />
 
                     <ListBox x:Name="MarkersList"
                              Background="Transparent"
