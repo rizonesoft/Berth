@@ -224,21 +224,7 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
                     MapMarkerItem target = restoredSelection;
                     _ = Dispatcher.BeginInvoke(
                         System.Windows.Threading.DispatcherPriority.Loaded,
-                        new Action(() =>
-                        {
-                            // Never steal focus back if the user has already moved keyboard focus outside the map.
-                            if (System.Windows.Input.Keyboard.FocusedElement is not null
-                                && !MarkersList.IsKeyboardFocusWithin)
-                            {
-                                return;
-                            }
-
-                            if (ReferenceEquals(MarkersList.SelectedItem, target)
-                                && MarkersList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem deferred)
-                            {
-                                deferred.Focus();
-                            }
-                        }));
+                        new Action(() => TryRestoreDeferredFocus(target)));
                 }
             }
             else if (_items.Count == 0)
@@ -246,6 +232,22 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
                 // Focused marker disappeared and map is now empty: move focus cleanly so it is never stranded.
                 _ = MarkersList.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
             }
+        }
+    }
+
+    internal void TryRestoreDeferredFocus(MapMarkerItem target)
+    {
+        // Never steal focus back if the user has already moved keyboard focus outside the map.
+        if (System.Windows.Input.Keyboard.FocusedElement is not null
+            && !MarkersList.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(MarkersList.SelectedItem, target)
+            && MarkersList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem deferred)
+        {
+            deferred.Focus();
         }
     }
 

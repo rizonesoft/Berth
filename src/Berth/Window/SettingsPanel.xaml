@@ -5,7 +5,7 @@
              UseLayoutRounding="True"
              SnapsToDevicePixels="True">
     <UserControl.Resources>
-        <Style x:Key="FluentToggleSwitchStyle" TargetType="ToggleButton">
+        <Style x:Key="FluentToggleSwitchStyle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
             <Setter Property="MinHeight" Value="{DynamicResource Berth.ControlHeight}" />
             <Setter Property="MinWidth" Value="{DynamicResource Berth.ToggleTrackWidth}" />
             <Setter Property="Background" Value="Transparent" />

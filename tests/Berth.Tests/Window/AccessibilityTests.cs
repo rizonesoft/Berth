@@ -761,8 +761,9 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.Equal("Restore automatically", FocusedName());
             });
 
-            // 3e. Restore markers, focus marker 0, then Tab away to Restore automatically switch before a refresh finishes ->
-            // refresh must NOT steal focus back to the map!
+            // 3e. Exercise the exact queued deferred-focus callback race: focus marker 0, queue TryRestoreDeferredFocus
+            // at Loaded priority, move focus away to RestoreAutomaticallySwitch BEFORE draining Loaded, then drain
+            // Loaded and assert the callback does NOT steal focus back!
             layoutStore.Save(active);
             await vm.RefreshAsync();
             appFixture.Invoke(() =>
@@ -775,19 +776,21 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 PumpUi(window);
                 Assert.True(m0.IsKeyboardFocused);
 
-                // Move focus away to Restore automatically switch while marker 0 remains selected!
+                MapMarkerItem selectedTarget = (MapMarkerItem)markers.SelectedItem;
+                DispatcherOperation queued = window.Dispatcher.BeginInvoke(
+                    DispatcherPriority.Loaded,
+                    new Action(() => window.PositionMapControl.TryRestoreDeferredFocus(selectedTarget)));
+
+                // User Tabs/moves focus away to Restore automatically switch while marker 0 stays selected!
                 ToggleButton restoreSwitch = window.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch;
                 restoreSwitch.Focus();
+                Assert.True(restoreSwitch.IsKeyboardFocused);
+
+                // Drain the queued Loaded callback -> switch MUST retain keyboard focus!
+                queued.Wait();
                 PumpUi(window);
                 Assert.True(restoreSwitch.IsKeyboardFocused);
                 Assert.Equal(0, markers.SelectedIndex);
-            });
-
-            await vm.RefreshAsync();
-            appFixture.Invoke(() =>
-            {
-                PumpUi(window!);
-                Assert.True(window!.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch.IsKeyboardFocused);
             });
         }
         finally
@@ -917,8 +920,32 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.True(markerInnerBrush.Color.A >= 160, $"Expected visible marker inner focus ring, got A={markerInnerBrush.Color.A}");
                 Assert.NotEqual(markerOuterBrush.Color, markerInnerBrush.Color);
 
-                // Verify the 29x29 outer focus ring lies completely inside MapViewport with no ancestor clipping!
+                // Verify NO intermediate container between FocusRingOuter and MapViewport clips or hides the 29x29 ring!
                 Grid viewport = window.PositionMapControl.MapViewport;
+                var ringRect = new Rect(0d, 0d, markerFocusOuter.ActualWidth, markerFocusOuter.ActualHeight);
+                DependencyObject? cursor = VisualTreeHelper.GetParent(markerFocusOuter);
+                while (cursor is not null && !ReferenceEquals(cursor, viewport))
+                {
+                    if (cursor is UIElement ui)
+                    {
+                        Assert.Equal(Visibility.Visible, ui.Visibility);
+                        Assert.Equal(1d, ui.Opacity);
+                        if (VisualTreeHelper.GetClip(ui) is Geometry clip)
+                        {
+                            Rect ringInUi = markerFocusOuter.TransformToAncestor(ui).TransformBounds(ringRect);
+                            Assert.True(clip.Bounds.Contains(ringInUi), $"Clip on {ui.GetType().Name} clips FocusRingOuter.");
+                        }
+
+                        if (ui.ClipToBounds && ui is FrameworkElement fe)
+                        {
+                            Rect ringInUi = markerFocusOuter.TransformToAncestor(fe).TransformBounds(ringRect);
+                            Assert.True(new Rect(0d, 0d, fe.ActualWidth, fe.ActualHeight).Contains(ringInUi), $"ClipToBounds on {fe.GetType().Name} clips FocusRingOuter.");
+                        }
+                    }
+
+                    cursor = VisualTreeHelper.GetParent(cursor);
+                }
+
                 WpfPoint outerTopLeft = markerFocusOuter.TransformToAncestor(viewport).Transform(new WpfPoint(0d, 0d));
                 Assert.True(outerTopLeft.X >= 0d && outerTopLeft.Y >= 0d);
                 Assert.True(outerTopLeft.X + markerFocusOuter.ActualWidth <= viewport.ActualWidth);
@@ -1145,39 +1172,102 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         Style? style = control.FocusVisualStyle;
         Assert.NotNull(style);
 
-        // Instantiate the control's actual FocusVisualStyle onto a Control host inside the control's resource scope
-        // and verify it produces a visible stroke/border with >= 160 alpha!
+        // Verify no ancestor hides or dims the control.
+        DependencyObject? ancestor = control;
+        while (ancestor is not null)
+        {
+            if (ancestor is UIElement ui)
+            {
+                Assert.Equal(Visibility.Visible, ui.Visibility);
+                Assert.Equal(1d, ui.Opacity);
+            }
+
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+        }
+
+        // Render the control's actual FocusVisualStyle inside the window's live AdornerLayer so all theme
+        // DynamicResources resolve identically to live keyboard focus!
+        const int pad = 8;
+        int pxW = Math.Max(1, (int)Math.Ceiling(control.ActualWidth));
+        int pxH = Math.Max(1, (int)Math.Ceiling(control.ActualHeight));
+        int canvasW = pxW + (pad * 2);
+        int canvasH = pxH + (pad * 2);
         var host = new System.Windows.Controls.Control
         {
             Style = style,
-            Width = control.ActualWidth,
-            Height = control.ActualHeight,
+            Width = pxW,
+            Height = pxH,
+            Margin = new Thickness(pad),
         };
-        host.ApplyTemplate();
-        host.Measure(new System.Windows.Size(control.ActualWidth, control.ActualHeight));
-        host.Arrange(new Rect(0d, 0d, control.ActualWidth, control.ActualHeight));
-        host.UpdateLayout();
+        var wrapper = new Grid { Width = canvasW, Height = canvasH };
+        wrapper.Children.Add(host);
 
-        bool hasVisibleStroke = false;
-        foreach (DependencyObject child in FindVisualChildren<DependencyObject>(host))
+        System.Windows.Documents.AdornerLayer? layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(control);
+        Assert.NotNull(layer);
+        var adorner = new SingleChildAdorner(control, wrapper);
+        layer!.Add(adorner);
+        try
         {
-            if (child is System.Windows.Shapes.Shape shape
-                && shape.Stroke is SolidColorBrush sb
-                && sb.Color.A >= 160
-                && shape.StrokeThickness > 0d)
+            host.ApplyTemplate();
+            wrapper.Measure(new System.Windows.Size(canvasW, canvasH));
+            wrapper.Arrange(new Rect(0d, 0d, canvasW, canvasH));
+            wrapper.UpdateLayout();
+
+            var dv = new DrawingVisual();
+            using (DrawingContext dc = dv.RenderOpen())
             {
-                hasVisibleStroke = true;
+                dc.DrawRectangle(new VisualBrush(wrapper), null, new Rect(0d, 0d, canvasW, canvasH));
             }
-            else if (child is Border border
-                && border.BorderBrush is SolidColorBrush bb
-                && bb.Color.A >= 160
-                && (border.BorderThickness.Left > 0d || border.BorderThickness.Top > 0d))
+
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(canvasW, canvasH, 96d, 96d, PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            byte[] pixels = new byte[canvasW * canvasH * 4];
+            rtb.CopyPixels(pixels, canvasW * 4, 0);
+
+            int visibleFocusPixels = 0;
+            for (int i = 3; i < pixels.Length; i += 4)
             {
-                hasVisibleStroke = true;
+                if (pixels[i] >= 128)
+                {
+                    visibleFocusPixels++;
+                }
             }
+
+            Assert.True(visibleFocusPixels >= 80, $"FocusVisualStyle on {control.Name} rendered only {visibleFocusPixels} visible pixels.");
+        }
+        finally
+        {
+            layer.Remove(adorner);
+        }
+    }
+
+    private sealed class SingleChildAdorner : System.Windows.Documents.Adorner
+    {
+        private readonly UIElement _child;
+
+        public SingleChildAdorner(UIElement adornedElement, UIElement child)
+            : base(adornedElement)
+        {
+            _child = child;
+            AddVisualChild(child);
+            AddLogicalChild(child);
         }
 
-        Assert.True(hasVisibleStroke, $"FocusVisualStyle on {control.Name} did not produce a visible stroke or border.");
+        protected override int VisualChildrenCount => 1;
+
+        protected override Visual GetVisualChild(int index) => _child;
+
+        protected override System.Windows.Size MeasureOverride(System.Windows.Size constraint)
+        {
+            _child.Measure(constraint);
+            return _child.DesiredSize;
+        }
+
+        protected override System.Windows.Size ArrangeOverride(System.Windows.Size finalSize)
+        {
+            _child.Arrange(new Rect(finalSize));
+            return finalSize;
+        }
     }
 
     private static void AssertFullTabCycle(MainWindow window, string[] expected)
