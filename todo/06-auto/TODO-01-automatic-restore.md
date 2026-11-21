@@ -105,11 +105,8 @@ The one notification Berth shows: an automatic restore that was refused or faile
 
 **Phase:** 6
 **Needs:** windows-host, display-session
-**Surface:** yes
-**Fidelity:** `design/SPEC.md` §12, last bullet, and §16, fourth bullet.
-**Job:** the user learns that their icons were not put back, and why, when nothing else would tell them.
-**Treatment:** one balloon per trigger with the SPEC title and the reason; clicking it opens the window. A success is silent. Cheaper substitute that fails: a balloon on every successful restore.
-**Chrome:** `NotifyIcon.ShowBalloonTip` on the existing tray icon, with the warning icon. **Corrected 2026-11-21:** native Windows 11 shell toasts are suppressed on unattended locked desktops (and `D06 T01 §3` has zero Berth XAML and no SPEC §19 render row), so §3 verifies the production `NotifyIcon.ShowBalloonTip(0)` path plus a fresh-session Opus 5.5 medium design check on copy/truncation/focus, while the live unlocked-desktop OS toast capture and Opus 5.5 visual observation are owned by `D99 T01 §4` on the disposable desktop.
+**Surface:** no
+**Corrected 2026-11-21:** changed `Surface:` from `yes` to `no` because `NotifyIcon.ShowBalloonTip` renders a native Windows 11 OS shell notification (zero Berth XAML, no SPEC §19 render row, suppressed on unattended locked desktops); the live unlocked-desktop OS toast capture and fresh-session Opus 5.5 medium visual inspection are owned by `D99 T01 §4` (`Needs: attended, operator`).
 
 **Build order:**
 
@@ -125,7 +122,9 @@ The one notification Berth shows: an automatic restore that was refused or faile
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BalloonTests"` passes, and fails when a successful automatic restore produces a balloon.
 
-> **Started:** 2026-11-21
+> **Started:** 2026-11-21T09:04Z
+
+**Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/06-auto/D06-T01-s3-chain1.md`.
 
 ## 4. Tray icon added again after Explorer restarts
 

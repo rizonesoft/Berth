@@ -132,3 +132,27 @@ RECONCILIATION: gaps
 
 - Fixed Reconciliation 1 P2 #2 (`adversarial`): removed the Auto Arrange step from `D99 T01 §2` (which runs on the owner's real desktop) and moved it to `D99 T01 §4` (`todo/99-manual/TODO-01-operator-steps.md`, the disposable interactive Windows 11 desktop with a saved layout for its current monitor arrangement).
 - Fixed Reconciliation 1 P2 #1 (`plan-delivery`, `record`): added the exact requested acceptance criteria to `D99 T01 §4` (capture the live production Windows 11 notification toast on the unlocked disposable desktop, verify click-to-open, run fresh-session Opus 5.5 at medium effort on the capture, and record the observation in `docs/acceptance/2026-autoarrange-roundtrip.md` against `D06 T01 §3`), and added a dated `**Corrected 2026-11-21:**` scope note in `todo/06-auto/TODO-01-automatic-restore.md` §3 aligning the unattended section's verification boundary with `D99 T01 §4`.
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T09:04:13Z
+- Candidate: 225abaff5a8d38d9e167660b52e1e54ace9bac2c
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 13
+- Digest: 9c3f101e6b56d54e
+
+**P2 (recurring: completion, reconciliation 1, reconciliation 2).** At `225abaf`, the review record marks the rendered-toast finding fixed. D99 T01 §4 now specifies the screenshot, click-to-open check and fresh-session Opus 5.5 medium inspection, but the step is unchecked and HEAD contains no acceptance record. The surface rule requires Opus to inspect the rendered surface before review. Keep the finding open until the disposable-desktop run records that evidence. [Surface rule](D:/GitHub/Berth/AGENTS.md:107) · [Acceptance step](D:/GitHub/Berth/todo/99-manual/TODO-01-operator-steps.md:117) · [Closure claim](D:/GitHub/Berth/docs/reviews/06-auto/D06-T01-s3.md:134)
+
+The owner-desktop P2 is resolved. The Auto Arrange step now runs only on the disposable desktop with a saved layout for its current monitor arrangement.
+
+LENS adversarial: clean
+LENS integration: clean
+LENS plan-delivery: findings
+LENS record: findings
+HIGHEST: P2
+LENS reconciliation: findings
+HIGHEST: P2
+RECURRING: 3
+RECONCILIATION: gaps
