@@ -41,7 +41,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 2 | §2 | Layouts pane | §1, D04 T01 §11 | [x] |
 | 3 | §3 | Detail header and action buttons | §2 | [x] |
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [x] |
-| 5 | §5 | Marker states, selection and readout | §4 | [ ] |
+| 5 | §5 | Marker states, selection and readout | §4 | [x] |
 | 6 | §6 | Status line with Undo and Retry | §3 | [ ] |
 | 7 | §7 | Notices and the controls they disable | §6 | [ ] |
 | 8 | §8 | Rename dialog | §3 | [ ] |
@@ -195,19 +195,22 @@ What a marker says about its icon, and the readout and count under the map (SPEC
 1. Add the three marker templates. Done when: each state draws its SPEC shape.
 2. Add selection, the readout and the count. Done when: selecting a marker fills the readout with the SPEC text.
 
-- [ ] Template the marker by `IconState`: `InPlace` filled `Berth.MarkerInPlace`; `Moved` outlined 2 px `Berth.MarkerMoved` with a 1 px line in the same brush from the saved position to the icon's current position; `Missing` outlined 1 px dashed `Berth.MarkerMissing`; `Neutral` filled `Berth.MarkerNeutral` (SPEC §7 table). Done when: a test with one icon per state finds the fill and stroke properties of each template as specified. Cheaper substitute: one template with a colour trigger.
-- [ ] Show the selected marker in `Berth.MarkerSelected` with a ring of `Berth.MarkerSelectedRing` px (radius `Berth.RadiusMarkerSelectedRing`) and a dashed 1 px line from the marker down to the readout's top. Done when: a test selects an item and finds the ring and the line visible, and neither before. Cheaper substitute: the `ListBox` default highlight rectangle.
-- [ ] Add a tooltip with the icon's name on each marker. Done when: a test reads the `ToolTip` of an item. Cheaper substitute: none needed.
-- [ ] Add `IconReadout` in `src/Berth/Window/Map/IconReadout.cs` producing the two readout lines: the name, and `x 1436 · y 702 · monitor 1 · in place`, with the state word from the SPEC §7 table (omitted for `Neutral`) and ` · off screen` when flagged; with nothing selected the single line `Select an icon to see its position.`. Done when: unit tests compare each exact string. Cheaper substitute: wording built in XAML triggers.
-- [ ] Show the readout at the bottom left of the map (name in `monoStrong`, second line in `mono` with `Berth.TextSecondary`) and the count at the bottom right: `42 of 42 in place` for the active layout and `42 icons` otherwise. Done when: tests cover both count forms and the empty readout. Cheaper substitute: a count that says "all".
-- [ ] When the desktop is unreachable, draw the active layout's markers `Neutral` and the count as `42 icons` (SPEC §9). Done when: a test with the fake desktop `Unavailable` reads neutral markers. Cheaper substitute: showing every icon as missing.
-- [ ] Add render tests writing `map-in-place`, `map-moved`, `map-missing`, `map-selected`, `map-none-selected`, `map-neutral`, `map-off-screen` and `map-unreachable` in light and dark (SPEC §19 "Position map"). Done when: `pwsh scripts/render-window.ps1` writes the sixteen files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/MarkerTests.cs` and `IconReadoutTests.cs`. Done when: all pass, and the readout test fails when the state word is dropped. Cheaper substitute: none needed.
-- [ ] Commit: `window: marker states, selection and readout`
+- [x] Template the marker by `IconState`: `InPlace` filled `Berth.MarkerInPlace`; `Moved` outlined 2 px `Berth.MarkerMoved` with a 1 px line in the same brush from the saved position to the icon's current position; `Missing` outlined 1 px dashed `Berth.MarkerMissing`; `Neutral` filled `Berth.MarkerNeutral` (SPEC §7 table). Done when: a test with one icon per state finds the fill and stroke properties of each template as specified. Cheaper substitute: one template with a colour trigger.
+- [x] Show the selected marker in `Berth.MarkerSelected` with a ring of `Berth.MarkerSelectedRing` px (radius `Berth.RadiusMarkerSelectedRing`) and a dashed 1 px line from the marker down to the readout's top. Done when: a test selects an item and finds the ring and the line visible, and neither before. Cheaper substitute: the `ListBox` default highlight rectangle.
+- [x] Add a tooltip with the icon's name on each marker. Done when: a test reads the `ToolTip` of an item. Cheaper substitute: none needed.
+- [x] Add `IconReadout` in `src/Berth/Window/Map/IconReadout.cs` producing the two readout lines: the name, and `x 1436 · y 702 · monitor 1 · in place`, with the state word from the SPEC §7 table (omitted for `Neutral`) and ` · off screen` when flagged; with nothing selected the single line `Select an icon to see its position.`. Done when: unit tests compare each exact string. Cheaper substitute: wording built in XAML triggers.
+- [x] Show the readout at the bottom left of the map (name in `monoStrong`, second line in `mono` with `Berth.TextSecondary`) and the count at the bottom right: `42 of 42 in place` for the active layout and `42 icons` otherwise. Done when: tests cover both count forms and the empty readout. Cheaper substitute: a count that says "all".
+- [x] When the desktop is unreachable, draw the active layout's markers `Neutral` and the count as `42 icons` (SPEC §9). Done when: a test with the fake desktop `Unavailable` reads neutral markers. Cheaper substitute: showing every icon as missing.
+- [x] Add render tests writing `map-in-place`, `map-moved`, `map-missing`, `map-selected`, `map-none-selected`, `map-neutral`, `map-off-screen` and `map-unreachable` in light and dark (SPEC §19 "Position map"). Done when: `pwsh scripts/render-window.ps1` writes the sixteen files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/MarkerTests.cs` and `IconReadoutTests.cs`. Done when: all pass, and the readout test fails when the state word is dropped. Cheaper substitute: none needed.
+- [x] Commit: `window: marker states, selection and readout`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MarkerTests"` and `--filter-class "*IconReadoutTests"` pass, and the readout test fails when "moved" is missing from a moved icon's readout.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §5 | 034a2671f86693e6bd600f5c7dc910d3524fc80e
+> **Review:** `docs/reviews/d05-t01-s5.json`
 
 ## 6. Status line with Undo and Retry
 
