@@ -53,7 +53,6 @@
                             Content="{Binding ActionButtonText}"
                             Command="{Binding ActionCommand}"
                             MinHeight="{DynamicResource Berth.ControlHeight}"
-                            Margin="{DynamicResource Berth.Space.StatusActionPullRight}"
                             Background="Transparent"
                             BorderThickness="{DynamicResource Berth.Space.None}"
                             Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"

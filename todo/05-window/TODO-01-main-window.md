@@ -460,6 +460,8 @@ The fidelity conditions of SPEC §1 that the earlier renders did not cover.
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ContrastAndScaleTests"` passes, and fails when a 40 character layout name is clipped at the minimum window size.
 
+> **Started:** 2026-11-21
+
 ## 14. UI Automation smoke of the running window
 
 The built `berth.exe`, running for real, driven through UI Automation on a probe icon.

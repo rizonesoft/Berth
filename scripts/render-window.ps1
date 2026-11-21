@@ -109,7 +109,9 @@ try {
         'switches-on-off-light.png',
         'switches-on-off-dark.png',
         'switches-off-on-light.png',
-        'switches-off-on-dark.png'
+        'switches-off-on-dark.png',
+        'data-high-contrast.png',
+        'data-150.png'
     )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name
