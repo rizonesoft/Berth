@@ -4,7 +4,7 @@ Berth is licensed under the [GNU General Public License, version 3 or later](LIC
 
 ## Shipped in berth.exe
 
-The self-contained `win-x64` publish of `berth.exe` bundles the .NET 11 runtime and Windows Desktop runtime (WPF and Windows Forms). In addition to Microsoft's MIT-licensed runtime code, those runtimes include upstream third-party libraries (such as Unicode data, zlib-ng, and Brotli) documented in the official upstream notices: [.NET Runtime THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT), [WPF THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/wpf/blob/main/THIRD-PARTY-NOTICES.TXT), and [Windows Forms THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/winforms/blob/main/THIRD-PARTY-NOTICES.TXT).
+The self-contained `win-x64` publish of `berth.exe` bundles the .NET 11.0.0 runtime and Windows Desktop runtime (WPF and Windows Forms). In addition to Microsoft's MIT-licensed runtime code, those runtimes include upstream third-party libraries (such as Unicode data, zlib-ng, and Brotli) documented in the version-matched upstream notices: [.NET Runtime 11.0.0 THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/runtime/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT), [WPF 11.0.0 THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/wpf/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT), and [Windows Forms 11.0.0 THIRD-PARTY-NOTICES.TXT](https://github.com/dotnet/winforms/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT).
 
 | Component | Version | Licence | Where it is used |
 | --- | --- | --- | --- |

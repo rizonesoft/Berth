@@ -149,8 +149,15 @@ def check_notice(
         if usage_hint.lower() not in usage.lower():
             errors.append(f"usage for {comp} must explain where it is used ({usage_hint})")
 
-    if "https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT" not in notice_markdown:
-        errors.append("NOTICE.md must link the upstream .NET Runtime THIRD-PARTY-NOTICES.TXT")
+    required_upstream_notices = (
+        "https://github.com/dotnet/runtime/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT",
+        "https://github.com/dotnet/wpf/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT",
+        "https://github.com/dotnet/winforms/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT",
+    )
+    for url in required_upstream_notices:
+        pattern = rf"\[[^\]]+\]\({re.escape(url)}\)"
+        if not re.search(pattern, notice_markdown):
+            errors.append(f"NOTICE.md must link version-matched upstream notice: {url}")
 
     # Check required repository-only non-NuGet components.
     required_repo_only = (
@@ -238,6 +245,15 @@ class NoticeAndChangelogTests(unittest.TestCase):
         without_runtime = "\n".join(line for line in text.splitlines() if ".NET 11 Runtime" not in line)
         errs = check_notice(without_runtime, central, app_refs, test_only_refs)
         self.assertTrue(any(".NET 11 Runtime" in e for e in errs))
+
+        # Changing any upstream runtime notice link to moving 'main' or removing it must fail.
+        for repo in ("runtime", "wpf", "winforms"):
+            pinned = f"https://github.com/dotnet/{repo}/blob/v11.0.0/THIRD-PARTY-NOTICES.TXT"
+            moving = f"https://github.com/dotnet/{repo}/blob/main/THIRD-PARTY-NOTICES.TXT"
+            errs_main = check_notice(text.replace(pinned, moving), central, app_refs, test_only_refs)
+            self.assertTrue(any(pinned in e for e in errs_main), f"Moving {repo} notice to main should fail")
+            errs_removed = check_notice(text.replace(pinned, "https://example.org/"), central, app_refs, test_only_refs)
+            self.assertTrue(any(pinned in e for e in errs_removed), f"Removing {repo} notice should fail")
 
         # Missing Pillow or Contributor Covenant must fail.
         for comp in ("Pillow", "Contributor Covenant"):
