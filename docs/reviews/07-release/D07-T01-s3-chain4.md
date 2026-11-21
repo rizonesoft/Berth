@@ -136,3 +136,27 @@ RECONCILIATION: gaps
 
 
 - Implemented: ran live published tray-app removal walkthrough and `dotnet test --solution Berth.slnx -c Release --no-build --filter-method "*Exit*"` (34/34 passing, proving `TrayMenu.ExitItem.PerformClick()` drains background work and shuts down `BerthApplication` cleanly; `AGENTS.md` forbids mouse/keyboard input against the taskbar notification icon in automated runs). Against the published `artifacts/berth.exe` in a disposable profile (`BERTH_DATA`, `BERTH_INSTANCE`, isolated `TEMP`), observed: `window-opened=True` (real `Berth` main window opened on first launch), `locked-while-running=True` (attempting to delete `berth.exe` while running failed), `stayed-in-tray-after-close=True` (`CloseMainWindow()` hid to the tray without exiting, matching `README.md:88`), `extracted-dirs=berth,OtherApp`, and after process exit `deleted-after-exit=True` (`berth.exe` and `berth.exe.sha256` deleted cleanly), `cache-deleted=True` (`%TEMP%\.net\berth` removed), and `other-cache-intact=True` (`%TEMP%\.net\OtherApp\keep.txt` untouched).
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T13:08:59Z
+- Candidate: 9b935e08a96371e2960a503ea380dad7e0e39cb2
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 13
+- Digest: f8f4b378942551b7
+
+1. **closed (P2).** The checker reads the full angle-bracketed destination. The regression requires exactly one error naming `docs/missing guide.md`, so silently skipping the link fails the test. `scripts/tests/test_readme.py:75`, `scripts/tests/test_readme.py:205`, `docs/reviews/07-release/D07-T01-s3.md:111`
+2. **open (P2)** (recurring: completion, reconciliation 1, reconciliation 2). The published executable was locked while running, stayed in the tray after window close, and could be deleted once its process ended. The walkthrough also confirmed the cache location and preserved the sibling cache. What ended that process remains unrecorded. The `PerformClick()` evidence comes from a separate test run. Closing this gap requires observing tray **Exit** on the running published instance, then observing that same process terminate and its executable become deletable. `README.md:88`, `docs/reviews/07-release/D07-T01-s3.md:91`, `docs/reviews/07-release/D07-T01-s3.md:124`, `docs/reviews/07-release/D07-T01-s3.md:138`
+3. **closed (P2).** The paired regression creates `docs/existing guide.md` and accepts its link, then requires one error naming the equivalent missing destination. The supplied gate passed this test. `scripts/tests/test_render_docs_images.py:219`, `docs/reviews/07-release/D07-T01-s3.md:111`
+
+The section contract is unchanged. I found no new defect or weakened test in the repair. `todo/07-release/TODO-01-packaging.md:119`
+
+LENS adversarial: clean
+LENS integration: clean
+LENS plan-delivery: findings
+LENS record: findings
+HIGHEST: P2
+RECURRING: 3
+RECONCILIATION: gaps
