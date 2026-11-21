@@ -315,6 +315,105 @@ public sealed class TrayIconTests(AppFixture appFixture)
         }
     }
 
+    [Fact]
+    public void ReaddTogglesVisibleFalseThenTrueRefreshesThemeKeepsTooltipAndHandlesDisposalRace()
+    {
+        int fakeTaskbarLight = 0;
+        var theme = new TaskbarTheme(@"Software\Berth.Tests\ReaddTheme", () => Volatile.Read(ref fakeTaskbarLight));
+        var savedToday = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var now = new DateTimeOffset(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
+        var layout = new Layout(
+            Layout.CurrentSchemaVersion,
+            ArrangementKey.From(SingleMonitor),
+            "Docked",
+            savedToday,
+            [.. SingleMonitor],
+            [new IconPosition("id-1", "Icon", 10, 20)],
+            Previous: null);
+
+        string assetsDir = Path.Combine(FindRepoRoot(), "assets", "icon");
+        Size expectedSize = SystemInformation.SmallIconSize;
+        using var expectedDark = new Icon(Path.Combine(assetsDir, "berth-tray-dark.ico"), expectedSize);
+        using var expectedLight = new Icon(Path.Combine(assetsDir, "berth-tray-light.ico"), expectedSize);
+
+        appFixture.Invoke(() =>
+        {
+            var visibleTransitions = new List<bool>();
+            int readdCount = 0;
+            using var icon = new TrayIcon(
+                theme,
+                initialActive: layout,
+                now: now,
+                zone: TimeZoneInfo.Utc,
+                onReadd: () => readdCount++,
+                onVisibleSet: visibleTransitions.Add);
+
+            NotifyIcon originalNotifyIcon = icon.NotifyIcon;
+            string expectedTooltip = icon.TooltipText;
+            Assert.Equal("Berth: Docked, saved today, 09:14", expectedTooltip);
+            Assert.True(IconsHaveIdenticalPixels(icon.NotifyIcon.Icon!, expectedDark));
+            visibleTransitions.Clear();
+
+            // Change taskbar theme WITHOUT raising WM_SETTINGCHANGE -> Readd() must refresh theme, toggle Visible false->true,
+            // reapply the refreshed light icon and preserve tooltip on the exact same NotifyIcon instance.
+            Volatile.Write(ref fakeTaskbarLight, 1);
+            icon.Readd();
+
+            Assert.Equal(1, readdCount);
+            Assert.Equal([false, true], visibleTransitions);
+            Assert.Same(originalNotifyIcon, icon.NotifyIcon);
+            Assert.True(icon.IsVisible);
+            Assert.Equal(expectedTooltip, icon.TooltipText);
+            Assert.True(IconsHaveIdenticalPixels(icon.NotifyIcon.Icon!, expectedLight));
+        });
+
+        // Queued-work disposal race: capture marshalled Readd action, dispose icon, then invoke action -> safe no-op!
+        appFixture.Invoke(() =>
+        {
+            Action? queued = null;
+            int readdCount = 0;
+            var raceTheme = new TaskbarTheme(@"Software\Berth.Tests\ReaddRaceTheme", () => 0);
+            var raceIcon = new TrayIcon(
+                raceTheme,
+                marshal: action => queued = action,
+                onReadd: () => readdCount++);
+
+            raceIcon.Readd();
+            Assert.NotNull(queued);
+            raceIcon.Dispose();
+            queued!();
+
+            Assert.False(raceIcon.IsVisible);
+            Assert.Equal(0, readdCount);
+        });
+    }
+
+    [Fact]
+    public void TaskbarCreatedReaddsTrayIconBeforeArmingExplorerRestartTimer()
+    {
+        using var data = new TestData();
+        string reportFile = Path.Combine(data.Root, "tray-readd-report.txt");
+        string instanceName = $"test-readd-{Guid.NewGuid():N}";
+
+        (int exitCode, string stdout, string stderr) = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.TrayReaddOnExplorerRestartScenario,
+            data.Root,
+            instanceName,
+            reportFile: reportFile);
+
+        Assert.True(exitCode == 0, $"Isolated child exited {exitCode}. stdout={stdout} stderr={stderr}");
+        Dictionary<string, string> report = File.ReadAllLines(reportFile)
+            .Select(line => line.Split('=', 2))
+            .ToDictionary(parts => parts[0], parts => parts.Length > 1 ? parts[1] : string.Empty, StringComparer.Ordinal);
+
+        Assert.Equal(string.Empty, report["workerError"]);
+        Assert.Equal("1", report["readdCount"]);
+        Assert.Equal("1", report["readdCountAtTimerArmed"]);
+        Assert.Equal("True", report["visibleAfterReadd"]);
+        Assert.Equal(report["initialTooltip"], report["tooltipAfterReadd"]);
+        Assert.Contains("Laptop", report["tooltipAfterReadd"], StringComparison.Ordinal);
+    }
+
     private static void InvokeNotifyIconMouseEvent(NotifyIcon icon, string methodName, MouseButtons button)
     {
         MethodInfo method = typeof(NotifyIcon).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)

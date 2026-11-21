@@ -142,12 +142,14 @@ When Explorer restarts, the notification area is rebuilt empty: Berth puts its i
 1. Add `TrayIcon.Readd()`. Done when: it hides and shows the icon.
 2. Call it on `ExplorerRestarted`. Done when: the event leads to one call.
 
-- [ ] Add `TrayIcon.Readd()`: set `Visible` `false` then `true`, and reapply the icon and tooltip. Done when: a test calls it and reads `Visible` `true` with the same tooltip. Cheaper substitute: creating a second `NotifyIcon`, which leaves two after a partial restart.
-- [ ] Call `Readd()` when `SystemEvents.ExplorerRestarted` fires, before the automatic restore's timer starts. Done when: a test posts the registered `TaskbarCreated` message and counts one `Readd` through a seam. Cheaper substitute: none needed.
-- [ ] Add the two cases to `tests/Berth.Tests/App/TrayIconTests.cs`. Done when: they pass, and the event test fails when `ExplorerRestarted` is not connected. Cheaper substitute: restarting Explorer in a test (`AGENTS.md`).
-- [ ] Commit: `app: tray icon added again after Explorer restarts`
+- [x] Add `TrayIcon.Readd()`: set `Visible` `false` then `true`, and reapply the icon and tooltip. Done when: a test calls it and reads `Visible` `true` with the same tooltip. Cheaper substitute: creating a second `NotifyIcon`, which leaves two after a partial restart.
+- [x] Call `Readd()` when `SystemEvents.ExplorerRestarted` fires, before the automatic restore's timer starts. Done when: a test posts the registered `TaskbarCreated` message and counts one `Readd` through a seam. Cheaper substitute: none needed.
+- [x] Add the two cases to `tests/Berth.Tests/App/TrayIconTests.cs`. Done when: they pass, and the event test fails when `ExplorerRestarted` is not connected. Cheaper substitute: restarting Explorer in a test (`AGENTS.md`).
+- [x] Commit: `app: tray icon added again after Explorer restarts`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TrayIconTests"` passes, and fails when `TaskbarCreated` does not lead to `TrayIcon.Readd`.
+
+> **Started:** 2026-11-21
 
 ## 5. Result shown in the open window and the tooltip
 

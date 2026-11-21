@@ -33,6 +33,7 @@ internal static class IsolatedStaChildRunner
     public const string AutoRestoreTrayScenario = "auto-restore-tray";
     public const string AutoRestoreDirectShutdownScenario = "auto-restore-direct-shutdown";
     public const string AutoRestoreBalloonScenario = "auto-restore-balloon";
+    public const string TrayReaddOnExplorerRestartScenario = "tray-readd-explorer-restart";
 
     public static int RunMain(string[] args)
     {
@@ -204,6 +205,8 @@ internal static class IsolatedStaChildRunner
             AutoRestoreDirectShutdownScenario => RunAutoRestoreDirectShutdownScenario(paths, log, instanceName),
 
             AutoRestoreBalloonScenario => RunAutoRestoreBalloonScenario(paths, log, instanceName),
+
+            TrayReaddOnExplorerRestartScenario => RunTrayReaddOnExplorerRestartScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -1767,6 +1770,123 @@ internal static class IsolatedStaChildRunner
                 $"logLine0={(logLines.Length > 0 ? logLines[0] : string.Empty)}",
                 $"logLine1={(logLines.Length > 1 ? logLines[1] : string.Empty)}",
                 $"logLine2={(logLines.Length > 2 ? logLines[2] : string.Empty)}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunTrayReaddOnExplorerRestartScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        string laptopKey = ArrangementKey.From([laptopMon]);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, laptopKey, "Laptop", fixedNow, [laptopMon], [new IconPosition("id-a", "Alpha", 100, 200)], null));
+
+        // Run with RestoreAutomatically OFF to verify SPEC §12 unconditional tray icon recovery on Explorer restart!
+        var settingsStore = new SettingsStore(paths);
+        settingsStore.Save(Settings.Default with { RestoreAutomatically = false });
+
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme", () => 0);
+
+        TrayIcon? capturedIcon = null;
+        SystemEvents? capturedEvents = null;
+        int readdCount = 0;
+        int readdCountAtTimerArmed = -1;
+        string initialTooltip = string.Empty;
+        string tooltipAfterReadd = string.Empty;
+        bool visibleAfterReadd = false;
+        using var explorerTimerArmed = new ManualResetEventSlim(false);
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default with { RestoreAutomatically = false },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon =>
+            {
+                capturedIcon = icon;
+                initialTooltip = icon.TooltipText;
+            },
+            onSystemEventsCreated: ev => capturedEvents = ev,
+            displayChangeSettle: TimeSpan.FromMilliseconds(80),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(80),
+            onTrayReadd: () => Interlocked.Increment(ref readdCount),
+            onAutoRestoreCreated: auto =>
+            {
+                auto.TimerArmed += (reason, _) =>
+                {
+                    if (reason == "Explorer restart")
+                    {
+                        readdCountAtTimerArmed = Volatile.Read(ref readdCount);
+                        explorerTimerArmed.Set();
+                    }
+                };
+            },
+            onAppStartup: app =>
+            {
+                if (capturedIcon is null || capturedEvents is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                uint taskbarCreated = capturedEvents.TaskbarCreatedMessage;
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        if (!explorerTimerArmed.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Explorer restart did not arm AutoRestore timer.");
+                        }
+
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            visibleAfterReadd = capturedIcon.IsVisible;
+                            tooltipAfterReadd = capturedIcon.TooltipText;
+                            app.Shutdown(0);
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                });
+            });
+
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"readdCount={Volatile.Read(ref readdCount)}",
+                $"readdCountAtTimerArmed={readdCountAtTimerArmed}",
+                $"initialTooltip={initialTooltip}",
+                $"tooltipAfterReadd={tooltipAfterReadd}",
+                $"visibleAfterReadd={visibleAfterReadd}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);

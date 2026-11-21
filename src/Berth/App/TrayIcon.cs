@@ -21,6 +21,8 @@ internal sealed class TrayIcon : IDisposable
     private readonly TaskbarTheme _theme;
     private readonly Action<Action>? _marshal;
     private readonly Action<string, string, ToolTipIcon> _showBalloon;
+    private readonly Action? _onReadd;
+    private readonly Action<bool>? _onVisibleSet;
     private readonly NotifyIcon _notifyIcon;
     private readonly Lock _sync = new();
     private Icon? _currentIcon;
@@ -32,12 +34,16 @@ internal sealed class TrayIcon : IDisposable
         DateTimeOffset? now = null,
         TimeZoneInfo? zone = null,
         Action<Action>? marshal = null,
-        Action<string, string, ToolTipIcon>? showBalloon = null)
+        Action<string, string, ToolTipIcon>? showBalloon = null,
+        Action? onReadd = null,
+        Action<bool>? onVisibleSet = null)
     {
         ArgumentNullException.ThrowIfNull(theme);
         _theme = theme;
         _marshal = marshal;
         _notifyIcon = new NotifyIcon();
+        _onReadd = onReadd;
+        _onVisibleSet = onVisibleSet;
         _showBalloon = showBalloon ?? ((title, text, icon) =>
         {
             _notifyIcon.BalloonTipTitle = title;
@@ -59,7 +65,7 @@ internal sealed class TrayIcon : IDisposable
         _notifyIcon.MouseClick += OnNotifyIconMouseClick;
         _notifyIcon.BalloonTipClicked += OnNotifyIconBalloonTipClicked;
         _theme.Changed += OnThemeChanged;
-        _notifyIcon.Visible = true;
+        SetNotifyIconVisible(true);
     }
 
     /// <summary>Raised when the user left-clicks or left-double-clicks the tray icon.</summary>
@@ -175,6 +181,31 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-adds Berth's existing notification-area icon after Explorer restarts (<c>TaskbarCreated</c>, SPEC §12)
+    /// by toggling <see cref="NotifyIcon.Visible"/> <see langword="false"/> then <see langword="true"/> and
+    /// reapplying the refreshed theme icon and current tooltip without creating a second <see cref="NotifyIcon"/>.
+    /// </summary>
+    public void Readd()
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+        }
+
+        if (_marshal is not null)
+        {
+            _marshal(ApplyReadd);
+        }
+        else
+        {
+            ApplyReadd();
+        }
+    }
+
     /// <summary>Shows Berth's warning balloon on the UI thread unless the tray icon has been disposed (SPEC §12, §16).</summary>
     public void ShowBalloon(string title, string text)
     {
@@ -241,6 +272,37 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    private void ApplyReadd()
+    {
+        bool completed = false;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            string savedTooltip = _notifyIcon.Text;
+            SetNotifyIconVisible(false);
+            _theme.Refresh();
+            ApplyIconForThemeLocked();
+            _notifyIcon.Text = savedTooltip;
+            SetNotifyIconVisible(true);
+            completed = true;
+        }
+
+        if (completed)
+        {
+            _onReadd?.Invoke();
+        }
+    }
+
+    private void SetNotifyIconVisible(bool visible)
+    {
+        _notifyIcon.Visible = visible;
+        _onVisibleSet?.Invoke(visible);
+    }
+
     private void ApplyIconForTheme()
     {
         lock (_sync)
@@ -250,12 +312,17 @@ internal sealed class TrayIcon : IDisposable
                 return;
             }
 
-            Icon next = LoadEmbeddedIcon(_theme.IsLight, SystemInformation.SmallIconSize);
-            Icon? previous = _currentIcon;
-            _currentIcon = next;
-            _notifyIcon.Icon = next;
-            previous?.Dispose();
+            ApplyIconForThemeLocked();
         }
+    }
+
+    private void ApplyIconForThemeLocked()
+    {
+        Icon next = LoadEmbeddedIcon(_theme.IsLight, SystemInformation.SmallIconSize);
+        Icon? previous = _currentIcon;
+        _currentIcon = next;
+        _notifyIcon.Icon = next;
+        previous?.Dispose();
     }
 
     private void ApplyShowBalloon(string title, string text)

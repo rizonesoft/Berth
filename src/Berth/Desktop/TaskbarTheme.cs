@@ -52,6 +52,9 @@ public sealed class TaskbarTheme
         Changed?.Invoke();
     }
 
+    /// <summary>Re-reads the taskbar theme from the registry without raising <see cref="Changed"/>.</summary>
+    internal void Refresh() => IsLight = ReadIsLight();
+
     private bool ReadIsLight()
     {
         try

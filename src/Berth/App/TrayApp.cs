@@ -70,7 +70,8 @@ internal static class TrayApp
         TimeSpan? explorerRestartSettle = null,
         Action<AutoRestore>? onAutoRestoreCreated = null,
         Func<Composition>? createOwnedComposition = null,
-        Action<string, string, System.Windows.Forms.ToolTipIcon>? showBalloon = null)
+        Action<string, string, System.Windows.Forms.ToolTipIcon>? showBalloon = null,
+        Action? onTrayReadd = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -161,7 +162,8 @@ internal static class TrayApp
                 effectiveClock.GetUtcNow(),
                 effectiveZone,
                 marshal: action => MarshalToUi(action, onAborted: null),
-                showBalloon: showBalloon);
+                showBalloon: showBalloon,
+                onReadd: onTrayReadd);
             activeTrayIcon = trayIcon;
 
             long tooltipEpoch = 0;
@@ -292,7 +294,11 @@ internal static class TrayApp
                 autoRestore.Trigger("display change", effectiveDisplaySettle);
             }
 
-            void OnExplorerRestarted() => autoRestore.Trigger("Explorer restart", effectiveExplorerSettle);
+            void OnExplorerRestarted()
+            {
+                trayIcon.Readd();
+                autoRestore.Trigger("Explorer restart", effectiveExplorerSettle);
+            }
 
             void OnSettingChanged(string? area) => MarshalToUi(
                 () =>
