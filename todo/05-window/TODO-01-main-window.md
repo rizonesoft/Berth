@@ -2,7 +2,7 @@
 schema_version: 1
 id: main-window
 domain: 05-window
-status: active
+status: done
 title: "TODO-01 -- Main window"
 depends_on: ["layout-core", "desktop-access", "application-shell"]
 ---
@@ -50,7 +50,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [x] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [x] |
 | 13 | §13 | High contrast and 150% scale | §12 | [x] |
-| 14 | §14 | UI Automation smoke of the running window | §13 | [ ] |
+| 14 | §14 | UI Automation smoke of the running window | §13 | [x] |
 
 ## 1. Window view model and desktop polling
 
@@ -478,16 +478,19 @@ The built `berth.exe`, running for real, driven through UI Automation on a probe
 1. Add a helper that starts the tray app and finds its window. Done when: it finds the window by automation.
 2. Drive save, restore and undo. Done when: the probe icon moves as each button is invoked.
 
-- [ ] Add `RunningApp` in `tests/Berth.Tests/Smoke/RunningApp.cs` with a static `Start(TestData data, string iconPrefix)`: starts `berth.exe` with `BERTH_DATA`, a random `BERTH_INSTANCE` and `BERTH_TEST_ICON_PREFIX` (the probe's prefix, so the app sees only the probe) in the child's own environment (first run, so the window opens), then waits up to 20 seconds for a top-level window named `Berth` owned by that process through `System.Windows.Automation`. Everything after the process starts is inside a `try` whose `catch` kills the process tree before rethrowing, so a failed or timed-out start-up never leaves a tray app behind; `Dispose` kills the tree too. Done when: a test finds the window; after dispose no process with that id remains; and a test that forces the window wait to time out (a 1 ms wait) also finds no process afterwards. Cheaper substitute: cleanup only in `Dispose`, which never runs when the constructor throws.
-- [ ] Invoke `Save current layout` through its `InvokePattern`, wait for the status sentence to start `Saved`, and assert the layout file in the test's data folder lists exactly one icon, the probe. Done when: the test passes with `ProbeIcon` on the desktop. Cheaper substitute: sending mouse clicks at coordinates.
-- [ ] Move the probe through `ScopedDesktopIcons` with the probe's prefix, wait for the status sentence `1 icon has moved since this layout was saved.`, invoke `Restore`, wait for a sentence starting `Restored`, and assert the probe is back; then invoke `Undo` and assert the probe is at the moved position. Skip with a clear message when auto arrange is on. Done when: the test passes on the build machine and leaves no probe file. Cheaper substitute: asserting only that buttons exist.
-- [ ] Start `berth.exe` a second time with the same `BERTH_INSTANCE` and assert it exits 0 within 10 seconds and only one process remains. Done when: the assertion passes. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Smoke/WindowSmokeTests.cs` (traits `RealDesktop` and `Smoke`, in the `Desktop` collection so it never runs beside another interface test, and driving the window only through UI Automation patterns, never the real mouse or keyboard; **Corrected 2026-11-18:** owner instructions, AGENTS.md). Done when: it passes, and fails when `Restore` is wired to `Save`. Cheaper substitute: none needed.
-- [ ] Commit: `test: UI Automation smoke of the running window`
+- [x] Add `RunningApp` in `tests/Berth.Tests/Smoke/RunningApp.cs` with a static `Start(TestData data, string iconPrefix)`: starts `berth.exe` with `BERTH_DATA`, a random `BERTH_INSTANCE` and `BERTH_TEST_ICON_PREFIX` (the probe's prefix, so the app sees only the probe) in the child's own environment (first run, so the window opens), then waits up to 20 seconds for a top-level window named `Berth` owned by that process through `System.Windows.Automation`. Everything after the process starts is inside a `try` whose `catch` kills the process tree before rethrowing, so a failed or timed-out start-up never leaves a tray app behind; `Dispose` kills the tree too. Done when: a test finds the window; after dispose no process with that id remains; and a test that forces the window wait to time out (a 1 ms wait) also finds no process afterwards. Cheaper substitute: cleanup only in `Dispose`, which never runs when the constructor throws.
+- [x] Invoke `Save current layout` through its `InvokePattern`, wait for the status sentence to start `Saved`, and assert the layout file in the test's data folder lists exactly one icon, the probe. Done when: the test passes with `ProbeIcon` on the desktop. Cheaper substitute: sending mouse clicks at coordinates.
+- [x] Move the probe through `ScopedDesktopIcons` with the probe's prefix, wait for the status sentence `1 icon has moved since this layout was saved.`, invoke `Restore`, wait for a sentence starting `Restored`, and assert the probe is back; then invoke `Undo` and assert the probe is at the moved position. Skip with a clear message when auto arrange is on. Done when: the test passes on the build machine and leaves no probe file. Cheaper substitute: asserting only that buttons exist.
+- [x] Start `berth.exe` a second time with the same `BERTH_INSTANCE` and assert it exits 0 within 10 seconds and only one process remains. Done when: the assertion passes. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Smoke/WindowSmokeTests.cs` (traits `RealDesktop` and `Smoke`, in the `Desktop` collection so it never runs beside another interface test, and driving the window only through UI Automation patterns, never the real mouse or keyboard; **Corrected 2026-11-18:** owner instructions, AGENTS.md). Done when: it passes, and fails when `Restore` is wired to `Save`. Cheaper substitute: none needed.
+- [x] Commit: `test: UI Automation smoke of the running window`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*WindowSmokeTests"` passes on the build machine with auto arrange off, and fails when the "Restore" button is wired to the save command.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §14 | e529812a22ccba9d8c5c757d8183e7bff856a459
+> **Review:** `docs/reviews/d05-t01-s14.json`
 
 ## Verification
 
