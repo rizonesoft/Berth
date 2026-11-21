@@ -45,6 +45,8 @@ class SpecItemsTests(unittest.TestCase):
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
             check=False,
         )
@@ -67,6 +69,8 @@ class SpecItemsTests(unittest.TestCase):
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,
+            encoding="utf-8",
+            errors="replace",
                 creationflags=CREATE_NO_WINDOW,
                 check=False,
             )
@@ -199,6 +203,8 @@ class SpecItemsTests(unittest.TestCase):
             ["git", "rev-list", "--max-parents=0", "HEAD"],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
         ).strip().splitlines()[0]
         stale_receipt = re.sub(
@@ -262,6 +268,8 @@ class SpecItemsTests(unittest.TestCase):
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
             check=False,
         )
@@ -344,6 +352,8 @@ class SpecItemsTests(unittest.TestCase):
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
             check=False,
         )
@@ -352,6 +362,8 @@ class SpecItemsTests(unittest.TestCase):
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
             check=False,
         )
@@ -404,6 +416,8 @@ class SpecItemsTests(unittest.TestCase):
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,
+            encoding="utf-8",
+            errors="replace",
                 creationflags=CREATE_NO_WINDOW,
                 check=False,
             )
@@ -418,6 +432,8 @@ class SpecItemsTests(unittest.TestCase):
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,
+            encoding="utf-8",
+            errors="replace",
                 creationflags=CREATE_NO_WINDOW,
                 check=False,
             )
@@ -427,6 +443,8 @@ class SpecItemsTests(unittest.TestCase):
                     cwd=str(ROOT),
                     capture_output=True,
                     text=True,
+            encoding="utf-8",
+            errors="replace",
                     creationflags=CREATE_NO_WINDOW,
                     check=False,
                 )
@@ -443,6 +461,8 @@ class SpecItemsTests(unittest.TestCase):
             cwd=str(ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=CREATE_NO_WINDOW,
             check=False,
         )
@@ -454,6 +474,8 @@ class SpecItemsTests(unittest.TestCase):
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,
+            encoding="utf-8",
+            errors="replace",
                 creationflags=CREATE_NO_WINDOW,
                 check=False,
             )

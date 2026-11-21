@@ -285,6 +285,8 @@ def _check_published_receipt(cleaned_sweep: str, repo_root: Path) -> list[str]:
         cwd=str(repo_root),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=CREATE_NO_WINDOW,
         check=False,
     )
@@ -297,6 +299,8 @@ def _check_published_receipt(cleaned_sweep: str, repo_root: Path) -> list[str]:
         cwd=str(repo_root),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=CREATE_NO_WINDOW,
         check=False,
     )
