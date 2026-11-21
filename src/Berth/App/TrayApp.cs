@@ -65,7 +65,10 @@ internal static class TrayApp
         Func<IMainWindow>? createMainWindow = null,
         Action? onInstanceActivatedHandled = null,
         Func<BerthApplication>? createApplication = null,
-        Action<SystemEvents>? onSystemEventsCreated = null)
+        Action<SystemEvents>? onSystemEventsCreated = null,
+        TimeSpan? displayChangeSettle = null,
+        TimeSpan? explorerRestartSettle = null,
+        Action<AutoRestore>? onAutoRestoreCreated = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -220,10 +223,12 @@ internal static class TrayApp
                 }
             };
 
+            AutoRestore? activeAutoRestore = null;
+
             trayMenu.ExitRequested += () =>
             {
                 exitRequested = true;
-                trayMenu.BeginDrain(() =>
+                Action completeShutdown = () =>
                 {
                     if (!app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
                     {
@@ -231,17 +236,51 @@ internal static class TrayApp
                         trayIcon.Dispose();
                         app.Shutdown(0);
                     }
-                });
+                };
+                Action drainMenu = () => trayMenu.BeginDrain(() => MarshalToUi(completeShutdown, onAborted: null));
+                if (activeAutoRestore is not null)
+                {
+                    activeAutoRestore.BeginDrain(() => MarshalToUi(drainMenu, onAborted: null));
+                }
+                else
+                {
+                    drainMenu();
+                }
             };
 
             trayIcon.SetContextMenu(trayMenu.Strip);
             onTrayIconCreated?.Invoke(trayIcon);
             onTrayMenuCreated?.Invoke(trayMenu);
 
+            // Initialize theme tokens BEFORE reading timing tokens so Berth.DisplayChangeSettleSeconds /
+            // Berth.ExplorerRestartSettleSeconds come from Tokens.Shared.xaml rather than falling back.
+            app.InitializeTheme();
+
+            TimeSpan effectiveDisplaySettle = displayChangeSettle
+                ?? TimeSpan.FromSeconds(ReadTimingSeconds(app, "Berth.DisplayChangeSettleSeconds", 3d));
+            TimeSpan effectiveExplorerSettle = explorerRestartSettle
+                ?? TimeSpan.FromSeconds(ReadTimingSeconds(app, "Berth.ExplorerRestartSettleSeconds", 3d));
+
+            using var autoRestore = new AutoRestore(
+                effectiveComposition.Service,
+                settingsStore,
+                effectiveComposition.Log,
+                new SystemTimerFactory(),
+                effectiveDisplaySettle,
+                effectiveClock);
+            activeAutoRestore = autoRestore;
+            onAutoRestoreCreated?.Invoke(autoRestore);
+
             using var systemEvents = new SystemEvents();
             onSystemEventsCreated?.Invoke(systemEvents);
 
-            void OnDisplayChanged() => ScheduleTooltipRefresh();
+            void OnDisplayChanged()
+            {
+                ScheduleTooltipRefresh();
+                autoRestore.Trigger("display change", effectiveDisplaySettle);
+            }
+
+            void OnExplorerRestarted() => autoRestore.Trigger("Explorer restart", effectiveExplorerSettle);
 
             void OnSettingChanged(string? area) => MarshalToUi(
                 () =>
@@ -263,6 +302,7 @@ internal static class TrayApp
                 onAborted: onInstanceActivatedHandled);
 
             systemEvents.DisplayChanged += OnDisplayChanged;
+            systemEvents.ExplorerRestarted += OnExplorerRestarted;
             systemEvents.SettingChanged += OnSettingChanged;
             try
             {
@@ -280,7 +320,6 @@ internal static class TrayApp
                     onAppStartup?.Invoke(app);
                 };
 
-                app.InitializeTheme();
                 // Subscribe after theme initialization so any replayed pending activation creates the window on the STA
                 // dispatcher with all theme tokens already loaded.
                 instance.Activated += OnInstanceActivated;
@@ -296,8 +335,10 @@ internal static class TrayApp
             finally
             {
                 systemEvents.DisplayChanged -= OnDisplayChanged;
+                systemEvents.ExplorerRestarted -= OnExplorerRestarted;
                 systemEvents.SettingChanged -= OnSettingChanged;
                 systemEvents.Dispose();
+                autoRestore.DisposeAndWait(TimeSpan.FromSeconds(5));
             }
         }
         catch (Exception ex)
@@ -376,6 +417,9 @@ internal static class TrayApp
 
         return window;
     }
+
+    private static double ReadTimingSeconds(BerthApplication app, string key, double fallback) =>
+        app.TryFindResource(key) is double value && value > 0d ? value : fallback;
 
     /// <summary>
     /// Gives the owning UI dispatcher a bounded opportunity to dispose the tray icon cleanly before falling back

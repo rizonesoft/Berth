@@ -30,6 +30,7 @@ internal static class IsolatedStaChildRunner
     public const string SettingsFailureHideReopenScenario = "settings-failure-hide-reopen";
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
     public const string SystemEventsTrayWiringScenario = "system-events-tray-wiring";
+    public const string AutoRestoreTrayScenario = "auto-restore-tray";
 
     public static int RunMain(string[] args)
     {
@@ -195,6 +196,8 @@ internal static class IsolatedStaChildRunner
             RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
 
             SystemEventsTrayWiringScenario => RunSystemEventsTrayWiringScenario(paths, log, instanceName),
+
+            AutoRestoreTrayScenario => RunAutoRestoreTrayScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -1196,6 +1199,183 @@ internal static class IsolatedStaChildRunner
                 $"taskbarIsLightAfterSettingChange={taskbarIsLightAfterSettingChange}",
                 $"isWindowAfterShutdown={isWindowAfterShutdown}",
                 $"menuBarrierTimedOut={Volatile.Read(ref menuBarrierTimedOut)}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunAutoRestoreTrayScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        MonitorInfo dockedMon = new(0, 0, 2560, 1440, 100, true);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
+        using var desktop = new GatedDesktopIcons(new IconPosition("id-a", "Alpha", 900, 900));
+        var store = new LayoutStore(paths);
+        string laptopKey = ArrangementKey.From([laptopMon]);
+        string dockedKey = ArrangementKey.From([dockedMon]);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, laptopKey, "Laptop", fixedNow, [laptopMon], [new IconPosition("id-a", "Alpha", 111, 222)], null));
+        store.Save(new Layout(Layout.CurrentSchemaVersion, dockedKey, "Docked", fixedNow, [dockedMon], [new IconPosition("id-a", "Alpha", 333, 444)], null));
+
+        var settingsStore = new SettingsStore(paths);
+        settingsStore.Save(Settings.Default with { RestoreAutomatically = true });
+
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        SystemEvents? capturedEvents = null;
+        AutoRestore? capturedAuto = null;
+        TrayMenu? capturedMenu = null;
+        List<string> finishedReasons = [];
+        using var firstDone = new ManualResetEventSlim(false);
+        using var secondDone = new ManualResetEventSlim(false);
+        using var thirdDone = new ManualResetEventSlim(false);
+        string posAfterDisplay = string.Empty;
+        string posAfterExplorer = string.Empty;
+        int finishedCountAfterOff = -1;
+        int finishedCountAtExit = -1;
+        bool exitedBeforeGateRelease = false;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default with { RestoreAutomatically = true },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayMenuCreated: menu => capturedMenu = menu,
+            onSystemEventsCreated: ev => capturedEvents = ev,
+            displayChangeSettle: TimeSpan.FromMilliseconds(60),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(120),
+            onAutoRestoreCreated: auto =>
+            {
+                capturedAuto = auto;
+                auto.Finished += (_, reason, _) =>
+                {
+                    int count;
+                    lock (finishedReasons)
+                    {
+                        finishedReasons.Add(reason);
+                        count = finishedReasons.Count;
+                    }
+
+                    if (count == 1)
+                    {
+                        firstDone.Set();
+                    }
+                    else if (count == 2)
+                    {
+                        secondDone.Set();
+                    }
+                    else if (count == 3)
+                    {
+                        thirdDone.Set();
+                    }
+                };
+            },
+            onAppStartup: app =>
+            {
+                if (capturedEvents is null || capturedAuto is null || capturedMenu is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                uint taskbarCreated = capturedEvents.TaskbarCreatedMessage;
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        // 1. Post WM_DISPLAYCHANGE -> restores Laptop (111,222).
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!firstDone.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Display-change auto-restore did not finish.");
+                        }
+
+                        IconPosition p1 = ((IDesktopIcons)desktop).ReadIcons().Single();
+                        posAfterDisplay = $"{p1.X},{p1.Y}";
+
+                        // 2. Post TaskbarCreated, switch fake monitors to Docked BEFORE 120ms expiry -> restores Docked (333,444)!
+                        _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        monitors.Monitors = [dockedMon];
+                        if (!secondDone.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Explorer-restart auto-restore did not finish.");
+                        }
+
+                        IconPosition p2 = ((IDesktopIcons)desktop).ReadIcons().Single();
+                        posAfterExplorer = $"{p2.X},{p2.Y}";
+
+                        // 3. Arm a trigger, then flip RestoreAutomatically to FALSE before expiry -> zero work!
+                        _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        settingsStore.Save(Settings.Default with { RestoreAutomatically = false });
+                        Thread.Sleep(250);
+                        lock (finishedReasons)
+                        {
+                            finishedCountAfterOff = finishedReasons.Count;
+                        }
+
+                        // 4. Re-enable RestoreAutomatically, gate desktop read, trigger restore + mid-flight retrigger,
+                        //    click Exit -> verify shutdown waits for gated restore and suppresses the pending retrigger!
+                        settingsStore.Save(Settings.Default with { RestoreAutomatically = true });
+                        desktop.ArmGate();
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
+
+                        // Queue a retrigger while gated restore is running, then click Exit.
+                        _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        Thread.Sleep(40);
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            capturedMenu.ExitItem.PerformClick();
+                            exitedBeforeGateRelease = app.Dispatcher.HasShutdownStarted;
+                        });
+                        Thread.Sleep(50);
+                        desktop.ReleaseGate();
+                    }
+                    catch (Exception ex)
+                    {
+                        desktop.ReleaseGate();
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                });
+            });
+
+        lock (finishedReasons)
+        {
+            finishedCountAtExit = finishedReasons.Count;
+        }
+
+        string logContents = File.Exists(paths.LogFile) ? File.ReadAllText(paths.LogFile) : string.Empty;
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"posAfterDisplay={posAfterDisplay}",
+                $"posAfterExplorer={posAfterExplorer}",
+                $"finishedCountAfterOff={finishedCountAfterOff}",
+                $"finishedCountAtExit={finishedCountAtExit}",
+                $"exitedBeforeGateRelease={exitedBeforeGateRelease}",
+                $"hasDisplayLog={logContents.Contains("(automatic, display change)", StringComparison.Ordinal)}",
+                $"hasExplorerLog={logContents.Contains("(automatic, Explorer restart)", StringComparison.Ordinal)}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);
