@@ -21,9 +21,9 @@ public sealed class PublishedTests
     public void PublishedExecutableHasValidChecksumManifestIconAndRunsWithoutSharedDotnetRuntime()
     {
         string? envExe = Environment.GetEnvironmentVariable("BERTH_EXE");
-        Assert.False(
+        Assert.SkipWhen(
             string.IsNullOrWhiteSpace(envExe),
-            "BERTH_EXE must be set to the published artifacts/berth.exe (run pwsh scripts/check-all.ps1 -Published).");
+            "Published artifact test runs under pwsh scripts/check-all.ps1 -Published with BERTH_EXE set.");
 
         string exePath = BerthProcess.FindBerthExe();
         Assert.Equal(Path.GetFullPath(envExe), exePath, StringComparer.OrdinalIgnoreCase);
@@ -115,7 +115,10 @@ public sealed class PublishedTests
         return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["DOTNET_ROOT"] = emptyDotnetDir,
+            ["DOTNET_ROOT_X64"] = emptyDotnetDir,
+            ["DOTNET_ROOT_X86"] = emptyDotnetDir,
             ["DOTNET_ROOT(x86)"] = emptyDotnetDir,
+            ["DOTNET_ROOT_ARM64"] = emptyDotnetDir,
             ["DOTNET_MULTILEVEL_LOOKUP"] = "0",
             ["PATH"] = filteredPath,
         };

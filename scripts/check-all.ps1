@@ -46,7 +46,7 @@ $steps = @(
     @{ Name = 'agent-tiers'; Program = 'node'; Arguments = @('scripts/verify-agent-tiers.mjs') }
     @{ Name = 'tokens'; Program = 'python'; Arguments = @('scripts/build-tokens.py', '--check') }
     @{ Name = 'build'; Program = 'dotnet'; Arguments = @('build', 'Berth.slnx', '-c', 'Release'); Heavy = $true }
-    @{ Name = 'test'; Program = 'dotnet'; Arguments = @('test', '--solution', 'Berth.slnx', '-c', 'Release', '--filter-not-trait', 'Category=Published'); Heavy = $true; ReusesBuild = $true }
+    @{ Name = 'test'; Program = 'dotnet'; Arguments = @('test', '--solution', 'Berth.slnx', '-c', 'Release'); Heavy = $true; ReusesBuild = $true }
 )
 $names = $steps | ForEach-Object { $_.Name }
 
@@ -124,13 +124,13 @@ if ($Published) {
     $env:BERTH_EXE = (Resolve-Path -LiteralPath $publishedExe).Path
     try {
         $publishedSuites = @(
-            @{ Name = 'published-artifact'; Trait = 'Category=Published'; AllowSkipped = $false }
-            @{ Name = 'published-real-desktop'; Trait = 'Category=RealDesktop'; AllowSkipped = $true }
-            @{ Name = 'published-smoke'; Trait = 'Category=Smoke'; AllowSkipped = $false }
+            @{ Name = 'published-artifact'; FilterArgs = @('--filter-trait', 'Category=Published'); AllowSkipped = $false }
+            @{ Name = 'published-real-desktop'; FilterArgs = @('--filter-trait', 'Category=RealDesktop', '--filter-not-trait', 'Category=Smoke'); AllowSkipped = $true }
+            @{ Name = 'published-smoke'; FilterArgs = @('--filter-trait', 'Category=Smoke'); AllowSkipped = $false }
         )
 
         foreach ($suite in $publishedSuites) {
-            $suiteArgs = @('test', '--solution', 'Berth.slnx', '-c', 'Release', '--filter-trait', $suite.Trait)
+            $suiteArgs = @('test', '--solution', 'Berth.slnx', '-c', 'Release') + $suite.FilterArgs
             if ($built) {
                 $suiteArgs += '--no-build'
             }
@@ -157,7 +157,7 @@ if ($Published) {
             $totalMatch = [regex]::Match($joined, 'total:\s*(\d+)')
             $skippedMatch = [regex]::Match($joined, 'skipped:\s*(\d+)')
             if (-not $totalMatch.Success -or [int]$totalMatch.Groups[1].Value -le 0) {
-                Write-Output "FAILED $($suite.Name): filter '$($suite.Trait)' selected 0 tests"
+                Write-Output "FAILED $($suite.Name): filter '$($suite.FilterArgs -join ' ')' selected 0 tests"
                 exit 1
             }
 

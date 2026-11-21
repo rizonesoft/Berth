@@ -16,7 +16,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $root = Split-Path -Parent $PSScriptRoot
 $artifactsDir = Join-Path $root 'artifacts'
-$stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("berth-publish-" + [Guid]::NewGuid().ToString('N'))
+$scratchBase = if (Test-Path -LiteralPath 'R:\') { 'R:\scratch' } else { [System.IO.Path]::GetTempPath() }
+$stageRoot = Join-Path $scratchBase ("berth-publish-" + [Guid]::NewGuid().ToString('N'))
 $publishDir = Join-Path $stageRoot 'out'
 
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
@@ -56,11 +57,37 @@ try {
     $targetSha = Join-Path $artifactsDir 'berth.exe.sha256'
     $nextExe = Join-Path $artifactsDir 'berth.exe.next'
     $nextSha = Join-Path $artifactsDir 'berth.exe.sha256.next'
+    $backupExe = Join-Path $artifactsDir 'berth.exe.prev'
+    $backupSha = Join-Path $artifactsDir 'berth.exe.sha256.prev'
 
     Copy-Item -LiteralPath $stagedExe -Destination $nextExe -Force
     Copy-Item -LiteralPath $stagedSha -Destination $nextSha -Force
-    Move-Item -LiteralPath $nextExe -Destination $targetExe -Force
-    Move-Item -LiteralPath $nextSha -Destination $targetSha -Force
+
+    $hadPrevExe = Test-Path -LiteralPath $targetExe
+    $hadPrevSha = Test-Path -LiteralPath $targetSha
+    if ($hadPrevExe) { Copy-Item -LiteralPath $targetExe -Destination $backupExe -Force }
+    if ($hadPrevSha) { Copy-Item -LiteralPath $targetSha -Destination $backupSha -Force }
+
+    try {
+        # Move the sidecar first (if locked, neither target has changed yet), then move the exe.
+        Move-Item -LiteralPath $nextSha -Destination $targetSha -Force
+        Move-Item -LiteralPath $nextExe -Destination $targetExe -Force
+    }
+    catch {
+        if ($hadPrevExe -and (Test-Path -LiteralPath $backupExe)) {
+            Move-Item -LiteralPath $backupExe -Destination $targetExe -Force -ErrorAction SilentlyContinue
+        }
+        if ($hadPrevSha -and (Test-Path -LiteralPath $backupSha)) {
+            Move-Item -LiteralPath $backupSha -Destination $targetSha -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $nextExe -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $nextSha -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    finally {
+        Remove-Item -LiteralPath $backupExe -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $backupSha -Force -ErrorAction SilentlyContinue
+    }
 
     # Remove any stale non-pair files in artifacts/ only after the new pair is safely in place.
     foreach ($extra in Get-ChildItem -LiteralPath $artifactsDir -Force) {
