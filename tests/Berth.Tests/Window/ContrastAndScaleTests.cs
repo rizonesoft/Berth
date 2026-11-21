@@ -664,6 +664,19 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                     AssertTextUnclipped(sentence, window.RootGrid, "clipped-intermediate-hole"));
                 window.StatusLineControl.StatusCard.Clip = null;
 
+                // 3b. Adversarial self-clip directly on SentenceText with a cutout over its bottom line!
+                Rect fullSentence = new(0, 0, sentence.ActualWidth, sentence.ActualHeight);
+                Rect selfHole = new(0, Math.Max(0, sentence.ActualHeight - 10d), Math.Max(10d, sentence.ActualWidth), 10d);
+                sentence.Clip = new CombinedGeometry(
+                    GeometryCombineMode.Exclude,
+                    new RectangleGeometry(fullSentence),
+                    new RectangleGeometry(selfHole));
+                window.RootGrid.UpdateLayout();
+
+                Assert.Throws<Xunit.Sdk.TrueException>(() =>
+                    AssertTextUnclipped(sentence, window.RootGrid, "clipped-self-hole"));
+                sentence.Clip = null;
+
                 // 4. Verify an overflowing visible ScrollBar fails AssertAllVisibleControlsWithinParentBounds!
                 var overflowingBar = new System.Windows.Controls.Primitives.ScrollBar
                 {
@@ -760,6 +773,17 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
     private static void AssertUnclippedInAncestors(FrameworkElement element, FrameworkElement root, string label)
     {
         const double tolerance = 1.0d;
+        Rect localRect = new(0, 0, element.ActualWidth, element.ActualHeight);
+        if (LayoutInformation.GetLayoutClip(element) is Geometry selfLayoutClip)
+        {
+            AssertGeometryContainsRect(selfLayoutClip, localRect, tolerance, $"{label} clipped by own LayoutClip");
+        }
+
+        if (element.Clip is Geometry selfExplicitClip)
+        {
+            AssertGeometryContainsRect(selfExplicitClip, localRect, tolerance, $"{label} clipped by own Clip");
+        }
+
         DependencyObject? current = VisualTreeHelper.GetParent(element);
         while (current is not null)
         {
