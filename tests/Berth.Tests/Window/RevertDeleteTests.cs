@@ -36,35 +36,52 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
         BerthPaths paths = BerthPaths.ForRoot(data.Root);
         var store = new LayoutStore(paths);
         string key = ArrangementKey.From([MonSingle]);
-        var layout = new Layout(
-            Layout.CurrentSchemaVersion,
-            key,
-            "Laptop",
-            Nov18,
-            [MonSingle],
-            [new IconPosition("id-1", "One", 500, 500)],
-            new PreviousSave(Nov12, [new IconPosition("id-1", "One", 100, 100)]));
-        store.Save(layout);
 
         var monitors = new FakeMonitors(MonSingle);
-        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 500, 500));
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 100));
+        var clock = new MutableClock(Nov12);
 
         TaskCompletionSource? gate = null;
         var enteredGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        LayoutService service = CreateService(
-            paths,
-            store,
+        LayoutService service = new(
             desktop,
             monitors,
-            afterWrite: () =>
+            store,
+            paths,
+            new OperationLock(paths, TimeSpan.FromSeconds(5)),
+            new Log(paths, clock),
+            clock)
+        {
+            AfterWrite = () =>
             {
                 if (gate is { } g)
                 {
                     enteredGate.TrySetResult();
                     g.Task.GetAwaiter().GetResult();
                 }
-            });
-        var vm = CreateViewModel(store, desktop, monitors, service);
+            },
+        };
+
+        // Save twice through LayoutService.Save with distinct positions and timestamps (Nov 12 then Nov 18).
+        Assert.True(service.Save("Laptop").Done);
+        ((IDesktopIcons)desktop).SetPositions([new IconPosition("id-1", "One", 500, 500)]);
+        clock.UtcNow = Nov18;
+        Assert.True(service.Save().Done);
+        desktop.Calls.Clear();
+        clock.UtcNow = FixedNow;
+
+        var vm = new MainViewModel(
+            store,
+            desktop,
+            monitors,
+            clock,
+            marshalToUiAsync: action =>
+            {
+                appFixture.Invoke(action);
+                return Task.CompletedTask;
+            },
+            service: service,
+            timeZone: TimeZoneInfo.Utc);
         await vm.RefreshAsync();
 
         MainWindow? window = null;
@@ -671,6 +688,13 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
         public override bool IsDisposed => false;
 
         protected override CompositionTarget GetCompositionTargetCore() => null!;
+    }
+
+    private sealed class MutableClock(DateTimeOffset initialUtc) : TimeProvider
+    {
+        public DateTimeOffset UtcNow { get; set; } = initialUtc;
+
+        public override DateTimeOffset GetUtcNow() => UtcNow;
     }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : TimeProvider
