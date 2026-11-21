@@ -392,9 +392,9 @@ public sealed class NoticesTests(AppFixture appFixture)
             {
                 MeasureAndArrange(window, width: 760, height: 520);
                 Assert.Equal(9, window.NoticesControl.NoticesItems.Items.Count);
-                Assert.True(window.NoticesControl.NoticesScrollViewer.ActualHeight <= 128.5d);
+                Assert.True(window.NoticesControl.NoticesScrollViewer.ActualHeight <= 160.5d);
                 Assert.True(window.NoticesControl.NoticesScrollViewer.ScrollableHeight > 0d);
-                Assert.True(window.PositionMapControl.ActualHeight >= 220d);
+                Assert.True(window.PositionMapControl.ActualHeight >= 140d);
 
                 // Scrolling to bottom makes the last "Turn it off" button reachable and invocable!
                 window.NoticesControl.NoticesScrollViewer.ScrollToBottom();

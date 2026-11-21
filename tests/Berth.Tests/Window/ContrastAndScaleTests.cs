@@ -302,39 +302,12 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                         AssertLayoutNameTrimmedWithTooltip(rowName, FortyCharLayoutName, $"RowNameText ({theme} {scale}x)");
                         AssertLayoutNameTrimmedWithTooltip(headerTitle, FortyCharLayoutName, $"TitleText ({theme} {scale}x)");
 
-                        // 3. Verify EVERY visible control (including LayoutsList, PositionMap, buttons, switches, notices) fits inside its parent and RootGrid!
-                        Rect rootRect = new(0, 0, window.RootGrid.ActualWidth + 1d, window.RootGrid.ActualHeight + 1d);
-                        FrameworkElement[] controls =
-                        [
-                            window.LayoutsPaneControl.LayoutsList,
-                            window.PositionMapControl,
-                            window.StatusLineControl.StatusCard,
-                            window.DetailHeaderControl.RestoreButton,
-                            window.DetailHeaderControl.SaveButton,
-                            window.DetailHeaderControl.MoreButton,
-                            window.StatusLineControl.ActionButton,
-                            window.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch,
-                            window.LayoutsPaneControl.SettingsPanelControl.StartWithWindowsSwitch,
-                            .. noticeButtons,
-                        ];
-                        foreach (FrameworkElement ctrl in controls.Where(c => c.Visibility == Visibility.Visible && c.ActualWidth > 0))
-                        {
-                            Rect inRoot = TransformBounds(ctrl, window.RootGrid);
-                            Assert.True(
-                                rootRect.Contains(inRoot),
-                                $"Control {ctrl.Name} ({theme} {scale}x) overflows RootGrid: {inRoot} vs {rootRect}");
-                            if (VisualTreeHelper.GetParent(ctrl) is FrameworkElement parent && parent.ActualWidth > 0 && parent.ActualHeight > 0)
-                            {
-                                Rect inParent = TransformBounds(ctrl, parent);
-                                Assert.True(
-                                    inParent.Left >= -1d && inParent.Top >= -1d
-                                    && inParent.Right <= parent.ActualWidth + 1d
-                                    && inParent.Bottom <= parent.ActualHeight + 1d,
-                                    $"Control {ctrl.Name} ({theme} {scale}x) overflows parent {parent.GetType().Name}: {inParent} vs {parent.ActualWidth}x{parent.ActualHeight}");
-                            }
-                        }
+                        // 3. Verify EVERY visible control (including FooterHost, LayoutsList, PositionMap, StatusCard, buttons, switches, notices)
+                        //    fits inside its immediate visual parent, its effective ancestor clips, and RootGrid!
+                        AssertAllVisibleControlsWithinParentBounds(window, $"{theme} {scale}x");
 
-                        // 4. Verify EVERY non-name visible TextBlock has TextTrimming.None and fits its REAL FormattedText height!
+                        // 4. Verify EVERY non-name visible TextBlock has TextTrimming.None, fits its FormattedText height,
+                        //    and is not clipped by any ancestor layout clip, Clip geometry, ClipToBounds, or ScrollContentPresenter!
                         foreach (TextBlock tb in FindVisualChildren<TextBlock>(window.RootGrid).Where(t => t.Visibility == Visibility.Visible && t.ActualWidth > 0 && !string.IsNullOrWhiteSpace(t.Text)))
                         {
                             if (tb.Name is "RowNameText" or "TitleText")
@@ -342,22 +315,7 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                                 continue;
                             }
 
-                            Assert.Equal(TextTrimming.None, tb.TextTrimming);
-                            if (tb.ActualWidth <= 0)
-                            {
-                                continue;
-                            }
-
-                            FormattedText ft = MeasureText(tb, tb.ActualWidth);
-                            Assert.True(
-                                ft.Height <= tb.ActualHeight + 2.5d,
-                                $"TextBlock '{tb.Name}' (\"{tb.Text}\") clipped vertically at {theme} {scale}x: needed {ft.Height:F1}, got {tb.ActualHeight:F1}");
-
-                            // Also verify no ancestor clips the TextBlock's arranged bounds!
-                            Rect tbInRoot = TransformBounds(tb, window.RootGrid);
-                            Assert.True(
-                                rootRect.Contains(tbInRoot),
-                                $"TextBlock '{tb.Name}' overflows RootGrid at {theme} {scale}x: {tbInRoot}");
+                            AssertTextUnclipped(tb, window.RootGrid, $"{theme} {scale}x");
                         }
                     }
                     finally
@@ -631,6 +589,205 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
             Assert.True(
                 foundExpected[i],
                 $"Expected High Contrast stand-in colour #{expectedColours[i].R:X2}{expectedColours[i].G:X2}{expectedColours[i].B:X2} not found in {label} ({bounds}).");
+        }
+    }
+
+    [Fact]
+    public async Task AncestorClipAuditCatchesIntermediatePanelClippingStatusSentence()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var layoutStore = new LayoutStore(paths);
+        var settingsStore = new SettingsStore(paths);
+        var log = new Log(paths, new FixedClock(FixedNow));
+        var changes = new SettingChanges(settingsStore, log);
+        var runValue = new RunValue(@"Software\Berth.Tests\Fake", "Berth", @"C:\Berth\berth.exe", new FakeRunRegistry());
+
+        var monitors = new FakeMonitors(MonPrimary);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "Notes.txt", 400, 300));
+        LayoutService service = CreateService(paths, layoutStore, desktop, monitors, log);
+        var vm = CreateViewModel(layoutStore, desktop, monitors, service, settingsStore, runValue, changes, log);
+        await vm.RefreshAsync();
+
+        appFixture.Invoke(() =>
+        {
+            var window = new MainWindow { DataContext = vm };
+            try
+            {
+                vm.Status.SetResult(
+                    OperationResult.Restored(FortyCharLayoutName, total: 26, inPlace: 22, notPlaced: 2, missing: 2),
+                    canUndo: true);
+
+                window.RootGrid.Measure(new WpfSize(760, 520));
+                window.RootGrid.Arrange(new Rect(0, 0, 760, 520));
+                window.RootGrid.UpdateLayout();
+
+                TextBlock sentence = window.StatusLineControl.SentenceText;
+                AssertTextUnclipped(sentence, window.RootGrid, "baseline");
+
+                // Clip via an intermediate ancestor (StatusCard) while SentenceText remains well inside RootGrid.
+                window.StatusLineControl.StatusCard.Clip = new RectangleGeometry(
+                    new Rect(0, 0, window.StatusLineControl.StatusCard.ActualWidth, 16d));
+                window.RootGrid.UpdateLayout();
+
+                Rect inRoot = TransformBounds(sentence, window.RootGrid);
+                Rect rootRect = new(0, 0, window.RootGrid.ActualWidth + 1d, window.RootGrid.ActualHeight + 1d);
+                Assert.True(rootRect.Contains(inRoot), "Negative checkpoint setup requires SentenceText to stay inside RootGrid.");
+
+                Assert.Throws<Xunit.Sdk.TrueException>(() =>
+                    AssertTextUnclipped(sentence, window.RootGrid, "clipped-intermediate"));
+            }
+            finally
+            {
+                window.CloseForShutdown();
+            }
+        });
+    }
+
+    private static void AssertAllVisibleControlsWithinParentBounds(MainWindow window, string context)
+    {
+        Rect rootRect = new(0, 0, window.RootGrid.ActualWidth + 1d, window.RootGrid.ActualHeight + 1d);
+        var seen = new HashSet<FrameworkElement>(ReferenceEqualityComparer.Instance);
+        var targets = new List<FrameworkElement>
+        {
+            window.LayoutsPaneControl.FooterHost,
+            window.LayoutsPaneControl.SettingsPanelControl,
+            window.LayoutsPaneControl.LayoutsList,
+            window.PositionMapControl,
+            window.StatusLineControl.StatusCard,
+            window.NoticesControl,
+        };
+        foreach (System.Windows.Controls.Control ctrl in FindVisualChildren<System.Windows.Controls.Control>(window.RootGrid))
+        {
+            if (ctrl is System.Windows.Controls.Primitives.ScrollBar or RepeatButton or Thumb)
+            {
+                continue;
+            }
+
+            targets.Add(ctrl);
+        }
+
+        foreach (FrameworkElement element in targets)
+        {
+            if (!seen.Add(element) || element.Visibility != Visibility.Visible || element.ActualWidth <= 0d || element.ActualHeight <= 0d)
+            {
+                continue;
+            }
+
+            if (IsInsideScrollBar(element))
+            {
+                continue;
+            }
+
+            string label = $"{(string.IsNullOrEmpty(element.Name) ? element.GetType().Name : element.Name)} ({context})";
+            Rect inRoot = TransformBounds(element, window.RootGrid);
+            Assert.True(
+                rootRect.Contains(inRoot),
+                $"Control {label} overflows RootGrid: {inRoot} vs {rootRect}");
+
+            if (VisualTreeHelper.GetParent(element) is FrameworkElement parent && parent.ActualWidth > 0d && parent.ActualHeight > 0d)
+            {
+                Rect inParent = TransformBounds(element, parent);
+                Assert.True(
+                    inParent.Left >= -1d && inParent.Top >= -1d
+                    && inParent.Right <= parent.ActualWidth + 1d
+                    && inParent.Bottom <= parent.ActualHeight + 1d,
+                    $"Control {label} overflows parent {parent.GetType().Name}: {inParent} vs {parent.ActualWidth}x{parent.ActualHeight}");
+            }
+
+            AssertUnclippedInAncestors(element, window.RootGrid, label);
+        }
+    }
+
+    private static bool IsInsideScrollBar(DependencyObject element)
+    {
+        DependencyObject? current = VisualTreeHelper.GetParent(element);
+        while (current is not null)
+        {
+            if (current is System.Windows.Controls.Primitives.ScrollBar)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private static void AssertTextUnclipped(TextBlock tb, FrameworkElement root, string context)
+    {
+        string label = $"TextBlock '{(string.IsNullOrEmpty(tb.Name) ? tb.Text : tb.Name)}' ({context})";
+        Assert.Equal(TextTrimming.None, tb.TextTrimming);
+        if (tb.ActualWidth <= 0d)
+        {
+            return;
+        }
+
+        FormattedText ft = MeasureText(tb, tb.ActualWidth);
+        Assert.True(
+            ft.Height <= tb.ActualHeight + 2.5d,
+            $"{label} clipped vertically: needed {ft.Height:F1}, got {tb.ActualHeight:F1}");
+
+        Rect rootRect = new(0, 0, root.ActualWidth + 1d, root.ActualHeight + 1d);
+        Rect tbInRoot = TransformBounds(tb, root);
+        Assert.True(
+            rootRect.Contains(tbInRoot),
+            $"{label} overflows RootGrid: {tbInRoot} vs {rootRect}");
+
+        AssertUnclippedInAncestors(tb, root, label);
+    }
+
+    private static void AssertUnclippedInAncestors(FrameworkElement element, FrameworkElement root, string label)
+    {
+        const double tolerance = 1.0d;
+        DependencyObject? current = VisualTreeHelper.GetParent(element);
+        while (current is not null)
+        {
+            if (current is FrameworkElement ancestor && ancestor.ActualWidth > 0d && ancestor.ActualHeight > 0d)
+            {
+                Rect inAncestor = TransformBounds(element, ancestor);
+                string ancestorName = string.IsNullOrEmpty(ancestor.Name) ? ancestor.GetType().Name : ancestor.Name;
+
+                if (LayoutInformation.GetLayoutClip(ancestor) is Geometry layoutClip)
+                {
+                    Rect clipBounds = layoutClip.Bounds;
+                    Assert.True(
+                        inAncestor.Left >= clipBounds.Left - tolerance
+                        && inAncestor.Top >= clipBounds.Top - tolerance
+                        && inAncestor.Right <= clipBounds.Right + tolerance
+                        && inAncestor.Bottom <= clipBounds.Bottom + tolerance,
+                        $"{label} clipped by LayoutClip on {ancestorName}: {inAncestor} vs {clipBounds}");
+                }
+
+                if (ancestor.Clip is Geometry explicitClip)
+                {
+                    Rect clipBounds = explicitClip.Bounds;
+                    Assert.True(
+                        inAncestor.Left >= clipBounds.Left - tolerance
+                        && inAncestor.Top >= clipBounds.Top - tolerance
+                        && inAncestor.Right <= clipBounds.Right + tolerance
+                        && inAncestor.Bottom <= clipBounds.Bottom + tolerance,
+                        $"{label} clipped by Clip on {ancestorName}: {inAncestor} vs {clipBounds}");
+                }
+
+                if (ancestor.ClipToBounds || ancestor is ScrollContentPresenter)
+                {
+                    Assert.True(
+                        inAncestor.Left >= -tolerance
+                        && inAncestor.Top >= -tolerance
+                        && inAncestor.Right <= ancestor.ActualWidth + tolerance
+                        && inAncestor.Bottom <= ancestor.ActualHeight + tolerance,
+                        $"{label} clipped by ClipToBounds on {ancestorName}: {inAncestor} vs {ancestor.ActualWidth}x{ancestor.ActualHeight}");
+                }
+            }
+
+            if (ReferenceEquals(current, root))
+            {
+                break;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
         }
     }
 

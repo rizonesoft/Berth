@@ -19,14 +19,14 @@
     <sys:Double x:Key="Berth.MarkerMovedStroke">2</sys:Double>
     <sys:Double x:Key="Berth.MarkerMissingStroke">1</sys:Double>
     <sys:Double x:Key="Berth.MapGridStep">20</sys:Double>
-    <sys:Double x:Key="Berth.MapMinHeight">220</sys:Double>
+    <sys:Double x:Key="Berth.MapMinHeight">140</sys:Double>
     <sys:Double x:Key="Berth.MapPadding">24</sys:Double>
     <sys:Double x:Key="Berth.MonitorStrokeThickness">1.5</sys:Double>
     <sys:Double x:Key="Berth.Divider">1</sys:Double>
     <sys:Double x:Key="Berth.SelectionMarker">3</sys:Double>
     <sys:Double x:Key="Berth.StatusSquare">10</sys:Double>
     <sys:Double x:Key="Berth.NoticeGlyph">16</sys:Double>
-    <sys:Double x:Key="Berth.NoticesMaxHeight">128</sys:Double>
+    <sys:Double x:Key="Berth.NoticesMaxHeight">160</sys:Double>
     <sys:Double x:Key="Berth.DialogWidth">400</sys:Double>
     <sys:Double x:Key="Berth.DialogButtonMinWidth">80</sys:Double>
     <sys:Double x:Key="Berth.ToggleTrackWidth">40</sys:Double>

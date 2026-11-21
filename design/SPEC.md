@@ -69,7 +69,7 @@ Decisions behind it were agreed with the owner on 2026-11-15: the "Grid" identit
 
 ## 7. Position map
 
-- A panel under the header that fills the remaining height (minimum 220 px), with a faint 20 px grid, drawn from the tokens of `tokens.json`.
+- A panel under the header that fills the remaining height (minimum 220 px in normal window states; compresses down to a 140 px floor at the 760 × 520 minimum window size when stacked notices and a multi-line status sentence are visible so neither the notices nor the map footer clip; clarified 2026-11-21, D05 T01 §13), with a faint 20 px grid, drawn from the tokens of `tokens.json`.
 - It draws every monitor of the layout's arrangement as a rectangle, scaled together to fit the panel with their real relative positions and proportions, centred, with 24 px of padding. Above each rectangle's top-left corner a label reads "1 · 2560 × 1440" (`mono`), numbered left to right then top to bottom, and the primary monitor's label ends " · primary".
 - Each saved icon is plotted as a marker at its saved position: an 11 px square with 3 px corners.
 - For the active layout a marker's state compares the save with the desktop now:
