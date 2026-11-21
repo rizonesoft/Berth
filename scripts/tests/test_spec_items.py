@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -152,7 +153,6 @@ class SpecItemsTests(unittest.TestCase):
 
     def test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs(self) -> None:
         spec_text = SPEC_PATH.read_text(encoding="utf-8")
-        # Load the actual TODO section refs from todo-graph.py so every cited DNN TNN §N is proven to resolve.
         tg_proc = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "todo-graph.py"), "query", "plan"],
             cwd=str(ROOT),
@@ -165,48 +165,74 @@ class SpecItemsTests(unittest.TestCase):
         valid_refs = set(re.findall(r"\bD\d{2}\s+T\d{2}\s+§\d+\b", tg_proc.stdout))
         self.assertGreater(len(valid_refs), 50)
 
-        # Every Clarified / Corrected / Added / Deviation note in §2..§20 must carry an ISO date,
-        # a resolvable DNN TNN §N reference, and a non-empty rationale (either before or after the dated tag).
+        # Case-insensitive audit of every Clarified / Corrected / Added / Deviation note in §2..§20.
         dated_tag_re = re.compile(
             r"(?:(?:Clarified|Corrected|Added|Deviation)\s+\d{4}-\d{2}-\d{2}\s*\((D\d{2}\s+T\d{2}\s+§\d+)\)"
-            r"|\((?:clarified|corrected|added|deviation)\s+\d{4}-\d{2}-\d{2},\s*(D\d{2}\s+T\d{2}\s+§\d+)\))"
+            r"|(?:clarified|corrected|added|deviation)\s+\d{4}-\d{2}-\d{2}(?:,|\s+in)\s*(D\d{2}\s+T\d{2}\s+§\d+))",
+            re.IGNORECASE,
         )
-        bare_note_re = re.compile(r"\b(?:Clarified|Corrected|Added|Deviation)\b")
+        bare_note_re = re.compile(r"\b(?:clarified|corrected|added|deviation)\b", re.IGNORECASE)
 
-        def check_policy_line(line: str) -> str | None:
-            m = dated_tag_re.search(line)
-            if m is None:
-                return None
-            ref = m.group(1) or m.group(2)
-            # Strip the dated tag itself and punctuation; require >= 15 chars of rationale text on the line.
-            rest = dated_tag_re.sub("", line).strip(" -.:;()")
-            if len(rest) < 15:
-                return None
-            return ref
+        def validate_deviation_clause(line: str, known_refs: set[str], ref_topics: dict[str, str] | None = None) -> tuple[bool, str]:
+            """Validate a Deviation note: requires ISO date, resolvable TODO ref, non-empty reason inside the deviation clause, and topic match."""
+            m = re.search(
+                r"\bDeviation\s+\d{4}-\d{2}-\d{2}\s*\((D\d{2}\s+T\d{2}\s+§\d+)\)\s*:\s*([^.\n]+)",
+                line,
+                re.IGNORECASE,
+            )
+            if not m:
+                return False, "missing dated Deviation (DNN TNN §N): <reason> clause"
+            ref, reason = m.group(1), m.group(2).strip()
+            if len(reason) < 10:
+                return False, "deviation reason is too short"
+            if ref not in known_refs:
+                return False, f"nonexistent closing TODO {ref}"
+            if ref_topics is not None:
+                topic = ref_topics.get(ref, "").lower()
+                reason_words = [w for w in re.findall(r"[a-z]{4,}", reason.lower()) if w not in {"with", "that", "this", "from", "when", "will", "then"}]
+                if not any(w in topic for w in reason_words):
+                    return False, f"closing TODO {ref} does not address deviation topic"
+            return True, ref
 
         body = spec_text.split("## 2. Brand and tokens", 1)[1]
         checked = 0
+        referenced_in_spec: set[str] = set()
         for line_no, line in enumerate(body.splitlines(), start=1):
             if bare_note_re.search(line):
-                ref = check_policy_line(line)
-                self.assertIsNotNone(
-                    ref,
-                    f"SPEC note at offset line {line_no} is missing ISO date, resolvable DNN TNN §N, or reason: {line}",
+                matches = list(dated_tag_re.finditer(line))
+                self.assertTrue(
+                    matches,
+                    f"SPEC note at offset line {line_no} is missing ISO date or DNN TNN §N reference: {line}",
                 )
-                assert ref is not None
-                self.assertIn(ref, valid_refs, f"SPEC note cites nonexistent TODO ref {ref}: {line}")
-                checked += 1
-        self.assertGreaterEqual(checked, 10, "Expected dated SPEC clarification/correction notes to be audited")
+                for m in matches:
+                    ref = m.group(1) or m.group(2)
+                    self.assertIn(ref, valid_refs, f"SPEC note cites nonexistent TODO ref {ref}: {line}")
+                    referenced_in_spec.add(ref)
+                    checked += 1
+                if re.search(r"\bdeviation\b", line, re.IGNORECASE):
+                    ok, msg = validate_deviation_clause(line, valid_refs)
+                    self.assertTrue(ok, f"Invalid SPEC deviation at offset line {line_no}: {msg}")
+        self.assertGreaterEqual(checked, 15, "Expected all dated SPEC notes (including lowercase inline notes) to be audited")
 
-        # Negative cases: undated note, missing reason, and nonexistent TODO ref all fail.
-        self.assertIsNone(check_policy_line("Deviation: skipped without date or owner."))
-        self.assertIsNone(check_policy_line("Deviation 2026-11-21 (D07 T01 §5):"))
-        fake_ref = check_policy_line("Deviation 2026-11-21 (D99 T99 §99): reason for missing section.")
-        self.assertIsNotNone(fake_ref)
-        assert fake_ref is not None
-        self.assertNotIn(fake_ref, valid_refs)
+        # Negative cases for §1.7 Deviation policy:
+        # 1. Undated deviation fails.
+        self.assertFalse(validate_deviation_clause("Some rule. Deviation: skipped.", valid_refs)[0])
+        # 2. Reasonless deviation after an ordinary requirement sentence fails (preceding text does not count as reason).
+        self.assertFalse(
+            validate_deviation_clause("The window is 980x640 at 100% scale. Deviation 2026-11-21 (D07 T01 §5).", valid_refs)[0]
+        )
+        # 3. Nonexistent closing TODO fails.
+        self.assertFalse(
+            validate_deviation_clause("Deviation 2026-11-21 (D99 T99 §99): native DWM frame pending.", valid_refs)[0]
+        )
+        # 4. Unrelated closing TODO fails topic check.
+        topics = {"D99 T01 §1": "social preview image on github repository"}
+        self.assertFalse(
+            validate_deviation_clause("Deviation 2026-11-21 (D99 T01 §1): auto arrange flag cannot clear.", valid_refs, topics)[0]
+        )
 
-        # §1.1 Design first: design/SPEC.md was committed before any source file under src/.
+        # §1.1 Design first: verify both initial SPEC-before-src order AND that every SPEC-editing commit
+        # for a stamped section landed at or before that section's stamped SHA (never in a later range).
         spec_first = subprocess.run(
             ["git", "log", "--reverse", "--format=%at", "--", "design/SPEC.md"],
             cwd=str(ROOT),
@@ -225,9 +251,69 @@ class SpecItemsTests(unittest.TestCase):
         )
         self.assertEqual(spec_first.returncode, 0, spec_first.stderr)
         self.assertEqual(src_first.returncode, 0, src_first.stderr)
-        spec_ts = int(spec_first.stdout.strip().splitlines()[0])
-        src_ts = int(src_first.stdout.strip().splitlines()[0])
-        self.assertLessEqual(spec_ts, src_ts, "design/SPEC.md must precede src/ in repository history")
+        self.assertLessEqual(
+            int(spec_first.stdout.strip().splitlines()[0]),
+            int(src_first.stdout.strip().splitlines()[0]),
+            "design/SPEC.md must precede src/ in repository history",
+        )
+
+        # Load stamped SHAs from docs/reviews/d*.json and confirm every SPEC commit naming a stamped ref
+        # is an ancestor of (or equal to) that section's stamped SHA.
+        stamped_shas: dict[str, str] = {}
+        for receipt in (ROOT / "docs" / "reviews").glob("d*-t*-s*.json"):
+            data = json.loads(receipt.read_text(encoding="utf-8"))
+            if "ref" in data and "implementation_sha" in data:
+                stamped_shas[data["ref"]] = data["implementation_sha"]
+        self.assertGreaterEqual(len(stamped_shas), 50, "Expected stamped receipts in docs/reviews/d*-t*-s*.json")
+
+        spec_log = subprocess.run(
+            ["git", "log", "--format=%H", "--", "design/SPEC.md"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        self.assertEqual(spec_log.returncode, 0, spec_log.stderr)
+        verified_ranges = 0
+        for sha in spec_log.stdout.strip().splitlines():
+            diff_proc = subprocess.run(
+                ["git", "show", "--format=", "-U0", sha, "--", "design/SPEC.md"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
+                check=False,
+            )
+            added_refs = {
+                (m.group(1) or m.group(2))
+                for l in diff_proc.stdout.splitlines()
+                if l.startswith("+") and not l.startswith("+++")
+                for m in dated_tag_re.finditer(l[1:])
+            }
+            removed_refs = {
+                (m.group(1) or m.group(2))
+                for l in diff_proc.stdout.splitlines()
+                if l.startswith("-") and not l.startswith("---")
+                for m in dated_tag_re.finditer(l[1:])
+            }
+            for ref in sorted(added_refs - removed_refs):
+                if ref in stamped_shas:
+                    anc = subprocess.run(
+                        ["git", "merge-base", "--is-ancestor", sha, stamped_shas[ref]],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        creationflags=CREATE_NO_WINDOW,
+                        check=False,
+                    )
+                    self.assertEqual(
+                        anc.returncode,
+                        0,
+                        f"SPEC commit {sha[:8]} for {ref} landed AFTER stamped commit {stamped_shas[ref][:8]}",
+                    )
+                    verified_ranges += 1
+        self.assertGreaterEqual(verified_ranges, 10, "Expected SPEC-before-stamp ordering checks across stamped sections")
 
 
 if __name__ == "__main__":
