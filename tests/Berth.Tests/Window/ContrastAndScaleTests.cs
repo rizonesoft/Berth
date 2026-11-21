@@ -288,6 +288,7 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                         // 1. Verify BOTH notices, BOTH 40-char name elements, and the COMPLETE SPEC §8 sentence + Undo are visible!
                         WpfButton[] noticeButtons = [.. FindVisualChildren<WpfButton>(window.NoticesControl).Where(b => b.Visibility == Visibility.Visible)];
                         Assert.Equal(2, noticeButtons.Length);
+                        Assert.Equal(140d, window.PositionMapControl.MapCard.MinHeight);
                         Assert.Equal(Visibility.Visible, window.StatusLineControl.ActionButton.Visibility);
                         Assert.Equal("Undo", window.StatusLineControl.ActionButton.Content);
                         Assert.Equal(
@@ -625,7 +626,10 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                 TextBlock sentence = window.StatusLineControl.SentenceText;
                 AssertTextUnclipped(sentence, window.RootGrid, "baseline");
 
-                // Clip via an intermediate ancestor (StatusCard) while SentenceText remains well inside RootGrid.
+                // 1. Verify normal state (no notices) enforces 220 px MapCard.MinHeight, while notices-visible switches to 140 px.
+                Assert.Equal(220d, window.PositionMapControl.MapCard.MinHeight);
+
+                // 2. Clip via an intermediate ancestor (StatusCard) using a rectangular clip while SentenceText stays inside RootGrid.
                 window.StatusLineControl.StatusCard.Clip = new RectangleGeometry(
                     new Rect(0, 0, window.StatusLineControl.StatusCard.ActualWidth, 16d));
                 window.RootGrid.UpdateLayout();
@@ -635,7 +639,48 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                 Assert.True(rootRect.Contains(inRoot), "Negative checkpoint setup requires SentenceText to stay inside RootGrid.");
 
                 Assert.Throws<Xunit.Sdk.TrueException>(() =>
-                    AssertTextUnclipped(sentence, window.RootGrid, "clipped-intermediate"));
+                    AssertTextUnclipped(sentence, window.RootGrid, "clipped-intermediate-rect"));
+
+                // 3. Adversarial clip: outer bounds match the FULL StatusCard, with a hole cut out over the bottom line of SentenceText!
+                Rect fullCard = new(0, 0, window.StatusLineControl.StatusCard.ActualWidth, window.StatusLineControl.StatusCard.ActualHeight);
+                Rect sentenceInCard = TransformBounds(sentence, window.StatusLineControl.StatusCard);
+                Rect holeOverLastLine = new(
+                    sentenceInCard.Left,
+                    Math.Max(sentenceInCard.Top, sentenceInCard.Bottom - 10d),
+                    Math.Max(10d, sentenceInCard.Width),
+                    10d);
+                var donutClip = new CombinedGeometry(
+                    GeometryCombineMode.Exclude,
+                    new RectangleGeometry(fullCard),
+                    new RectangleGeometry(holeOverLastLine));
+                Assert.Equal(fullCard.Left, donutClip.Bounds.Left, precision: 3);
+                Assert.Equal(fullCard.Top, donutClip.Bounds.Top, precision: 3);
+                Assert.Equal(fullCard.Width, donutClip.Bounds.Width, precision: 3);
+                Assert.Equal(fullCard.Height, donutClip.Bounds.Height, precision: 3);
+                window.StatusLineControl.StatusCard.Clip = donutClip;
+                window.RootGrid.UpdateLayout();
+
+                Assert.Throws<Xunit.Sdk.TrueException>(() =>
+                    AssertTextUnclipped(sentence, window.RootGrid, "clipped-intermediate-hole"));
+                window.StatusLineControl.StatusCard.Clip = null;
+
+                // 4. Verify an overflowing visible ScrollBar fails AssertAllVisibleControlsWithinParentBounds!
+                var overflowingBar = new System.Windows.Controls.Primitives.ScrollBar
+                {
+                    Orientation = System.Windows.Controls.Orientation.Vertical,
+                    Width = 16d,
+                    Height = 80d,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 0, -40, 0),
+                };
+                window.DetailGrid.Children.Add(overflowingBar);
+                window.RootGrid.Measure(new WpfSize(760, 520));
+                window.RootGrid.Arrange(new Rect(0, 0, 760, 520));
+                window.RootGrid.UpdateLayout();
+
+                Assert.Throws<Xunit.Sdk.TrueException>(() =>
+                    AssertAllVisibleControlsWithinParentBounds(window, "overflowing-scrollbar"));
+                window.DetailGrid.Children.Remove(overflowingBar);
             }
             finally
             {
@@ -659,22 +704,12 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
         };
         foreach (System.Windows.Controls.Control ctrl in FindVisualChildren<System.Windows.Controls.Control>(window.RootGrid))
         {
-            if (ctrl is System.Windows.Controls.Primitives.ScrollBar or RepeatButton or Thumb)
-            {
-                continue;
-            }
-
             targets.Add(ctrl);
         }
 
         foreach (FrameworkElement element in targets)
         {
             if (!seen.Add(element) || element.Visibility != Visibility.Visible || element.ActualWidth <= 0d || element.ActualHeight <= 0d)
-            {
-                continue;
-            }
-
-            if (IsInsideScrollBar(element))
             {
                 continue;
             }
@@ -697,22 +732,6 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
 
             AssertUnclippedInAncestors(element, window.RootGrid, label);
         }
-    }
-
-    private static bool IsInsideScrollBar(DependencyObject element)
-    {
-        DependencyObject? current = VisualTreeHelper.GetParent(element);
-        while (current is not null)
-        {
-            if (current is System.Windows.Controls.Primitives.ScrollBar)
-            {
-                return true;
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return false;
     }
 
     private static void AssertTextUnclipped(TextBlock tb, FrameworkElement root, string context)
@@ -751,24 +770,12 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
 
                 if (LayoutInformation.GetLayoutClip(ancestor) is Geometry layoutClip)
                 {
-                    Rect clipBounds = layoutClip.Bounds;
-                    Assert.True(
-                        inAncestor.Left >= clipBounds.Left - tolerance
-                        && inAncestor.Top >= clipBounds.Top - tolerance
-                        && inAncestor.Right <= clipBounds.Right + tolerance
-                        && inAncestor.Bottom <= clipBounds.Bottom + tolerance,
-                        $"{label} clipped by LayoutClip on {ancestorName}: {inAncestor} vs {clipBounds}");
+                    AssertGeometryContainsRect(layoutClip, inAncestor, tolerance, $"{label} clipped by LayoutClip on {ancestorName}");
                 }
 
                 if (ancestor.Clip is Geometry explicitClip)
                 {
-                    Rect clipBounds = explicitClip.Bounds;
-                    Assert.True(
-                        inAncestor.Left >= clipBounds.Left - tolerance
-                        && inAncestor.Top >= clipBounds.Top - tolerance
-                        && inAncestor.Right <= clipBounds.Right + tolerance
-                        && inAncestor.Bottom <= clipBounds.Bottom + tolerance,
-                        $"{label} clipped by Clip on {ancestorName}: {inAncestor} vs {clipBounds}");
+                    AssertGeometryContainsRect(explicitClip, inAncestor, tolerance, $"{label} clipped by Clip on {ancestorName}");
                 }
 
                 if (ancestor.ClipToBounds || ancestor is ScrollContentPresenter)
@@ -789,6 +796,21 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
 
             current = VisualTreeHelper.GetParent(current);
         }
+    }
+
+    private static void AssertGeometryContainsRect(Geometry clip, Rect rect, double tolerance, string messagePrefix)
+    {
+        double insetX = Math.Min(tolerance, rect.Width * 0.25d);
+        double insetY = Math.Min(tolerance, rect.Height * 0.25d);
+        Rect checkRect = new(
+            rect.Left + insetX,
+            rect.Top + insetY,
+            Math.Max(0.1d, rect.Width - (insetX * 2d)),
+            Math.Max(0.1d, rect.Height - (insetY * 2d)));
+        IntersectionDetail detail = clip.FillContainsWithDetail(new RectangleGeometry(checkRect));
+        Assert.True(
+            detail == IntersectionDetail.FullyContains,
+            $"{messagePrefix}: {rect} (detail={detail}, bounds={clip.Bounds})");
     }
 
     private static (int Width, int Height, byte[] Pixels) LoadPngPixels(string path)

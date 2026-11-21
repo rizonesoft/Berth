@@ -106,12 +106,21 @@
 
     <Border Padding="{DynamicResource Berth.Space.DetailSection}">
         <Border x:Name="MapCard"
-                MinHeight="{DynamicResource Berth.MapMinHeight}"
                 Background="{DynamicResource Berth.MapBackground}"
                 BorderBrush="{DynamicResource Berth.MapBorder}"
                 BorderThickness="{DynamicResource Berth.Space.BorderThin}"
                 CornerRadius="{DynamicResource Berth.RadiusCard}"
                 ClipToBounds="True">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="MinHeight" Value="{DynamicResource Berth.MapMinHeight}" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Notices.HasNotices}" Value="True">
+                            <Setter Property="MinHeight" Value="{DynamicResource Berth.MapMinHeightCompact}" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
