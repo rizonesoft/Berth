@@ -141,13 +141,19 @@ class CreateDraftReleaseTests(unittest.TestCase):
         shim_py.write_text(
             textwrap.dedent(
                 f"""\
-                import json, sys
+                import json, shutil, sys
                 from pathlib import Path
                 args = sys.argv[1:]
                 with open({str(log_path)!r}, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(args) + "\\n")
                 mode = {mode!r}
                 state_file = Path({str(tmp / 'gh-state.json')!r})
+                assets_dir = Path({str(tmp / 'gh-assets')!r})
+                assets_dir.mkdir(exist_ok=True)
+                if mode == "existing-draft" and not (assets_dir / "berth.exe").exists():
+                    shutil.copyfile({str(exe)!r}, assets_dir / "berth.exe")
+                if mode == "existing-draft-mismatch" and not (assets_dir / "berth.exe").exists():
+                    (assets_dir / "berth.exe").write_bytes(b"older-different-berth-binary")
                 if args[:2] == ["release", "view"]:
                     if state_file.exists():
                         print(state_file.read_text(encoding="utf-8"))
@@ -155,17 +161,33 @@ class CreateDraftReleaseTests(unittest.TestCase):
                     if mode == "existing-published":
                         print(json.dumps({{"isDraft": False, "assets": []}}))
                         sys.exit(0)
-                    if mode == "existing-draft":
+                    if mode in ("existing-draft", "existing-draft-mismatch"):
                         print(json.dumps({{"isDraft": True, "assets": [{{"name": "berth.exe"}}]}}))
                         sys.exit(0)
                     sys.exit(1)
                 if args[:2] == ["release", "create"]:
+                    for item in args[3:]:
+                        p = Path(item)
+                        if p.is_file() and p.name in ("berth.exe", "berth.exe.sha256"):
+                            shutil.copyfile(p, assets_dir / p.name)
                     state_file.write_text(json.dumps({{"isDraft": True, "assets": [{{"name": "berth.exe"}}, {{"name": "berth.exe.sha256"}}]}}), encoding="utf-8")
                     sys.exit(0)
                 if args[:2] == ["release", "edit"]:
                     sys.exit(0)
                 if args[:2] == ["release", "upload"]:
+                    for item in args[3:]:
+                        p = Path(item)
+                        if p.is_file() and p.name in ("berth.exe", "berth.exe.sha256"):
+                            shutil.copyfile(p, assets_dir / p.name)
                     state_file.write_text(json.dumps({{"isDraft": True, "assets": [{{"name": "berth.exe"}}, {{"name": "berth.exe.sha256"}}]}}), encoding="utf-8")
+                    sys.exit(0)
+                if args[:2] == ["release", "download"]:
+                    out_dir = Path(args[args.index("--dir") + 1])
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    for name in ("berth.exe", "berth.exe.sha256"):
+                        src = assets_dir / name
+                        if src.exists():
+                            shutil.copyfile(src, out_dir / name)
                     sys.exit(0)
                 sys.exit(2)
                 """
@@ -294,6 +316,31 @@ class CreateDraftReleaseTests(unittest.TestCase):
             self.assertNotIn("--clobber", upload_calls[0])
             self.assertIn(str(artifacts / "berth.exe.sha256"), upload_calls[0])
             self.assertNotIn(str(artifacts / "berth.exe"), upload_calls[0])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            props, changelog, artifacts, gh_cmd, _ = self._setup_fixture(Path(tmp), "existing-draft-mismatch")
+            mixed = subprocess.run(
+                [
+                    sys.executable,
+                    str(RELEASE_SCRIPT),
+                    "--tag",
+                    "v0.1.0",
+                    "--props",
+                    str(props),
+                    "--changelog",
+                    str(changelog),
+                    "--artifacts",
+                    str(artifacts),
+                    "--gh",
+                    str(gh_cmd),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertNotEqual(mixed.returncode, 0)
+            self.assertIn("checksum mismatch", mixed.stderr)
 
 
 class ReleaseWorkflowStructureTests(unittest.TestCase):

@@ -6,9 +6,10 @@ Checks that:
 2. Both `artifacts/berth.exe` and `artifacts/berth.exe.sha256` exist and match.
 3. `scripts/changelog-section.py <version>` yields non-empty release notes.
 4. No published (non-draft) release already exists for the tag.
-5. Creates the draft release with `gh release create --draft --verify-tag` (or updates
-   an existing draft and uploads both assets with `--clobber` on rerun) and verifies
-   both assets are present on the draft before exiting 0.
+5. Creates the draft release with `gh release create --draft --verify-tag` (or on rerun of an
+   existing draft, updates title/notes, uploads only missing assets without `--clobber` after
+   re-checking draft status) and downloads + verifies the attached `berth.exe` and
+   `berth.exe.sha256` pair matches SHA-256 before exiting 0.
 """
 
 from __future__ import annotations
@@ -202,6 +203,35 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             print(
                 f"create-draft-release: draft release {args.tag!r} is missing asset(s): {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            return 1
+
+        verify_dir = Path(tmp) / "verified-assets"
+        verify_dir.mkdir(parents=True, exist_ok=True)
+        download = run_gh(
+            args.gh,
+            [
+                "release",
+                "download",
+                args.tag,
+                "--pattern",
+                "berth.exe",
+                "--pattern",
+                "berth.exe.sha256",
+                "--dir",
+                str(verify_dir),
+            ],
+        )
+        if download.returncode != 0:
+            sys.stderr.write(download.stderr or "create-draft-release: gh release download verification failed\n")
+            return download.returncode
+
+        try:
+            verify_artifacts(verify_dir)
+        except (OSError, ValueError) as exc:
+            print(
+                f"create-draft-release: attached draft assets for {args.tag!r} failed verification: {exc}",
                 file=sys.stderr,
             )
             return 1
