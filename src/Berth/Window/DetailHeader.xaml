@@ -79,8 +79,11 @@
                                           Click="OnRenameMenuItemClick" />
                                 <MenuItem x:Name="RevertMenuItem"
                                           Header="Revert to previous save"
-                                          IsEnabled="{Binding HasPreviousSave}" />
-                                <MenuItem x:Name="DeleteMenuItem" Header="Delete" />
+                                          IsEnabled="{Binding HasPreviousSave}"
+                                          Click="OnRevertMenuItemClick" />
+                                <MenuItem x:Name="DeleteMenuItem"
+                                          Header="Delete"
+                                          Click="OnDeleteMenuItemClick" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>

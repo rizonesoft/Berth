@@ -82,4 +82,55 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
             detail.PropertyChanged -= OnDetailPropertyChanged;
         }
     }
+
+    private void OnRevertMenuItemClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        {
+            return;
+        }
+
+        _ = detail.RevertAsync(capturedKey);
+    }
+
+    private void OnDeleteMenuItemClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        {
+            return;
+        }
+
+        string capturedName = detail.Title;
+        var deleteVm = new DeleteDialogViewModel(capturedName)
+        {
+            IsBusy = detail.IsBusy,
+        };
+
+        void OnDetailPropertyChanged(object? _, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName is nameof(DetailViewModel.IsBusy) or "")
+            {
+                deleteVm.IsBusy = detail.IsBusy;
+            }
+        }
+
+        detail.PropertyChanged += OnDetailPropertyChanged;
+        try
+        {
+            var dialog = new DeleteDialog(
+                deleteVm,
+                () => detail.TryStartDelete(capturedKey, capturedName));
+            System.Windows.Window? owner = System.Windows.Window.GetWindow(this);
+            if (owner is not null && owner.IsLoaded)
+            {
+                dialog.Owner = owner;
+            }
+
+            _ = dialog.ShowDialog();
+        }
+        finally
+        {
+            detail.PropertyChanged -= OnDetailPropertyChanged;
+        }
+    }
 }

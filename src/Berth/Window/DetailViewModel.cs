@@ -380,6 +380,84 @@ internal sealed class DetailViewModel : ObservableObject
         return true;
     }
 
+    public Task<OperationResult?> RevertAsync(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (_service is null)
+        {
+            return Task.FromResult<OperationResult?>(null);
+        }
+
+        DateTimeOffset? targetPreviousSavedAt = _main.FindSavedLayoutSafe(key)?.Previous?.SavedAt;
+        bool isRetry = false;
+        _lastOperationTask = RunOperationAsync(new WindowOperationRequest(
+            WindowOperationKind.Revert,
+            () =>
+            {
+                if (isRetry && targetPreviousSavedAt is { } intended)
+                {
+                    // Guard against retrying a swap that already reached disk before a read-back failure.
+                    Layout? current = _main.FindSavedLayoutSafe(key);
+                    if (current is not null && current.SavedAt == intended)
+                    {
+                        return OperationResult.Reverted(current.Name, current.SavedAt);
+                    }
+                }
+
+                isRetry = true;
+                return _service.Revert(key);
+            },
+            _ => key));
+        return (Task<OperationResult?>)_lastOperationTask;
+    }
+
+    /// <summary>
+    /// Atomically checks admission and starts a Delete operation for <paramref name="key"/>. Returns <c>false</c>
+    /// without starting anything if another operation currently holds the slot so the Delete dialog stays open.
+    /// Retries verify the layout identity so a retry never deletes a replacement layout saved under the same key.
+    /// </summary>
+    internal bool TryStartDelete(string key, string layoutName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(layoutName);
+        if (_service is null || _externalBusy || Interlocked.CompareExchange(ref _operationInFlight, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        if (_externalBusy)
+        {
+            Volatile.Write(ref _operationInFlight, 0);
+            return false;
+        }
+
+        DateTimeOffset? originalSavedAt = _main.FindSavedLayoutSafe(key)?.SavedAt;
+        bool isRetry = false;
+        var request = new WindowOperationRequest(
+            WindowOperationKind.Delete,
+            () =>
+            {
+                if (isRetry)
+                {
+                    Layout? current = _main.FindSavedLayoutSafe(key);
+                    if (current is null)
+                    {
+                        return OperationResult.Deleted(layoutName);
+                    }
+
+                    if (originalSavedAt is { } expected && current.SavedAt != expected)
+                    {
+                        return OperationResult.Refused(Refusal.NoLayout);
+                    }
+                }
+
+                isRetry = true;
+                return _service.Delete(key);
+            });
+        _lastOperationTask = RunAdmittedOperationAsync(request);
+        return true;
+    }
+
     internal string? SelectedSavedKey => _main.Selected is { IsUnsaved: false } row ? row.Key : null;
 
     internal System.Collections.Specialized.INotifyCollectionChanged RowsCollection => _main.Rows;

@@ -339,6 +339,8 @@ The other two More menu items (SPEC §10).
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RevertDeleteTests"` passes, and fails when "Delete" is the dialog's default button.
 
+> **Started:** 2026-11-21
+
 ## 10. Start with Windows registry value
 
 The `Run` value behind the second switch, with the registry path as a parameter so no test writes the real one (SPEC §11).
