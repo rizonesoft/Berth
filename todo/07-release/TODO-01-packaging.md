@@ -63,7 +63,7 @@ One command, one file, proven by running the published file itself.
 - [x] Record the published size in the README's "How is it built?" section as a measured fact with its date. Done when: the README names the size printed by the script. Cheaper substitute: an estimate.
 - [ ] Commit: `release: single-file self-contained publish`
 
-**Test checkpoint:** `pwsh scripts/check-all.ps1 -Published` exits 0 on the build machine, and fails when `PublishSingleFile` is turned off (`scripts/publish.ps1` rejects the multi-file publish output with exit 1 before replacing `artifacts/berth.exe` and its `.sha256` sidecar). **Corrected 2026-11-21:** the single-file check rejects extra files at the publish stage before any artifact replacement or process test runs.
+**Test checkpoint:** `pwsh scripts/check-all.ps1 -Published` exits 0 on the build machine, and fails when `PublishSingleFile` is turned off (the process tests then cannot find a lone `artifacts/berth.exe`). **Corrected 2026-11-21:** the single-file check rejects extra files in `scripts/publish.ps1` with exit 1 before replacing `artifacts/berth.exe` and its `.sha256` sidecar or running the process tests.
 
 > **Started:** 2026-11-21
 
