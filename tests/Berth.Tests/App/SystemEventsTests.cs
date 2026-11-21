@@ -156,6 +156,7 @@ public sealed partial class SystemEventsTests(AppFixture appFixture)
         Assert.Equal("True", report["iconHandleChanged"]);
         Assert.Equal("True", report["taskbarIsLightAfterSettingChange"]);
         Assert.Equal("False", report["isWindowAfterShutdown"]);
+        Assert.Equal("False", report["menuBarrierTimedOut"]);
     }
 
     internal static unsafe bool SendSettingChange(nint hwnd, string area, uint timeoutMs)

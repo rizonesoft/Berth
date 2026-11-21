@@ -1047,6 +1047,7 @@ internal static class IsolatedStaChildRunner
         bool iconHandleChanged = false;
         bool taskbarIsLightAfterSettingChange = false;
         bool sendSettingResult = false;
+        bool menuBarrierTimedOut = false;
         string workerError = string.Empty;
 
         int exitCode = TrayApp.RunWithInstance(
@@ -1117,7 +1118,10 @@ internal static class IsolatedStaChildRunner
                         capturedMenu.BeforeOperationCompletionMarshal = () =>
                         {
                             menuSnapshotTaken.Set();
-                            _ = releaseMenuCompletion.Wait(TimeSpan.FromSeconds(5));
+                            if (!releaseMenuCompletion.Wait(TimeSpan.FromSeconds(5)))
+                            {
+                                Volatile.Write(ref menuBarrierTimedOut, true);
+                            }
                         };
                         capturedMenu.OperationFinished += _ => menuFinished.Set();
                         app.Dispatcher.Invoke(() => capturedMenu.SaveItem.PerformClick());
@@ -1191,6 +1195,7 @@ internal static class IsolatedStaChildRunner
                 $"iconHandleChanged={iconHandleChanged}",
                 $"taskbarIsLightAfterSettingChange={taskbarIsLightAfterSettingChange}",
                 $"isWindowAfterShutdown={isWindowAfterShutdown}",
+                $"menuBarrierTimedOut={Volatile.Read(ref menuBarrierTimedOut)}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);
