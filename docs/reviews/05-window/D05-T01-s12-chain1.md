@@ -164,3 +164,28 @@ RECONCILIATION: gaps
 - Closed P2 #1 (map focus continuity): asserted exact destination `"Restore automatically"` when the last focused marker disappears and map becomes empty (step 3d), and verified refreshing while marker 0 stays selected after focus moved to `RestoreAutomaticallySwitch` never steals focus back (step 3e).
 - Closed P2 #2 (visible keyboard focus): instantiated and verified each switch's own `FocusVisualStyle` template produces a visible stroke/border (`Color.A >= 160`) after keyboard `MoveFocus` traversal, and verified marker `FocusRingOuter` (29x29, 2 px, `Color.A >= 200`) and `FocusRingInner` (27x27, 1 px, `Color.A >= 160` matching Fluent `#B3FFFFFF`/`#B3000000`) lie completely unclipped inside `MapViewport`.
 - Closed P2 #3 (notice traversal): added keyboard focus preservation in `Notices.xaml.cs` (`OnNoticeButtonIsEnabledChanged` + `OnItemsCollectionChanged`) so a refused notice action restores focus to `"Turn it off"` (first `MoveFocus(Next)` lands on `"Save current layout"`) and a succeeding notice action advances focus directly to `"Open folder"` (first `MoveFocus(Next)` lands on `"Restore"`).
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T05:40:59Z
+- Candidate: 785f6b63bc7de38a25d2f08e6ac4aceb5cf38098
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 14
+- Digest: aeba8488b58fa027
+
+At `785f6b6`, the notice traversal tests close the previous finding. After refusal, the test asserts focus is on “Turn it off” and the first Tab reaches “Save current layout.” After success, it asserts focus is on “Open folder” and the first Tab reaches “Restore.” Both checks start from actual keyboard focus. The empty-map test also verifies the exact destination, “Restore automatically.” I reviewed the pinned source. The 6/6 Release result is user-reported.
+
+- **P2, deferred map focus** (recurring: completion, reconciliation 1, reconciliation 2). Step 3e focuses the switch, pumps the dispatcher, and only then starts `RefreshAsync()`. A callback that unconditionally takes focus back once queued would still pass this test because the marker has already lost focus before refresh begins. Exercise the missing ordering by rebuilding with the marker focused, moving focus to the switch after restoration is queued, then draining the dispatcher and asserting the switch retains focus. [Test](D:/GitHub/Berth/tests/Berth.Tests/Window/AccessibilityTests.cs:779) · [Deferred restoration](D:/GitHub/Berth/src/Berth/Window/Map/PositionMap.xaml.cs:225)
+- **P2, visible keyboard focus** (recurring: completion, reconciliation 1, reconciliation 2). Each switch now supplies its own style, but the helper applies it to a detached control and accepts a stroke even if its visual ancestor has zero opacity. The marker check compares the outer ring’s coordinates with `MapViewport` bounds. An intermediate container clipping the 29 px and 27 px rings to the 19 px marker would still pass. The record therefore overstates what was verified. This third pass calls for checking the displayed cues on the realized controls, including clipping along the actual visual path. [Switch helper](D:/GitHub/Berth/tests/Berth.Tests/Window/AccessibilityTests.cs:1143) · [Marker bounds](D:/GitHub/Berth/tests/Berth.Tests/Window/AccessibilityTests.cs:920)
+
+LENS adversarial: findings  
+LENS integration: findings  
+LENS plan-delivery: findings  
+LENS record: findings  
+HIGHEST: P2  
+LENS reconciliation: findings  
+HIGHEST: P2  
+RECURRING: 3  
+RECONCILIATION: gaps
