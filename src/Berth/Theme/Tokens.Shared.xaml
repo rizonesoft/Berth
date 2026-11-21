@@ -14,6 +14,8 @@
     <sys:Double x:Key="Berth.Marker">11</sys:Double>
     <sys:Double x:Key="Berth.MarkerTarget">19</sys:Double>
     <sys:Double x:Key="Berth.MarkerSelectedRing">23</sys:Double>
+    <sys:Double x:Key="Berth.MarkerFocusRingInner">27</sys:Double>
+    <sys:Double x:Key="Berth.MarkerFocusRingOuter">29</sys:Double>
     <sys:Double x:Key="Berth.MarkerMovedStroke">2</sys:Double>
     <sys:Double x:Key="Berth.MarkerMissingStroke">1</sys:Double>
     <sys:Double x:Key="Berth.MapGridStep">20</sys:Double>
@@ -34,6 +36,8 @@
     <CornerRadius x:Key="Berth.RadiusCard">6</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarker">3</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarkerSelectedRing">6</CornerRadius>
+    <CornerRadius x:Key="Berth.RadiusMarkerFocusRingInner">8</CornerRadius>
+    <CornerRadius x:Key="Berth.RadiusMarkerFocusRingOuter">9</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMonitor">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusBadge">10</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusToggleTrack">10</CornerRadius>

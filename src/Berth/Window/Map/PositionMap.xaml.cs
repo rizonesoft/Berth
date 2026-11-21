@@ -120,10 +120,12 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     {
         string? newLayoutKey = _viewModel?.Selected?.Key;
         string? previouslySelectedIconId = (MarkersList.SelectedItem as MapMarkerItem)?.Icon.Saved.Id;
+        bool hadKeyboardFocus = MarkersList.IsKeyboardFocusWithin;
         bool sameLayout = _lastLayoutKey is not null
             && newLayoutKey is not null
             && string.Equals(_lastLayoutKey, newLayoutKey, StringComparison.Ordinal);
 
+        MapMarkerItem? restoredSelection = null;
         _isRebuildingItems = true;
         try
         {
@@ -133,7 +135,6 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
             IReadOnlyList<MonitorInfo> monitors = _viewModel?.MapMonitors ?? [];
             _orderedMonitors = monitors.Count > 0 ? MonitorNumbering.Order(monitors) : [];
 
-            MapMarkerItem? restoredSelection = null;
             if (comparison is not null && _orderedMonitors.Count > 0)
             {
                 for (int i = 0; i < comparison.Icons.Count; i++)
@@ -162,6 +163,29 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         }
 
         RebuildLayout();
+
+        if (hadKeyboardFocus && restoredSelection is not null)
+        {
+            MarkersList.UpdateLayout();
+            if (MarkersList.ItemContainerGenerator.ContainerFromItem(restoredSelection) is ListBoxItem container)
+            {
+                container.Focus();
+            }
+            else
+            {
+                MapMarkerItem target = restoredSelection;
+                _ = Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Loaded,
+                    new Action(() =>
+                    {
+                        if (ReferenceEquals(MarkersList.SelectedItem, target)
+                            && MarkersList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem deferred)
+                        {
+                            deferred.Focus();
+                        }
+                    }));
+            }
+        }
     }
 
     private void RebuildLayout()

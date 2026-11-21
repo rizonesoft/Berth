@@ -64,7 +64,7 @@ internal static class IconReadout
         return Formats.IconCount(comparison.Icons.Count);
     }
 
-    public static string AutomationName(ComparedIcon icon)
+    public static string AutomationName(ComparedIcon icon, bool? offScreenOverride = null)
     {
         ArgumentNullException.ThrowIfNull(icon);
         string text = string.Create(
@@ -77,7 +77,7 @@ internal static class IconReadout
             text = $"{text}, {stateWord}";
         }
 
-        if (icon.OffScreen)
+        if (offScreenOverride ?? icon.OffScreen)
         {
             text = $"{text}, off screen";
         }

@@ -427,6 +427,8 @@ Every control reachable and named, and the map readable as a list (SPEC §3, §7
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*AccessibilityTests"` passes, and fails when the "More" button has no automation name.
 
+> **Started:** 2026-11-21
+
 ## 13. High contrast and 150% scale
 
 The fidelity conditions of SPEC §1 that the earlier renders did not cover.

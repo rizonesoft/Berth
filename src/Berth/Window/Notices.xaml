@@ -43,7 +43,8 @@
                       Focusable="False">
             <ItemsControl x:Name="NoticesItems"
                           ItemsSource="{Binding Items}"
-                          Focusable="False">
+                          Focusable="False"
+                          AutomationProperties.Name="Notices">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border Style="{StaticResource NoticeBarStyle}">

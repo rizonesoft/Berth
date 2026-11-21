@@ -73,16 +73,24 @@
                             AutomationProperties.Name="More options"
                             Click="OnMoreButtonClick">
                         <Button.ContextMenu>
-                            <ContextMenu x:Name="MoreMenu">
+                            <ContextMenu x:Name="MoreMenu"
+                                         AutomationProperties.Name="More options"
+                                         Closed="OnMoreMenuClosed">
                                 <MenuItem x:Name="RenameMenuItem"
                                           Header="Rename"
+                                          MinHeight="{DynamicResource Berth.ControlHeight}"
+                                          AutomationProperties.Name="Rename"
                                           Click="OnRenameMenuItemClick" />
                                 <MenuItem x:Name="RevertMenuItem"
                                           Header="Revert to previous save"
+                                          MinHeight="{DynamicResource Berth.ControlHeight}"
+                                          AutomationProperties.Name="Revert to previous save"
                                           IsEnabled="{Binding HasPreviousSave}"
                                           Click="OnRevertMenuItemClick" />
                                 <MenuItem x:Name="DeleteMenuItem"
                                           Header="Delete"
+                                          MinHeight="{DynamicResource Berth.ControlHeight}"
+                                          AutomationProperties.Name="Delete"
                                           Click="OnDeleteMenuItemClick" />
                             </ContextMenu>
                         </Button.ContextMenu>

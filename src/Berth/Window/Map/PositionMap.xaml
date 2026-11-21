@@ -137,8 +137,9 @@
                              SelectionMode="Single"
                              SelectionChanged="OnMarkersSelectionChanged"
                              PreviewKeyDown="OnMarkersPreviewKeyDown"
+                             KeyboardNavigation.TabNavigation="Once"
                              ItemTemplateSelector="{StaticResource MarkerTemplateSelector}"
-                             AutomationProperties.Name="Icon positions">
+                             AutomationProperties.Name="Saved icon positions">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <Canvas IsItemsHost="True" />
@@ -160,6 +161,7 @@
                                 <Setter Property="VerticalContentAlignment" Value="Stretch" />
                                 <Setter Property="ToolTip" Value="{Binding DisplayName}" />
                                 <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
@@ -176,11 +178,39 @@
                                                            VerticalAlignment="Center"
                                                            IsHitTestVisible="False"
                                                            Visibility="Collapsed" />
+                                                <Rectangle x:Name="FocusRingOuter"
+                                                           Width="{DynamicResource Berth.MarkerFocusRingOuter}"
+                                                           Height="{DynamicResource Berth.MarkerFocusRingOuter}"
+                                                           RadiusX="{Binding Source={StaticResource Berth.RadiusMarkerFocusRingOuter}, Converter={StaticResource CornerRadiusToDouble}}"
+                                                           RadiusY="{Binding Source={StaticResource Berth.RadiusMarkerFocusRingOuter}, Converter={StaticResource CornerRadiusToDouble}}"
+                                                           Fill="Transparent"
+                                                           Stroke="{DynamicResource FocusStrokeColorOuterBrush}"
+                                                           StrokeThickness="{DynamicResource Berth.MarkerMovedStroke}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"
+                                                           Visibility="Collapsed" />
+                                                <Rectangle x:Name="FocusRingInner"
+                                                           Width="{DynamicResource Berth.MarkerFocusRingInner}"
+                                                           Height="{DynamicResource Berth.MarkerFocusRingInner}"
+                                                           RadiusX="{Binding Source={StaticResource Berth.RadiusMarkerFocusRingInner}, Converter={StaticResource CornerRadiusToDouble}}"
+                                                           RadiusY="{Binding Source={StaticResource Berth.RadiusMarkerFocusRingInner}, Converter={StaticResource CornerRadiusToDouble}}"
+                                                           Fill="Transparent"
+                                                           Stroke="{DynamicResource FocusStrokeColorInnerBrush}"
+                                                           StrokeThickness="{DynamicResource Berth.MarkerMissingStroke}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"
+                                                           Visibility="Collapsed" />
                                                 <ContentPresenter />
                                             </map:UnclippedMarkerHost>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsSelected" Value="True">
                                                     <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible" />
+                                                </Trigger>
+                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                    <Setter TargetName="FocusRingOuter" Property="Visibility" Value="Visible" />
+                                                    <Setter TargetName="FocusRingInner" Property="Visibility" Value="Visible" />
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>

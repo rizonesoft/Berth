@@ -10,7 +10,7 @@
         Height="{DynamicResource Berth.WindowDefaultHeight}"
         MinWidth="{DynamicResource Berth.WindowMinWidth}"
         MinHeight="{DynamicResource Berth.WindowMinHeight}">
-    <Grid x:Name="RootGrid">
+    <Grid x:Name="RootGrid" KeyboardNavigation.TabNavigation="Local">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="LayoutsColumn" Width="Auto" />
             <ColumnDefinition x:Name="DividerColumn" Width="Auto" />
@@ -20,7 +20,9 @@
         <ContentControl x:Name="LayoutsHost"
                         Grid.Column="0"
                         Width="{DynamicResource Berth.LayoutsPaneWidth}"
-                        Focusable="False">
+                        Focusable="False"
+                        KeyboardNavigation.TabNavigation="Local"
+                        KeyboardNavigation.TabIndex="0">
             <local:LayoutsPane x:Name="LayoutsPaneControl" />
         </ContentControl>
 
@@ -32,8 +34,10 @@
 
         <ContentControl x:Name="DetailHost"
                         Grid.Column="2"
-                        Focusable="False">
-            <Grid x:Name="DetailGrid">
+                        Focusable="False"
+                        KeyboardNavigation.TabNavigation="Local"
+                        KeyboardNavigation.TabIndex="1">
+            <Grid x:Name="DetailGrid" KeyboardNavigation.TabNavigation="Local">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -43,23 +47,31 @@
 
                 <local:DetailHeader x:Name="DetailHeaderControl"
                                     Grid.Row="0"
-                                    DataContext="{Binding Detail}" />
+                                    DataContext="{Binding Detail}"
+                                    KeyboardNavigation.TabNavigation="Local"
+                                    KeyboardNavigation.TabIndex="1" />
 
                 <ContentControl x:Name="NoticesHost"
                                 Grid.Row="1"
-                                Focusable="False">
+                                Focusable="False"
+                                KeyboardNavigation.TabNavigation="Local"
+                                KeyboardNavigation.TabIndex="0">
                     <local:Notices x:Name="NoticesControl" DataContext="{Binding Notices}" />
                 </ContentControl>
 
                 <ContentControl x:Name="MapHost"
                                 Grid.Row="2"
-                                Focusable="False">
+                                Focusable="False"
+                                KeyboardNavigation.TabNavigation="Local"
+                                KeyboardNavigation.TabIndex="2">
                     <map:PositionMap x:Name="PositionMapControl" />
                 </ContentControl>
 
                 <ContentControl x:Name="StatusHost"
                                 Grid.Row="3"
-                                Focusable="False">
+                                Focusable="False"
+                                KeyboardNavigation.TabNavigation="Local"
+                                KeyboardNavigation.TabIndex="3">
                     <local:StatusLine x:Name="StatusLineControl" DataContext="{Binding Status}" />
                 </ContentControl>
             </Grid>

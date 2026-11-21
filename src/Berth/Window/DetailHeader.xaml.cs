@@ -42,6 +42,14 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         menu.IsOpen = true;
     }
 
+    private void OnMoreMenuClosed(object sender, RoutedEventArgs e)
+    {
+        if (MoreButton.IsVisible && MoreButton.IsEnabled)
+        {
+            MoreButton.Focus();
+        }
+    }
+
     private Layout? ConsumeMenuTarget(DetailViewModel detail)
     {
         Layout? target = _menuTargetLayout ?? detail.SelectedSavedLayout;

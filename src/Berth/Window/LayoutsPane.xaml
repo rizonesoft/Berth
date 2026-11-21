@@ -38,6 +38,9 @@
                  SelectedItem="{Binding Selected, Mode=TwoWay}"
                  SelectionMode="Single"
                  SelectionChanged="OnSelectionChanged"
+                 PreviewKeyDown="OnLayoutsPreviewKeyDown"
+                 KeyboardNavigation.TabNavigation="Once"
+                 KeyboardNavigation.TabIndex="0"
                  BorderThickness="{DynamicResource Berth.Space.None}"
                  Background="Transparent"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -128,7 +131,8 @@
 
         <ContentControl x:Name="FooterHost"
                         Grid.Row="2"
-                        Focusable="False">
+                        Focusable="False"
+                        KeyboardNavigation.TabIndex="1">
             <local:SettingsPanel x:Name="SettingsPanelControl"
                                  DataContext="{Binding Settings}">
                 <local:SettingsPanel.Style>
