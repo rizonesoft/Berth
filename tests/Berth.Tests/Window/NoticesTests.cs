@@ -396,13 +396,21 @@ public sealed class NoticesTests(AppFixture appFixture)
                 Assert.True(window.NoticesControl.NoticesScrollViewer.ScrollableHeight > 0d);
                 Assert.True(window.PositionMapControl.ActualHeight >= 140d);
 
-                // Scrolling to bottom makes the last "Turn it off" button reachable and invocable!
+                // Scrolling to bottom makes the last "Turn it off" button reachable, invocable, and inside the scroll viewport!
                 window.NoticesControl.NoticesScrollViewer.ScrollToBottom();
                 window.RootGrid.UpdateLayout();
                 ContentPresenter lastContainer = (ContentPresenter)window.NoticesControl.NoticesItems.ItemContainerGenerator.ContainerFromIndex(8);
                 WpfButton lastButton = FindVisualChildren<WpfButton>(lastContainer).Single();
                 Assert.Equal("Turn it off", lastButton.Content);
                 Assert.True(lastButton.IsEnabled);
+
+                ScrollContentPresenter viewport = FindVisualChildren<ScrollContentPresenter>(window.NoticesControl.NoticesScrollViewer).Single();
+                Rect buttonInViewport = lastButton.TransformToAncestor(viewport)
+                    .TransformBounds(new Rect(0d, 0d, lastButton.ActualWidth, lastButton.ActualHeight));
+                Assert.True(
+                    buttonInViewport.Top >= -1d && buttonInViewport.Bottom <= viewport.ActualHeight + 1d
+                    && buttonInViewport.Left >= -1d && buttonInViewport.Right <= viewport.ActualWidth + 1d,
+                    $"Last notice button {buttonInViewport} lies outside scroll viewport {viewport.ActualWidth}x{viewport.ActualHeight}.");
             }
             finally
             {

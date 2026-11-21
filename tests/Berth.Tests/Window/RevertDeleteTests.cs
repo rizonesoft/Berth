@@ -121,6 +121,7 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
             Assert.Equal(StatusAction.None, vm.Status.Action);
             Assert.Contains("12 November", vm.Detail.Subtitle);
             Assert.Equal(100, vm.Comparison!.Icons.Single().Saved.X);
+            Assert.Equal(100, vm.Comparison!.Icons.Single().Saved.Y);
             Layout afterFirst = store.Find(key)!;
             Assert.Equal(Nov12, afterFirst.SavedAt);
             Assert.Equal(Nov18, afterFirst.Previous!.SavedAt);
@@ -131,6 +132,7 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
             Assert.Equal("Reverted to the save from 18 November.", vm.Status.Sentence);
             Assert.Contains("18 November", vm.Detail.Subtitle);
             Assert.Equal(500, vm.Comparison!.Icons.Single().Saved.X);
+            Assert.Equal(500, vm.Comparison!.Icons.Single().Saved.Y);
             Assert.Equal(Nov18, store.Find(key)!.SavedAt);
 
             // 3. Stale menu: layout without previous save -> NoPreviousSave with NO Retry; missing layout -> NoLayout with NO Retry!

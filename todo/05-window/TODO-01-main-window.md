@@ -487,6 +487,8 @@ The built `berth.exe`, running for real, driven through UI Automation on a probe
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*WindowSmokeTests"` passes on the build machine with auto arrange off, and fails when the "Restore" button is wired to the save command.
 
+> **Started:** 2026-11-21
+
 ## Verification
 
 - On the build machine, with the tray app running: every row of the SPEC §19 table has a render in `build/renders/`, and the smoke test saves, restores and undoes a probe icon through the real window.
