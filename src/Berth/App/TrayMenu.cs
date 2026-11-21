@@ -116,7 +116,7 @@ internal sealed class TrayMenu : IDisposable
         {
             lock (_sync)
             {
-                return _inFlightCount > 0;
+                return _activeOperations > 0;
             }
         }
     }

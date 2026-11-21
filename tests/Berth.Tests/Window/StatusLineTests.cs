@@ -477,6 +477,22 @@ public sealed class StatusLineTests(AppFixture appFixture)
 
         Assert.Equal("Working", vm.Status.Sentence);
         Assert.Equal(StatusAction.None, vm.Status.Action);
+
+        // Two overlapping tray completions while idle: older refused Save MUST NOT overwrite newer Restored result!
+        appFixture.Invoke(() => vm.Detail.SetExternalBusy(false));
+        desktop.ArmGate();
+        Task olderFailedSave = vm.OnExternalOperationFinishedAsync(
+            WindowOperationKind.Save,
+            OperationResult.Refused(Refusal.DesktopUnavailable));
+        await desktop.EnteredGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Task newerRestore = vm.OnExternalOperationFinishedAsync(
+            WindowOperationKind.Restore,
+            OperationResult.Restored("Laptop", 1, 1, 0, 0));
+        desktop.ReleaseGate();
+        await Task.WhenAll(olderFailedSave, newerRestore).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal("Restored 1 icon.", vm.Status.Sentence);
     }
 
     [Fact]
@@ -553,9 +569,40 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 await Task.Delay(25, TestContext.Current.CancellationToken);
             }
 
+            Assert.False(trayMenu!.IsOperationBusy);
             Assert.False(vm.Detail.IsBusy);
             Assert.Equal("Restored 1 icon.", vm.Status.Sentence);
             Assert.Equal(StatusAction.Undo, vm.Status.Action);
+
+            // 4. Opening a fresh window while ONLY RefreshState is pending MUST NOT show Working!
+            appFixture.Invoke(() =>
+            {
+                var composition2 = Composition.ForTest(
+                    paths,
+                    log,
+                    monitors,
+                    desktop,
+                    store,
+                    new OperationLock(paths, TimeSpan.FromSeconds(5)),
+                    service);
+                MainWindow w2 = TrayApp.CreateProductionMainWindow(
+                    (BerthApplication)System.Windows.Application.Current,
+                    settingsStore,
+                    composition2,
+                    monitors,
+                    new FixedClock(FixedNow),
+                    trayMenu);
+                try
+                {
+                    var vm2 = Assert.IsType<MainViewModel>(w2.DataContext);
+                    Assert.False(vm2.Detail.IsBusy);
+                    Assert.NotEqual("Working", vm2.Status.Sentence);
+                }
+                finally
+                {
+                    w2.CloseForShutdown();
+                }
+            });
 
             desktop.ReleaseAutoArrangeGate();
             await trayMenu!.LastRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);

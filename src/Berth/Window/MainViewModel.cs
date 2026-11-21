@@ -90,6 +90,7 @@ internal sealed class MainViewModel : ObservableObject
         };
         Detail.OperationCompleted += (request, result) =>
         {
+            Interlocked.Increment(ref _operationEpoch);
             if (!Detail.IsBusy)
             {
                 Status.SetResult(result, _lastCanUndo, request);
@@ -397,7 +398,7 @@ internal sealed class MainViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        long epoch = Volatile.Read(ref _operationEpoch);
+        long epoch = Interlocked.Increment(ref _operationEpoch);
         string? selectKey = kind == WindowOperationKind.Save && result.Done ? result.ArrangementKey : null;
         try
         {
