@@ -177,6 +177,8 @@ The plan's acceptance bar, checked line by line: every control, state and comman
 
 **Test checkpoint:** `python scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md` exits 0 (every SPEC item has a row and every row says `yes`), and exits 1 when a SPEC bullet is added without a row.
 
+> **Started:** 2026-11-21
+
 ## Verification
 
 - `pwsh scripts/check-all.ps1 -Published` passes on the build machine, the manual release workflow run is green, and the sweep table has no unproven row.
