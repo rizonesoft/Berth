@@ -32,6 +32,7 @@ internal sealed class TrayMenu : IDisposable
 
     private readonly Lock _sync = new();
     private int _inFlightCount;
+    private int _activeOperations;
     private long _openGeneration;
     private Task _lastRefreshTask = Task.CompletedTask;
     private bool _exiting;
@@ -442,7 +443,8 @@ internal sealed class TrayMenu : IDisposable
             }
 
             _inFlightCount++;
-            becameBusy = _inFlightCount == 1;
+            _activeOperations++;
+            becameBusy = _activeOperations == 1;
         }
 
         if (becameBusy)
@@ -474,7 +476,26 @@ internal sealed class TrayMenu : IDisposable
                     return;
                 }
 
+                bool abortedIdle;
+                lock (_sync)
+                {
+                    _activeOperations = Math.Max(0, _activeOperations - 1);
+                    abortedIdle = _activeOperations == 0 && !_disposed;
+                }
+
                 Action? drainCallback = CompleteInFlightWork();
+                if (abortedIdle)
+                {
+                    try
+                    {
+                        _marshal(() => OperationBusyChanged?.Invoke(false), static () => { });
+                    }
+                    catch (Exception)
+                    {
+                        // Dispatcher unavailable during shutdown.
+                    }
+                }
+
                 DispatchDrainOnUiThread(drainCallback);
             }
 
@@ -523,7 +544,8 @@ internal sealed class TrayMenu : IDisposable
             drainCallback = CompleteInFlightWork();
             lock (_sync)
             {
-                becameIdle = _inFlightCount == 0 && !_disposed;
+                _activeOperations = Math.Max(0, _activeOperations - 1);
+                becameIdle = _activeOperations == 0 && !_disposed;
             }
         }
 

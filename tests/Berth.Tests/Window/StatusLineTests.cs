@@ -339,27 +339,37 @@ public sealed class StatusLineTests(AppFixture appFixture)
                     Assert.True(sentenceBounds.Left >= 0d && sentenceBounds.Top >= 0d);
                     Assert.True(sentenceBounds.Bottom <= cardBounds.Height + 0.5d);
                     Assert.True(buttonBounds.Top >= 0d && buttonBounds.Bottom <= cardBounds.Height + 0.5d);
+                    Assert.True(buttonBounds.Right <= cardBounds.Right + 0.5d);
                     Assert.True(sentenceBounds.Right <= buttonBounds.Left + 0.5d);
                     Assert.Equal(Visibility.Visible, status.ActionButton.Visibility);
                     Assert.Equal(expectedActionText, status.ActionButton.Content);
                     Assert.True(status.ActionButton.Focusable);
                     Assert.True(System.Windows.Input.KeyboardNavigation.GetIsTabStop(status.ActionButton));
+                    Assert.NotNull(status.ActionButton.FocusVisualStyle);
+                    System.Windows.Input.FocusManager.SetFocusedElement(window, status.ActionButton);
+                    Assert.Same(status.ActionButton, System.Windows.Input.FocusManager.GetFocusedElement(window));
                 }
 
-                // 1. Long partial-restore with Undo at 760 DIP in Light, High Contrast, and 144 DPI (150% scale).
-                vm.Status.SetResult(OperationResult.Restored("Laptop", 42, 38, 2, 2), canUndo: true);
-                AssertBoundsAtMinWidth("Undo");
+                void SetUndoState() =>
+                    vm.Status.SetResult(OperationResult.Restored("Laptop", 42, 38, 2, 2), canUndo: true);
 
-                // 2. Long §18 write failure with Retry at 760 DIP in High Contrast and 144 DPI (150% scale).
                 var retryReq = new WindowOperationRequest(WindowOperationKind.Save, () => OperationResult.Saved("Laptop", 1, false));
-                vm.Status.SetResult(
-                    OperationResult.Failed(
-                        FailureKind.WriteFailed,
-                        @"C:\Users\Owner\AppData\Local\Berth\layouts\long-monitor-arrangement-key.json",
-                        "Access to the path is denied by another process"),
-                    canUndo: false,
-                    retryRequest: retryReq);
+                void SetRetryState() =>
+                    vm.Status.SetResult(
+                        OperationResult.Failed(
+                            FailureKind.WriteFailed,
+                            @"C:\Users\Owner\AppData\Local\Berth\layouts\long-monitor-arrangement-key.json",
+                            "Access to the path is denied by another process"),
+                        canUndo: false,
+                        retryRequest: retryReq);
 
+                // 1. Light theme at 760 DIP: both Undo and long §18 Retry.
+                SetUndoState();
+                AssertBoundsAtMinWidth("Undo");
+                SetRetryState();
+                AssertBoundsAtMinWidth("Retry");
+
+                // 2. High Contrast at 760 DIP: both Undo and long §18 Retry.
                 string hcPath = Path.Combine(data.Root, "status-min-hc.png");
                 string dpiPath = Path.Combine(data.Root, "status-min-150.png");
                 var berthApp = (BerthApplication)System.Windows.Application.Current;
@@ -367,6 +377,9 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 try
                 {
                     berthApp.ApplyColorTheme(ColorTheme.HighContrast);
+                    SetUndoState();
+                    AssertBoundsAtMinWidth("Undo");
+                    SetRetryState();
                     AssertBoundsAtMinWidth("Retry");
                     WindowRenderer.Render(window.RootGrid, 760, 560, hcPath, theme: null);
                 }
@@ -375,7 +388,11 @@ public sealed class StatusLineTests(AppFixture appFixture)
                     berthApp.ApplyColorTheme(savedTheme);
                 }
 
+                // 3. 144 DPI (150% scale) at 760 DIP: both Undo and long §18 Retry.
                 VisualTreeHelper.SetRootDpi(window.RootGrid, new DpiScale(1.5, 1.5));
+                SetUndoState();
+                AssertBoundsAtMinWidth("Undo");
+                SetRetryState();
                 AssertBoundsAtMinWidth("Retry");
                 WindowRenderer.Render(window.RootGrid, 760, 560, dpiPath, RenderTheme.Light);
                 Assert.True(new FileInfo(hcPath).Length > 0);
@@ -460,6 +477,129 @@ public sealed class StatusLineTests(AppFixture appFixture)
 
         Assert.Equal("Working", vm.Status.Sentence);
         Assert.Equal(StatusAction.None, vm.Status.Action);
+    }
+
+    [Fact]
+    public async Task OpeningTrayMenuDuringRestoreDoesNotLeaveWindowStuckOnWorking()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
+
+        var monitors = new FakeMonitors(MonSingle);
+        var innerDesktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 500, 500));
+        var desktop = new AutoArrangeGatedDesktopIcons(innerDesktop);
+        var log = new Log(paths, new FixedClock(FixedNow));
+        var settingsStore = new SettingsStore(paths);
+        LayoutService service = CreateService(paths, store, desktop, monitors);
+
+        TrayMenu? trayMenu = null;
+        MainWindow? window = null;
+        MainViewModel? vm = null;
+        var trayDone = new TaskCompletionSource<OperationResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            (window, trayMenu, vm) = appFixture.Invoke(() =>
+            {
+                var menu = new TrayMenu(
+                    service,
+                    store,
+                    monitors,
+                    desktop,
+                    settingsStore,
+                    log,
+                    (action, _) => System.Windows.Application.Current.Dispatcher.BeginInvoke(action));
+                var composition = Composition.ForTest(
+                    paths,
+                    log,
+                    monitors,
+                    desktop,
+                    store,
+                    new OperationLock(paths, TimeSpan.FromSeconds(5)),
+                    service);
+                MainWindow w = TrayApp.CreateProductionMainWindow(
+                    (BerthApplication)System.Windows.Application.Current,
+                    settingsStore,
+                    composition,
+                    monitors,
+                    new FixedClock(FixedNow),
+                    menu);
+                var boundVm = Assert.IsType<MainViewModel>(w.DataContext);
+                menu.OperationFinished += res => trayDone.TrySetResult(res);
+                return (w, menu, boundVm);
+            });
+
+            await vm!.RefreshAsync();
+            appFixture.Invoke(() => trayMenu!.RefreshState());
+            await trayMenu!.LastRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // 1. Start tray Restore and hold it in SetPositions.
+            desktop.ArmRestoreGate();
+            appFixture.Invoke(() => trayMenu!.Strip.Items[1].PerformClick()); // "Restore layout"
+            await desktop.EnteredRestoreGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // 2. While Restore is running, open the tray menu (RefreshState) and hold its background AutoArrange read open.
+            desktop.ArmAutoArrangeGate();
+            appFixture.Invoke(() => trayMenu!.RefreshState());
+            await desktop.EnteredAutoArrangeGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // 3. Let Restore finish while RefreshState is still in flight; busy MUST clear so window shows result + Undo!
+            desktop.ReleaseRestoreGate();
+            await trayDone.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            for (int i = 0; i < 40 && vm.Status.Sentence != "Restored 1 icon."; i++)
+            {
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+
+            Assert.False(vm.Detail.IsBusy);
+            Assert.Equal("Restored 1 icon.", vm.Status.Sentence);
+            Assert.Equal(StatusAction.Undo, vm.Status.Action);
+
+            desktop.ReleaseAutoArrangeGate();
+            await trayMenu!.LastRefreshTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            desktop.ReleaseRestoreGate();
+            desktop.ReleaseAutoArrangeGate();
+            appFixture.Invoke(() =>
+            {
+                window?.CloseForShutdown();
+                trayMenu?.Dispose();
+            });
+        }
+    }
+
+    [Fact]
+    public void SkippedCanUndoPollDoesNotEraseValidUndoButton()
+    {
+        var vm = new StatusViewModel(new FixedClock(FixedNow), TimeZoneInfo.Utc);
+        var layout = new Layout(
+            Layout.CurrentSchemaVersion,
+            ArrangementKey.From([MonSingle]),
+            "Laptop",
+            FixedNow,
+            [MonSingle],
+            [new IconPosition("id-1", "One", 100, 100)],
+            null);
+        LayoutRow row = LayoutRow.FromSaved(layout, isActive: true);
+        var desktop = new DesktopState([new IconPosition("id-1", "One", 100, 100)], [MonSingle], false, false, FixedNow);
+        LayoutComparison comparison = LayoutComparison.Compare(layout, desktop.Icons);
+
+        vm.SetComparison(row, comparison, ComparisonKind.Compared, desktop, canUndo: null);
+        vm.SetResult(OperationResult.Restored("Laptop", 1, 1, 0, 0), canUndo: true);
+        Assert.Equal(StatusAction.Undo, vm.Action);
+
+        // Unchanged poll where CanUndo was skipped (null) MUST keep Undo visible!
+        vm.SetComparison(row, comparison, ComparisonKind.Compared, desktop with { CheckedAt = FixedNow.AddSeconds(5) }, canUndo: null);
+        Assert.Equal(StatusAction.Undo, vm.Action);
+
+        // Measured false DOES clear dead Undo while keeping the sticky sentence.
+        vm.SetComparison(row, comparison, ComparisonKind.Compared, desktop with { CheckedAt = FixedNow.AddSeconds(10) }, canUndo: false);
+        Assert.Equal("Restored 1 icon.", vm.Sentence);
+        Assert.Equal(StatusAction.None, vm.Action);
     }
 
     [Fact]
@@ -735,6 +875,72 @@ public sealed class StatusLineTests(AppFixture appFixture)
         }
 
         public bool AutoArrange => ((IDesktopIcons)inner).AutoArrange;
+
+        public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
+    }
+
+    private sealed class AutoArrangeGatedDesktopIcons(FakeDesktopIcons inner) : IDesktopIcons
+    {
+        private TaskCompletionSource? _pendingAutoArrangeGate;
+        private TaskCompletionSource? _activeAutoArrangeGate;
+        private TaskCompletionSource? _pendingRestoreGate;
+        private TaskCompletionSource? _activeRestoreGate;
+
+        public TaskCompletionSource EnteredAutoArrangeGate { get; private set; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource EnteredRestoreGate { get; private set; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ArmAutoArrangeGate()
+        {
+            EnteredAutoArrangeGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeAutoArrangeGate = tcs;
+            _pendingAutoArrangeGate = tcs;
+        }
+
+        public void ReleaseAutoArrangeGate() => _activeAutoArrangeGate?.TrySetResult();
+
+        public void ArmRestoreGate()
+        {
+            EnteredRestoreGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeRestoreGate = tcs;
+            _pendingRestoreGate = tcs;
+        }
+
+        public void ReleaseRestoreGate() => _activeRestoreGate?.TrySetResult();
+
+        public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)inner).ReadIcons();
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions) => ((IDesktopIcons)inner).SetPositions(positions);
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions, Action beforeMove)
+        {
+            ((IDesktopIcons)inner).SetPositions(positions, beforeMove);
+            TaskCompletionSource? gate = Interlocked.Exchange(ref _pendingRestoreGate, null);
+            if (gate is not null)
+            {
+                EnteredRestoreGate.TrySetResult();
+                gate.Task.GetAwaiter().GetResult();
+            }
+        }
+
+        public bool AutoArrange
+        {
+            get
+            {
+                TaskCompletionSource? gate = Interlocked.Exchange(ref _pendingAutoArrangeGate, null);
+                if (gate is not null)
+                {
+                    EnteredAutoArrangeGate.TrySetResult();
+                    gate.Task.GetAwaiter().GetResult();
+                }
+
+                return ((IDesktopIcons)inner).AutoArrange;
+            }
+        }
 
         public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
     }

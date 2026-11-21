@@ -201,7 +201,7 @@ internal sealed class StatusViewModel : ObservableObject
         LayoutComparison? comparison,
         ComparisonKind kind,
         DesktopState desktop,
-        bool canUndo = false)
+        bool? canUndo = null)
     {
         string? newKey = selected?.Key;
         ComparisonSignature newSignature = ComparisonSignature.From(kind, comparison, desktop.Unavailable);
@@ -222,7 +222,7 @@ internal sealed class StatusViewModel : ObservableObject
             {
                 ClearStickyState();
             }
-            else if (_stickyAction == StatusAction.Undo && !canUndo)
+            else if (_stickyAction == StatusAction.Undo && canUndo == false)
             {
                 // Another Berth process consumed undo.json: preserve sticky sentence but drop the dead Undo button.
                 _stickyAction = StatusAction.None;

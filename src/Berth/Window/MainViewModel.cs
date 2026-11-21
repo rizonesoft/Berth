@@ -384,7 +384,7 @@ internal sealed class MainViewModel : ObservableObject
             storeReadError = ex.Message;
         }
 
-        bool canUndo = includeCanUndo && (_service?.CanUndo ?? false);
+        bool? canUndo = includeCanUndo ? (_service?.CanUndo ?? false) : null;
         return new RefreshSnapshot(currentKey, desktopState, layouts, unreadable, storeReadError, canUndo);
     }
 
@@ -441,7 +441,11 @@ internal sealed class MainViewModel : ObservableObject
         // while a post-operation target key takes priority until a usable snapshot contains that row.
         string? preferredKey = _pendingSelectedKey ?? _selected?.Key ?? _lastKnownSelectedKey;
 
-        _lastCanUndo = snapshot.CanUndo;
+        if (snapshot.CanUndo.HasValue)
+        {
+            _lastCanUndo = snapshot.CanUndo.Value;
+        }
+
         Desktop = snapshot.Desktop;
         Unreadable = snapshot.Unreadable;
         StoreReadError = snapshot.StoreReadError;
@@ -479,7 +483,7 @@ internal sealed class MainViewModel : ObservableObject
             // Transient folder-read failure: clear Selected while keeping _lastKnownSelectedKey for recovery.
             if (Set(ref _selected, null, nameof(Selected)))
             {
-                RebuildComparison();
+                RebuildComparison(snapshot.CanUndo);
             }
 
             return;
@@ -500,7 +504,7 @@ internal sealed class MainViewModel : ObservableObject
         }
         else
         {
-            RebuildComparison();
+            RebuildComparison(snapshot.CanUndo);
         }
     }
 
@@ -561,14 +565,14 @@ internal sealed class MainViewModel : ObservableObject
             ?? rows[0];
     }
 
-    private void RebuildComparison()
+    private void RebuildComparison(bool? measuredCanUndo = null)
     {
         if (_selected is null)
         {
             MapMonitors = [];
             ComparisonKind = ComparisonKind.None;
             Comparison = null;
-            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
+            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, measuredCanUndo);
             return;
         }
 
@@ -587,7 +591,7 @@ internal sealed class MainViewModel : ObservableObject
                 Comparison = LayoutComparison.Unsaved(_desktopState.Monitors, _desktopState.Icons);
             }
 
-            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
+            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, measuredCanUndo);
             return;
         }
 
@@ -604,7 +608,7 @@ internal sealed class MainViewModel : ObservableObject
             Comparison = LayoutComparison.Neutral(saved);
         }
 
-        Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
+        Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, measuredCanUndo);
     }
 
     private sealed record RefreshSnapshot(
@@ -613,5 +617,5 @@ internal sealed class MainViewModel : ObservableObject
         IReadOnlyList<Layout> Layouts,
         IReadOnlyList<UnreadableFile> Unreadable,
         string? StoreReadError,
-        bool CanUndo);
+        bool? CanUndo);
 }
