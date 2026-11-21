@@ -37,7 +37,7 @@ depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-rest
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Single-file self-contained publish | D05 T01 §14, D06 T01 §5 | [ ] |
+| 1 | §1 | Single-file self-contained publish | D05 T01 §14, D06 T01 §5 | [x] |
 | 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [ ] |
 | 3 | §3 | README for the built app with real screenshots | §1 | [ ] |
 | 4 | §4 | Changelog and third-party notices | §3 | [ ] |
@@ -61,11 +61,14 @@ One command, one file, proven by running the published file itself.
 - [x] Let `BerthProcess` and `RunningApp` take the executable from the environment variable `BERTH_EXE` when set, and add `-Published` to `scripts/check-all.ps1` that publishes, sets `BERTH_EXE` to `artifacts/berth.exe`, and runs the tests with traits `RealDesktop`, `Smoke` and `Published`, failing when the `Published` selection finds no test. Done when: `pwsh scripts/check-all.ps1 -Published` passes on the build machine and its output names at least one `Published` test. Cheaper substitute: assuming the single file behaves like the build output (embedded resources, the manifest and the icon can differ).
 - [x] Assert on the published file: its embedded manifest holds `consoleAllocationPolicy` and `PerMonitorV2`, its icon resource is present, and `berth.exe --version` prints `Berth 0.1.0`. Done when: a test with trait `Published` passes under `-Published`. Cheaper substitute: none needed.
 - [x] Record the published size in the README's "How is it built?" section as a measured fact with its date. Done when: the README names the size printed by the script. Cheaper substitute: an estimate.
-- [ ] Commit: `release: single-file self-contained publish`
+- [x] Commit: `release: single-file self-contained publish`
 
 **Test checkpoint:** `pwsh scripts/check-all.ps1 -Published` exits 0 on the build machine, and fails when `PublishSingleFile` is turned off (the process tests then cannot find a lone `artifacts/berth.exe`). **Corrected 2026-11-21:** the single-file check rejects extra files in `scripts/publish.ps1` with exit 1 before replacing `artifacts/berth.exe` and its `.sha256` sidecar or running the process tests.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §1 | fda1a10f96d465b78783acbf4959d7d689c548ad
+> **Review:** `docs/reviews/d07-t01-s1.json`
 
 ## 2. Release workflow on a version tag
 
