@@ -85,8 +85,11 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
             flags=re.MULTILINE,
         )
     ]
-    # HTML img/a attributes: src="..." and href="..."
-    html_targets = re.findall(r'(?:src|href)="([^"]+)"', markdown)
+    # HTML img/a attributes: src="..." / src='...' and href="..." / href='...'
+    html_targets = [
+        a or b
+        for a, b in re.findall(r'''(?:src|href)\s*=\s*(?:"([^"]+)"|'([^']+)')''', markdown)
+    ]
 
     workflow_url_re = re.compile(
         r"^https://github\.com/rizonesoft/Berth/actions/workflows/([^/?#]+?)(?:/badge\.svg)?(?:\?.*)?$"
@@ -121,8 +124,12 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     return errors
 
 
-def validate_png_bytes(data: bytes, label: str = "<bytes>") -> tuple[int, int]:
-    """Validate PNG signature, chunk CRCs, decompressed IDAT payload, and IEND, returning (width, height)."""
+def validate_png_bytes(
+    data: bytes,
+    label: str = "<bytes>",
+    expected_size: tuple[int, int] | None = None,
+) -> tuple[int, int]:
+    """Validate PNG signature, IHDR fields, chunk CRCs, bounded IDAT decompression, and IEND."""
     if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError(f"{label} is not a valid PNG")
     pos = 8
@@ -147,9 +154,23 @@ def validate_png_bytes(data: bytes, label: str = "<bytes>") -> tuple[int, int]:
         if tag == b"IHDR":
             if length != 13:
                 raise ValueError(f"{label} has invalid IHDR length {length}")
-            width, height, bit_depth, color_type = struct.unpack(">IIBB", payload[:10])
+            width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
+                ">IIBBBBB", payload
+            )
+            if compression != 0:
+                raise ValueError(f"{label} has invalid PNG compression method {compression}")
+            if filter_method != 0:
+                raise ValueError(f"{label} has invalid PNG filter method {filter_method}")
+            if interlace not in (0, 1):
+                raise ValueError(f"{label} has invalid PNG interlace method {interlace}")
+            if width <= 0 or height <= 0 or width > 4096 or height > 4096:
+                raise ValueError(f"{label} has out-of-range dimensions {width}x{height}")
+            if expected_size is not None and (width, height) != expected_size:
+                raise ValueError(f"{label} has dimensions {width}x{height}, expected {expected_size[0]}x{expected_size[1]}")
             saw_ihdr = True
         elif tag == b"IDAT":
+            if not saw_ihdr:
+                raise ValueError(f"{label} has IDAT before IHDR")
             idat_parts.append(payload)
         elif tag == b"IEND":
             saw_iend = True
@@ -174,8 +195,8 @@ def validate_png_bytes(data: bytes, label: str = "<bytes>") -> tuple[int, int]:
     return width, height
 
 
-def read_png_dimensions(path: Path) -> tuple[int, int]:
-    return validate_png_bytes(path.read_bytes(), str(path))
+def read_png_dimensions(path: Path, expected_size: tuple[int, int] | None = None) -> tuple[int, int]:
+    return validate_png_bytes(path.read_bytes(), str(path), expected_size=expected_size)
 
 
 class ReadmeTests(unittest.TestCase):
@@ -210,6 +231,11 @@ class ReadmeTests(unittest.TestCase):
         spaced_valid = "[guide](<README.md>)\n"
         self.assertEqual(check_readme_links(spaced_valid, ROOT), [])
 
+        single_quoted = "<img src='missing.png'>\n"
+        sq_errors = check_readme_links(single_quoted, ROOT)
+        self.assertEqual(len(sq_errors), 1)
+        self.assertIn("missing.png", sq_errors[0])
+
     def test_truncated_invalid_color_and_oversized_png_fail_decoder_check(self) -> None:
         light_path = ROOT / "docs" / "images" / "main-window-light.png"
         with self.assertRaises(ValueError):
@@ -223,6 +249,18 @@ class ReadmeTests(unittest.TestCase):
         bad_color_png = b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", bad_ihdr) + make_chunk(b"IDAT", zlib.compress(b"\x00" * 10)) + make_chunk(b"IEND", b"")
         with self.assertRaises(ValueError):
             validate_png_bytes(bad_color_png, "bad-color.png")
+
+        # Non-zero compression method must be rejected.
+        bad_comp_ihdr = struct.pack(">IIBBBBB", 2, 2, 8, 2, 1, 0, 0)
+        bad_comp_png = b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", bad_comp_ihdr) + make_chunk(b"IDAT", zlib.compress(b"\x00" * 14)) + make_chunk(b"IEND", b"")
+        with self.assertRaises(ValueError):
+            validate_png_bytes(bad_comp_png, "bad-comp.png")
+
+        # Huge declared dimensions must be rejected before IDAT decompression.
+        huge_ihdr = struct.pack(">IIBBBBB", 32768, 32768, 8, 2, 0, 0, 0)
+        huge_png = b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", huge_ihdr) + make_chunk(b"IDAT", zlib.compress(b"\x00" * 64)) + make_chunk(b"IEND", b"")
+        with self.assertRaises(ValueError):
+            validate_png_bytes(huge_png, "huge.png", expected_size=(980, 640))
 
         # Oversized decompressed payload must be rejected by the bounded decompressor.
         small_ihdr = struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)
@@ -264,8 +302,8 @@ class ReadmeTests(unittest.TestCase):
 
         light_path = ROOT / "docs" / "images" / "main-window-light.png"
         dark_path = ROOT / "docs" / "images" / "main-window-dark.png"
-        self.assertEqual(read_png_dimensions(light_path), (980, 640))
-        self.assertEqual(read_png_dimensions(dark_path), (980, 640))
+        self.assertEqual(read_png_dimensions(light_path, expected_size=(980, 640)), (980, 640))
+        self.assertEqual(read_png_dimensions(dark_path, expected_size=(980, 640)), (980, 640))
         self.assertNotEqual(light_path.read_bytes(), dark_path.read_bytes())
 
         for required_heading in (

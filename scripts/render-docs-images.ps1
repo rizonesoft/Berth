@@ -9,6 +9,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($RequireNative -and $PublishOnly) {
+    throw '-RequireNative cannot be combined with -PublishOnly.'
+}
+
 Add-Type -AssemblyName PresentationCore
 if (-not ('BerthDocsPathHelper' -as [type])) {
     Add-Type -TypeDefinition @"
@@ -176,12 +180,10 @@ try {
     }
 
     try {
-        # Clean up orphaned staging or backup files from any previously terminated publisher.
+        # Clean up orphaned staging or backup files from any previously terminated publisher (12-hex run IDs only).
         foreach ($name in $expected) {
-            foreach ($orphan in (Get-ChildItem -LiteralPath $resolvedDestDir -Filter "$name.*.next" -File)) {
-                Remove-Item -LiteralPath $orphan.FullName -Force
-            }
-            foreach ($orphan in (Get-ChildItem -LiteralPath $resolvedDestDir -Filter "$name.*.prev" -File)) {
+            $orphanPattern = '^' + [regex]::Escape($name) + '\.[0-9a-f]{12}\.(next|prev)$'
+            foreach ($orphan in (Get-ChildItem -LiteralPath $resolvedDestDir -File | Where-Object { $_.Name -match $orphanPattern })) {
                 Remove-Item -LiteralPath $orphan.FullName -Force
             }
         }

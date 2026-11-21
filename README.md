@@ -37,7 +37,7 @@ Windows forgets where your desktop icons were. Change the resolution, dock or un
 | Tray app | Single-instance tray icon (dark/light variants), context menu, failure balloon, Explorer recovery |
 | Main window | Layout list, monitor map with icon readout, Save/Restore/Undo/Revert/Rename/Delete, light/dark/HC |
 | Auto restore | When turned on, restores the active layout 3 seconds after display changes or Explorer restarts |
-| Command line | `save`, `restore`, `undo`, `list`, `--version`, and `--help` with documented console output and exit codes |
+| Command line | `save`, `restore`, `undo`, `list`, `--version`, `--help` with documented output and exit codes |
 | Single-file | Self-contained `win-x64` `berth.exe` with embedded manifest, icon and SHA-256 checksum sidecar |
 
 ## How do I install it?
@@ -84,7 +84,7 @@ Running `.\berth.exe save` replaces the saved layout for the current monitor arr
 
 ## How do I remove it?
 
-1. Open the Berth main window and turn off **Start with Windows** so Berth removes its `Run` registry value under your user account. If the switch returns to On with an error, stop and resolve that error before deleting Berth so Windows does not keep a stale sign-in entry.
+1. Open the Berth main window and turn off **Start with Windows** so Berth removes its `Run` registry value under your user account. If you previously moved `berth.exe`, the switch may read Off while an older entry remains: toggle it On then Off (or remove the `Berth` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). If the switch returns to On with an error, stop and resolve that error before deleting Berth so Windows does not keep a stale sign-in entry.
 2. Right-click the Berth tray icon and choose **Exit** (closing the window only hides Berth to the notification area).
 3. Delete `berth.exe` (and `berth.exe.sha256` if you kept it beside the executable).
 4. Delete `%APPDATA%\Berth` (your saved layouts and settings) and `%LOCALAPPDATA%\Berth` (the undo snapshot and log file). Deleting `%APPDATA%\Berth` permanently removes your saved layouts; keep that folder if you plan to reinstall Berth later.
