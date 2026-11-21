@@ -37,7 +37,7 @@ Windows forgets where your desktop icons were. Change the resolution, dock or un
 | Tray application | Single-instance notification-area icon (dark and light taskbar variants), context menu, failure balloon, Explorer-restart recovery |
 | Main window | Saved layouts list, active monitor map with icon readout, Restore, Save, Undo, Revert, Rename, Delete, inline notices, light/dark/high-contrast themes |
 | Automatic restore | Restores the active arrangement 3 seconds after display changes or Explorer restarts while enabled, and updates the open window and tray tooltip |
-| Command line | `save`, `restore`, `undo`, `list`, `--version`, and `--help` with documented one-line output and exit codes |
+| Command line | `save`, `restore`, `undo`, `list`, `--version`, and `--help` with documented console output and exit codes |
 | Single-file binary | Self-contained `win-x64` `berth.exe` with embedded manifest, icon and SHA-256 checksum sidecar |
 
 ## How do I install it?
@@ -86,7 +86,7 @@ From PowerShell or a script, run the same operations as commands from the folder
 
 1. Open the Berth main window and turn off **Start with Windows** so Berth removes its `Run` registry value under your user account.
 2. Right-click the Berth tray icon and choose **Exit** (closing the window only hides Berth to the notification area).
-3. Delete `berth.exe`.
+3. Delete `berth.exe` (and `berth.exe.sha256` if you kept it beside the executable).
 4. Delete `%APPDATA%\Berth` (your saved layouts and settings) and `%LOCALAPPDATA%\Berth` (the undo snapshot and log file). Deleting `%APPDATA%\Berth` permanently removes your saved layouts; keep that folder if you plan to reinstall Berth later.
 
 ## What does it look like?
