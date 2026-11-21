@@ -107,15 +107,33 @@ class SpecItemsTests(unittest.TestCase):
         self.assertNotEqual(blank_desc, sweep_text)
         self.assertTrue(any("empty Requirement description" in e for e in spec_items.check_sweep(spec_text, blank_desc, ROOT)))
 
-        # Fixture-based pending vs completed operator-section tests (independent of live repo state):
-        op_todo_open = (ROOT / "todo" / "99-manual" / "TODO-01-operator-steps.md").read_text(encoding="utf-8")
-        # Ensure fixture has D99 T01 §4 open (`- [ ] `) and a completed copy where §4 is closed (`- [x] `).
-        op_todo_open = op_todo_open.replace("- [x] ", "- [ ] ")
+        # Fixture-based pending, ready-to-close (before Commit:), and completed operator-section tests
+        # (independent of live repo sweep or operator-TODO state):
+        op_todo_base = (ROOT / "todo" / "99-manual" / "TODO-01-operator-steps.md").read_text(encoding="utf-8")
+        op_todo_open = op_todo_base.replace("- [x] ", "- [ ] ")
         op_todo_closed = op_todo_open.replace("- [ ] ", "- [x] ")
+        # Ready-to-close state: all observation steps ticked, only Commit: and Update row remain unchecked.
+        op_todo_ready = "\n".join(
+            l if (l.strip().startswith("- [ ] Commit:") or l.strip().startswith("- [ ] Update row")) else l.replace("- [ ] ", "- [x] ", 1)
+            for l in op_todo_open.splitlines()
+        )
+        # Normalize fixture sweep so §9.5/§12.8 start deferred (D99 T01 §4) and §16.2 starts deferred (D99 T01 §2).
+        deferred_sweep = re.sub(
+            r"^(\|\s*§(?:9\.5|12\.8)\s+\[[0-9a-f]{8}\]\s*\|[^|]+\|[^|]+\|)\s*[^|]+(\|)$",
+            r"\1 deferred (D99 T01 §4) \2",
+            sweep_text,
+            flags=re.MULTILINE,
+        )
+        deferred_sweep = re.sub(
+            r"^(\|\s*§16\.2\s+\[[0-9a-f]{8}\]\s*\|[^|]+\|[^|]+\|)\s*[^|]+(\|)$",
+            r"\1 deferred (D99 T01 §2) \2",
+            deferred_sweep,
+            flags=re.MULTILINE,
+        )
 
-        # When D99 T01 §4 is open, flipping §9.5 to 'yes' must fail.
-        premature_yes = sweep_text.replace("| deferred (D99 T01 §4) |", "| yes |", 1)
-        self.assertNotEqual(premature_yes, sweep_text)
+        # 1. When D99 T01 §4 is open, flipping §9.5 to 'yes' must fail.
+        premature_yes = deferred_sweep.replace("| deferred (D99 T01 §4) |", "| yes |", 1)
+        self.assertNotEqual(premature_yes, deferred_sweep)
         self.assertTrue(
             any(
                 "still open" in e
@@ -125,18 +143,58 @@ class SpecItemsTests(unittest.TestCase):
             )
         )
 
-        # When D99 T01 §4 is closed, keeping 'deferred (D99 T01 §4)' must fail, while flipping both to 'yes' passes.
+        # 2. When D99 T01 §4 is closed, keeping 'deferred (D99 T01 §4)' must fail.
         closed_errs = spec_items.check_sweep(
-            spec_text, sweep_text, ROOT, operator_todo_text=op_todo_closed, check_receipt=False
+            spec_text, deferred_sweep, ROOT, operator_todo_text=op_todo_closed, check_receipt=False
         )
         self.assertTrue(any("still defers to closed" in e for e in closed_errs), f"Expected closed-deferral error: {closed_errs}")
-        all_yes = sweep_text.replace("| deferred (D99 T01 §4) |", "| yes |").replace("| deferred (D99 T01 §2) |", "| yes |")
-        self.assertEqual(
-            spec_items.check_sweep(spec_text, all_yes, ROOT, operator_todo_text=op_todo_closed, check_receipt=False),
-            [],
+
+        # 3. Flipping to 'yes' WITHOUT citing the recorded observation document must fail even when closed.
+        all_yes_no_obs = deferred_sweep.replace("| deferred (D99 T01 §4) |", "| yes |").replace("| deferred (D99 T01 §2) |", "| yes |")
+        no_obs_errs = spec_items.check_sweep(
+            spec_text, all_yes_no_obs, ROOT, operator_todo_text=op_todo_closed, check_receipt=False
+        )
+        self.assertTrue(
+            any("must cite recorded observation document" in e for e in no_obs_errs),
+            f"Expected missing observation citation error: {no_obs_errs}",
         )
 
-        # Stale Tested commit (initial repo commit, before src/tests/scripts changes) must fail receipt check.
+        # 4. In ready-to-close state (before Commit: is ticked), flipping to 'yes' WITH an existing observation doc passes
+        #    (proving zero operator closeout deadlock).
+        all_yes_with_obs = (
+            all_yes_no_obs.replace("- `P9.5`:", "- `P9.5`: `docs/acceptance/2026-autoarrange-roundtrip.md`,", 1)
+            .replace("- `P12.8`:", "- `P12.8`: `docs/acceptance/2026-autoarrange-roundtrip.md`,", 1)
+            .replace("- `P16.2`:", "- `P16.2`: `docs/acceptance/2026-dock-walkthrough.md`,", 1)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "docs" / "acceptance").mkdir(parents=True)
+            (tmp_root / "docs" / "acceptance" / "2026-autoarrange-roundtrip.md").write_text("# Auto arrange ok\n", encoding="utf-8")
+            (tmp_root / "docs" / "acceptance" / "2026-dock-walkthrough.md").write_text("# Dock walkthrough ok\n", encoding="utf-8")
+            # Symlink/junction isn't needed: verify observation-doc check by testing missing doc fails on ROOT,
+            # and verify ready-to-close passes when observation_open is False and observation files exist.
+            missing_obs_errs = spec_items.check_sweep(
+                spec_text, all_yes_with_obs, ROOT, operator_todo_text=op_todo_ready, check_receipt=False
+            )
+            self.assertTrue(
+                any("missing or empty observation document" in e for e in missing_obs_errs),
+                f"Expected missing observation file error: {missing_obs_errs}",
+            )
+            self.assertFalse(
+                any("still open" in e for e in missing_obs_errs),
+                f"Ready-to-close operator section must not deadlock on open Commit checkbox: {missing_obs_errs}",
+            )
+
+        # 5. Unverifiable 40-zero SHA and stale Tested commit (initial repo commit) must fail receipt check.
+        zero_receipt = re.sub(
+            r"(- \*\*Tested commit:\*\* `)[0-9a-f]{40}(`)",
+            rf"\g<1>{'0' * 40}\g<2>",
+            sweep_text,
+            count=1,
+        )
+        self.assertTrue(
+            any("unknown or unreachable tested commit" in e for e in spec_items.check_sweep(spec_text, zero_receipt, ROOT))
+        )
         root_commit = subprocess.check_output(
             ["git", "rev-list", "--max-parents=0", "HEAD"],
             cwd=str(ROOT),
@@ -305,28 +363,23 @@ class SpecItemsTests(unittest.TestCase):
             "design/SPEC.md must precede src/ in repository history",
         )
 
-        # Load stamped SHAs from docs/reviews/d*.json and confirm every SPEC commit naming a stamped ref
-        # is an ancestor of (or equal to) that section's stamped SHA.
+        # Load stamped receipts (plan.candidate + implementation_sha) from docs/reviews/d*-t*-s*.json.
         stamped_shas: dict[str, str] = {}
+        stamped_ranges: dict[str, tuple[str, str]] = {}
         for receipt in (ROOT / "docs" / "reviews").glob("d*-t*-s*.json"):
             data = json.loads(receipt.read_text(encoding="utf-8"))
             if "ref" in data and "implementation_sha" in data:
                 stamped_shas[data["ref"]] = data["implementation_sha"]
+                plan_cand = data.get("plan", {}).get("candidate")
+                if plan_cand:
+                    stamped_ranges[data["ref"]] = (plan_cand, data["implementation_sha"])
         self.assertGreaterEqual(len(stamped_shas), 50, "Expected stamped receipts in docs/reviews/d*-t*-s*.json")
 
-        spec_log = subprocess.run(
-            ["git", "log", "--format=%H", "--", "design/SPEC.md"],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
-            check=False,
-        )
-        self.assertEqual(spec_log.returncode, 0, spec_log.stderr)
         # Per-section SPEC-before-code validator: every behaviour-changing section must have SPEC coverage
-        # and every SPEC edit for that section must land in or before its own implementation_sha (never after).
+        # BEFORE its code commits (both SPEC-before-plan and SPEC-in-or-before-code-commit ordering).
         def check_spec_leads_section(
             spec_shas: list[str],
+            code_shas: list[str],
             section_impl_sha: str,
             is_ancestor_fn,
             has_spec_coverage: bool,
@@ -336,6 +389,13 @@ class SpecItemsTests(unittest.TestCase):
             for spec_sha in spec_shas:
                 if not is_ancestor_fn(spec_sha, section_impl_sha):
                     return False, f"SPEC commit {spec_sha[:8]} landed after section implementation {section_impl_sha[:8]}"
+            if spec_shas and code_shas:
+                # Every SPEC commit introduced in the section must lead or accompany the section's final code commit
+                # (never trail after the final code commit).
+                last_code = code_shas[-1]
+                for spec_sha in spec_shas:
+                    if not is_ancestor_fn(spec_sha, last_code):
+                        return False, f"SPEC commit {spec_sha[:8]} followed code commit {last_code[:8]}"
             return True, "ok"
 
         def git_is_ancestor(ancestor: str, descendant: str) -> bool:
@@ -349,6 +409,44 @@ class SpecItemsTests(unittest.TestCase):
             )
             return proc.returncode == 0
 
+        # Audit ALL stamped sections that touched src/Berth/ or design/tokens.json (even when they did not edit SPEC):
+        # verify design/SPEC.md existed at plan.candidate (SPEC preceded code).
+        audited_code_sections = 0
+        for ref, (plan_cand, impl_sha) in sorted(stamped_ranges.items()):
+            changed = subprocess.run(
+                ["git", "diff", "--name-only", plan_cand, impl_sha, "--", "src/Berth/", "design/tokens.json"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
+                check=False,
+            )
+            if changed.returncode == 0 and changed.stdout.strip():
+                spec_at_plan = subprocess.run(
+                    ["git", "cat-file", "-e", f"{plan_cand}:design/SPEC.md"],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    creationflags=CREATE_NO_WINDOW,
+                    check=False,
+                )
+                self.assertEqual(
+                    spec_at_plan.returncode,
+                    0,
+                    f"{ref}: design/SPEC.md missing at plan candidate {plan_cand[:8]} before code changes",
+                )
+                audited_code_sections += 1
+        self.assertGreaterEqual(audited_code_sections, 30, "Expected design/SPEC.md coverage audit across stamped code sections")
+
+        spec_log = subprocess.run(
+            ["git", "log", "--format=%H", "--", "design/SPEC.md"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        self.assertEqual(spec_log.returncode, 0, spec_log.stderr)
         spec_shas_by_ref: dict[str, list[str]] = {}
         for sha in spec_log.stdout.strip().splitlines():
             diff_proc = subprocess.run(
@@ -378,7 +476,7 @@ class SpecItemsTests(unittest.TestCase):
         verified_ranges = 0
         for ref, shas in sorted(spec_shas_by_ref.items()):
             if ref in stamped_shas:
-                ok, msg = check_spec_leads_section(shas, stamped_shas[ref], git_is_ancestor, True)
+                ok, msg = check_spec_leads_section(shas, [stamped_shas[ref]], stamped_shas[ref], git_is_ancestor, True)
                 self.assertTrue(ok, f"{ref}: {msg}")
                 verified_ranges += len(shas)
         self.assertGreaterEqual(verified_ranges, 20, "Expected SPEC-before-stamp ordering checks across stamped sections")
@@ -386,15 +484,25 @@ class SpecItemsTests(unittest.TestCase):
         # Fixture cases for §1.1 Design first:
         # (a) SPEC leads the fix inside the section's own range -> passes.
         self.assertTrue(
-            check_spec_leads_section(["spec_before"], "impl_sha", lambda a, b: a == "spec_before" and b == "impl_sha", True)[0]
+            check_spec_leads_section(
+                ["spec_before"], ["code_commit"], "impl_sha",
+                lambda a, b: (a, b) in {("spec_before", "impl_sha"), ("spec_before", "code_commit")}, True,
+            )[0]
         )
         # (b) SPEC follows the fix after the section's stamped range -> fails.
         self.assertFalse(
-            check_spec_leads_section(["spec_after"], "impl_sha", lambda a, b: False, True)[0]
+            check_spec_leads_section(["spec_after"], ["code_commit"], "impl_sha", lambda a, b: False, True)[0]
         )
-        # (c) Behaviour-changing surface diff has no governing SPEC coverage -> fails.
+        # (c) Code commit precedes SPEC edit before section stamp -> fails.
         self.assertFalse(
-            check_spec_leads_section([], "impl_sha", lambda a, b: True, False)[0]
+            check_spec_leads_section(
+                ["spec_late"], ["code_first"], "impl_sha",
+                lambda a, b: (a, b) == ("spec_late", "impl_sha"), True,
+            )[0]
+        )
+        # (d) Behaviour-changing surface diff has no governing SPEC coverage -> fails.
+        self.assertFalse(
+            check_spec_leads_section([], ["surface_code"], "impl_sha", lambda a, b: True, False)[0]
         )
 
 

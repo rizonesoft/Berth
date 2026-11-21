@@ -405,6 +405,90 @@ public sealed class BerthApplicationTests(AppFixture appFixture)
         string logText = File.ReadAllText(crashPaths.LogFile);
         Assert.Contains(" FAIL DispatcherUnhandledException: Something went wrong: Isolated child dispatcher boom.", logText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ProductionControlsUseFluentStylesWithoutLocalTemplateOverrides()
+    {
+        appFixture.Invoke(() =>
+        {
+            var app = appFixture.App;
+            Type[] fluentControlTypes =
+            [
+                typeof(System.Windows.Controls.Button),
+                typeof(System.Windows.Controls.TextBox),
+                typeof(System.Windows.Controls.ListBox),
+                typeof(System.Windows.Controls.ListBoxItem),
+                typeof(System.Windows.Controls.ContextMenu),
+                typeof(System.Windows.Controls.Menu),
+                typeof(System.Windows.Controls.MenuItem),
+            ];
+            foreach (Type controlType in fluentControlTypes)
+            {
+                var style = Assert.IsType<Style>(app.TryFindResource(controlType));
+                Assert.Equal(controlType, style.TargetType);
+            }
+        });
+
+        string repoRoot = FindRepoRoot();
+        string srcDir = Path.Combine(repoRoot, "src", "Berth");
+        string[] xamlFiles = Directory
+            .GetFiles(srcDir, "*.xaml", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+                     && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Assert.NotEmpty(xamlFiles);
+
+        string[] protectedControls =
+        [
+            "Window",
+            "Menu",
+            "ContextMenu",
+            "MenuItem",
+            "TextBox",
+            "Button",
+            "CheckBox",
+            "ListBox",
+            "ListBoxItem",
+        ];
+        foreach (string xamlFile in xamlFiles)
+        {
+            string xaml = File.ReadAllText(xamlFile);
+            string fileName = Path.GetFileName(xamlFile);
+            Assert.DoesNotContain("WindowStyle=\"None\"", xaml, StringComparison.Ordinal);
+            foreach (string control in protectedControls)
+            {
+                // PositionMap.xaml uses a ListBoxItem ControlTemplate for SPEC §7 custom canvas icon markers;
+                // every standard list, menu, button, text box, dialog and window uses Fluent styles unchanged.
+                if (control == "ListBoxItem" && string.Equals(fileName, "PositionMap.xaml", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                Assert.DoesNotContain(
+                    $"<ControlTemplate TargetType=\"{control}\"",
+                    xaml,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    $"<ControlTemplate TargetType=\"{{x:Type {control}}}\"",
+                    xaml,
+                    StringComparison.Ordinal);
+            }
+        }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Berth.slnx")))
+            {
+                return dir.FullName;
+            }
+            dir = dir.Parent;
+        }
+        throw new InvalidOperationException("Could not locate Berth.slnx above test output directory.");
+    }
 }
 
 [Collection(DesktopCollectionDefinition.Name)]

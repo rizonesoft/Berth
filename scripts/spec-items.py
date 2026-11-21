@@ -26,6 +26,12 @@ DEFERRED_TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
     "§16.2": ("dock", "undock"),
 }
 
+DEFERRED_OBSERVATION_DOCS: dict[str, str] = {
+    "§9.5": "docs/acceptance/2026-autoarrange-roundtrip.md",
+    "§12.8": "docs/acceptance/2026-autoarrange-roundtrip.md",
+    "§16.2": "docs/acceptance/2026-dock-walkthrough.md",
+}
+
 
 @dataclass(frozen=True)
 class SpecItem:
@@ -175,8 +181,8 @@ def _collect_existing_test_names(repo_root: Path) -> dict[str, set[str]]:
     return cache
 
 
-def _parse_operator_sections(repo_root: Path, operator_todo_text: str | None = None) -> dict[int, tuple[str, bool]]:
-    """Return {section_number: (lowercase_body, is_open)} for todo/99-manual/TODO-01-operator-steps.md."""
+def _parse_operator_sections(repo_root: Path, operator_todo_text: str | None = None) -> dict[int, tuple[str, bool, bool]]:
+    """Return {section_number: (lowercase_body, observation_open, section_open)} for todo/99-manual/TODO-01-operator-steps.md."""
     if operator_todo_text is None:
         path = repo_root / "todo" / "99-manual" / "TODO-01-operator-steps.md"
         if not path.exists():
@@ -194,11 +200,16 @@ def _parse_operator_sections(repo_root: Path, operator_todo_text: str | None = N
                 cur = None
             else:
                 sections[cur].append(line)
-    result: dict[int, tuple[str, bool]] = {}
+    result: dict[int, tuple[str, bool, bool]] = {}
     for k, lines in sections.items():
         body = "\n".join(lines)
-        is_open = any(l.strip().startswith("- [ ] ") for l in lines)
-        result[k] = (body.lower(), is_open)
+        open_items = [l.strip() for l in lines if l.strip().startswith("- [ ] ")]
+        section_open = bool(open_items)
+        observation_open = any(
+            not item.startswith("- [ ] Commit:") and not item.startswith("- [ ] Update row")
+            for item in open_items
+        )
+        result[k] = (body.lower(), observation_open, section_open)
     return result
 
 
@@ -269,17 +280,6 @@ def _check_published_receipt(cleaned_sweep: str, repo_root: Path) -> list[str]:
         return errors
 
     tested_sha = commit_m.group(1)
-    shallow = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        creationflags=CREATE_NO_WINDOW,
-        check=False,
-    )
-    if shallow.returncode != 0 or shallow.stdout.strip() != "false":
-        return errors
-
     exists = subprocess.run(
         ["git", "cat-file", "-e", f"{tested_sha}^{{commit}}"],
         cwd=str(repo_root),
@@ -289,7 +289,7 @@ def _check_published_receipt(cleaned_sweep: str, repo_root: Path) -> list[str]:
         check=False,
     )
     if exists.returncode != 0:
-        errors.append(f"sweep header cites unknown tested commit {tested_sha}")
+        errors.append(f"sweep header cites unknown or unreachable tested commit {tested_sha} (fetch full git history)")
         return errors
 
     diff = subprocess.run(
@@ -383,13 +383,27 @@ def check_sweep(
         status = c3.strip()
         if status == "yes":
             if ref in DEFERRED_TOPIC_KEYWORDS:
-                # Reject 'yes' while the owning D99 T01 operator section is still open.
-                for op_sec, (body, is_open) in operator_sections.items():
-                    if is_open and all(kw in body for kw in DEFERRED_TOPIC_KEYWORDS[ref]):
+                # Reject 'yes' while the owning D99 T01 operator observation steps are still open.
+                for op_sec, (body, observation_open, _) in operator_sections.items():
+                    if observation_open and all(kw in body for kw in DEFERRED_TOPIC_KEYWORDS[ref]):
                         errors.append(
                             f"sweep row {ref} cannot be marked 'yes' while operator section D99 T01 §{op_sec} is still open"
                         )
                         break
+                # Completed operator-deferred rows must also cite and back up their recorded observation document.
+                obs_doc = DEFERRED_OBSERVATION_DOCS[ref]
+                raw_proof_sources = c2 + " " + " ".join(
+                    raw_line for raw_line in cleaned_sweep.splitlines()
+                    if any(f"`{pid}`:" in raw_line for pid in re.findall(r"`(P[0-9A-Za-z._-]+)`", c2))
+                )
+                if f"`{obs_doc}`" not in raw_proof_sources:
+                    errors.append(
+                        f"sweep row {ref} marked 'yes' must cite recorded observation document `{obs_doc}`"
+                    )
+                else:
+                    obs_path = repo_root / obs_doc
+                    if not obs_path.exists() or not obs_path.read_text(encoding="utf-8").strip():
+                        errors.append(f"sweep row {ref} cites missing or empty observation document `{obs_doc}`")
             errors.extend(_validate_citations(ref, c2, catalog, test_index, repo_root))
         else:
             dm = re.fullmatch(r"deferred \(D99 T01 §(\d+)\)", status)
@@ -403,13 +417,13 @@ def check_sweep(
                 elif ref not in DEFERRED_TOPIC_KEYWORDS:
                     errors.append(f"sweep row {ref} is not an approved operator-deferred item")
                 else:
-                    body, is_open = operator_sections[op_sec]
+                    body, _, section_open = operator_sections[op_sec]
                     keywords = DEFERRED_TOPIC_KEYWORDS[ref]
                     if not all(kw in body for kw in keywords):
                         errors.append(
                             f"sweep row {ref} defers to unrelated D99 T01 §{op_sec} (missing topic keywords {keywords})"
                         )
-                    elif not is_open:
+                    elif not section_open:
                         errors.append(
                             f"sweep row {ref} still defers to closed operator section D99 T01 §{op_sec}; update status to 'yes' with the recorded observation"
                         )

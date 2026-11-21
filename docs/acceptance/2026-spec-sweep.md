@@ -199,7 +199,7 @@
 
 - `P1.1`: `scripts/tests/test_spec_items.py::test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs`, `scripts/tests/test_spec_items.py::test_modifying_existing_spec_row_without_updating_sweep_fails`
 - `P1.2`: `tests/Berth.Tests/Theme/NoHexColourTests.cs::SourceTreeContainsNoHexColoursOrColorFromRgbCalls`, `scripts/tests/test_design_lint.py::test_auto_strict_for_token_contract_markers`
-- `P1.3`: `tests/Berth.Tests/App/BerthApplicationTests.cs::StartupMergesTokensWithFluentThemeRestylesLiveControlAndPreservesUnrelatedDictionaries`
+- `P1.3`: `tests/Berth.Tests/App/BerthApplicationTests.cs::StartupMergesTokensWithFluentThemeRestylesLiveControlAndPreservesUnrelatedDictionaries`, `tests/Berth.Tests/App/BerthApplicationTests.cs::ProductionControlsUseFluentStylesWithoutLocalTemplateOverrides`
 - `P1.4`: `tests/Berth.Tests/Window/LayoutsPaneTests.cs::RendersAllFiveSpec19LayoutsPaneStatesInLightAndDarkDifferentFromEmptyFrame`, `tests/Berth.Tests/Window/MarkerTests.cs::RendersAllEightSpec19MapStatesInLightAndDark`, `tests/Berth.Tests/Window/StatusLineTests.cs::RendersAllSpec8StatusRowsInLightAndDark`
 - `P1.5`: `tests/Berth.Tests/Window/MarkerTests.cs::TemplatesEachIconStateWithExactFillStrokeRadiiTooltipAutomationAndMovedLine`
 - `P1.6`: `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::RendersDataHighContrastWithOnlyStandInSystemColoursAndData150At1470x960`, `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::MinimumSize760x520FitsWorstCaseStringsWithoutClippingAcrossAllThemesAndScales`
