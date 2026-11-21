@@ -39,7 +39,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Message window for display change and Explorer restart | D04 T01 §5 | [x] |
 | 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [x] |
-| 3 | §3 | Failure balloon | §2, D04 T01 §7 | [ ] |
+| 3 | §3 | Failure balloon | §2, D04 T01 §7 | [x] |
 | 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [ ] |
 | 5 | §5 | Result shown in the open window and the tooltip | §2, D05 T01 §6 | [ ] |
 
@@ -125,6 +125,9 @@ The one notification Berth shows: an automatic restore that was refused or faile
 > **Started:** 2026-11-21T09:04Z
 
 **Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/06-auto/D06-T01-s3-chain1.md`.
+
+> **Verified:** 2026-11-21 | §3 | c77ebd4538c65e6ad731e0980e2d6e5e918cc8c0
+> **Review:** `docs/reviews/d06-t01-s3.json`
 
 ## 4. Tray icon added again after Explorer restarts
 
