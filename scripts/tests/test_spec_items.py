@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 import tempfile
@@ -89,11 +90,39 @@ class SpecItemsTests(unittest.TestCase):
         spec_text = SPEC_PATH.read_text(encoding="utf-8")
         sweep_text = SWEEP_PATH.read_text(encoding="utf-8")
 
-        # Commenting out the sweep table must fail.
+        # Commenting out the sweep table (closed or unclosed) must fail.
         commented = sweep_text.replace("| Ref | Requirement |", "<!--\n| Ref | Requirement |", 1).replace(
             "## Operator-owned", "-->\n\n## Operator-owned", 1
         )
         self.assertTrue(any("missing sweep row" in e for e in spec_items.check_sweep(spec_text, commented, ROOT)))
+
+        unclosed_comment = "<!--\n" + sweep_text
+        unclosed_errs = spec_items.check_sweep(spec_text, unclosed_comment, ROOT)
+        self.assertTrue(any("unclosed" in e for e in unclosed_errs))
+        self.assertTrue(any("missing sweep row" in e for e in unclosed_errs))
+
+        # Blank Requirement description cell must fail.
+        blank_desc = sweep_text.replace("| Design first: spec leads code |", "|  |", 1)
+        self.assertNotEqual(blank_desc, sweep_text)
+        self.assertTrue(any("empty Requirement description" in e for e in spec_items.check_sweep(spec_text, blank_desc, ROOT)))
+
+        # Prematurely flipping an open operator-deferred row (§9.5) to 'yes' must fail.
+        premature_yes = sweep_text.replace("| deferred (D99 T01 §4) |", "| yes |", 1)
+        self.assertNotEqual(premature_yes, sweep_text)
+        self.assertTrue(any("still open" in e for e in spec_items.check_sweep(spec_text, premature_yes, ROOT)))
+
+        # Citing a non-test C# method (like DesktopCollection.Dispose) must fail.
+        non_test_method = sweep_text.replace(
+            "EmbeddedTrayIconsLoadFromAssemblyAndContain16PxFrame",
+            "Dispose",
+            1,
+        ).replace(
+            "tests/Berth.Tests/App/TrayIconTests.cs::Dispose",
+            "tests/Berth.Tests/DesktopCollection.cs::Dispose",
+            1,
+        )
+        self.assertNotEqual(non_test_method, sweep_text)
+        self.assertTrue(any("missing test Dispose" in e for e in spec_items.check_sweep(spec_text, non_test_method, ROOT)))
 
         # Replacing a row's proof with 'TBD' must fail.
         with_tbd = sweep_text.replace("`P2.1`", "TBD", 1)
@@ -120,6 +149,26 @@ class SpecItemsTests(unittest.TestCase):
         bad_sym = sweep_text.replace("EmbeddedTrayIconsLoadFromAssemblyAndContain16PxFrame", "DeletedTestMethod", 1)
         self.assertNotEqual(bad_sym, sweep_text)
         self.assertTrue(any("missing test DeletedTestMethod" in e for e in spec_items.check_sweep(spec_text, bad_sym, ROOT)))
+
+    def test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs(self) -> None:
+        spec_text = SPEC_PATH.read_text(encoding="utf-8")
+        # Every Clarified / Corrected / Added / Deviation note in §2..§20 must carry an ISO date and a DNN TNN §N ref.
+        dated_note_re = re.compile(r"\b(?:Clarified|Corrected|Added|Deviation)\s+\d{4}-\d{2}-\d{2}\b[^.\n]*\bD\d{2}\s+T\d{2}\s+§\d+\b")
+        bare_note_re = re.compile(r"\b(?:Clarified|Corrected|Added|Deviation)\b")
+        body = spec_text.split("## 2. Brand and tokens", 1)[1]
+        checked = 0
+        for line_no, line in enumerate(body.splitlines(), start=1):
+            if bare_note_re.search(line):
+                self.assertRegex(
+                    line,
+                    dated_note_re,
+                    f"SPEC note at offset line {line_no} is missing ISO date or DNN TNN §N reference: {line}",
+                )
+                checked += 1
+        self.assertGreaterEqual(checked, 10, "Expected dated SPEC clarification/correction notes to be audited")
+
+        # Negative case: an undated deviation note fails the policy pattern.
+        self.assertIsNone(dated_note_re.search("Deviation: skipped without date or owner."))
 
 
 if __name__ == "__main__":

@@ -78,6 +78,7 @@ public sealed class SaveTests
         Assert.Equal(Three, stored.Icons);
         Assert.Equal(new DateTimeOffset(2026, 11, 15, 7, 14, 3, TimeSpan.Zero), stored.SavedAt);
         Assert.Null(stored.Previous);
+        Assert.Empty(rig.Desktop.Calls);
         Assert.Equal(["2026-11-15T07:14:03Z INFO Saved 3 icons to \"2 monitors\"."], rig.LogLines());
     }
 

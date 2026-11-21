@@ -197,13 +197,13 @@
 
 ## Proof catalog
 
-- `P1.1`: `scripts/tests/test_spec_items.py::test_modifying_existing_spec_row_without_updating_sweep_fails`
+- `P1.1`: `scripts/tests/test_spec_items.py::test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs`, `scripts/tests/test_spec_items.py::test_modifying_existing_spec_row_without_updating_sweep_fails`
 - `P1.2`: `tests/Berth.Tests/Theme/NoHexColourTests.cs::SourceTreeContainsNoHexColoursOrColorFromRgbCalls`, `scripts/tests/test_design_lint.py::test_auto_strict_for_token_contract_markers`
 - `P1.3`: `tests/Berth.Tests/App/BerthApplicationTests.cs::StartupMergesTokensWithFluentThemeRestylesLiveControlAndPreservesUnrelatedDictionaries`
 - `P1.4`: `tests/Berth.Tests/Window/LayoutsPaneTests.cs::RendersAllFiveSpec19LayoutsPaneStatesInLightAndDarkDifferentFromEmptyFrame`, `tests/Berth.Tests/Window/MarkerTests.cs::RendersAllEightSpec19MapStatesInLightAndDark`, `tests/Berth.Tests/Window/StatusLineTests.cs::RendersAllSpec8StatusRowsInLightAndDark`
 - `P1.5`: `tests/Berth.Tests/Window/MarkerTests.cs::TemplatesEachIconStateWithExactFillStrokeRadiiTooltipAutomationAndMovedLine`
 - `P1.6`: `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::RendersDataHighContrastWithOnlyStandInSystemColoursAndData150At1470x960`, `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::MinimumSize760x520FitsWorstCaseStringsWithoutClippingAcrossAllThemesAndScales`
-- `P1.7`: `scripts/tests/test_spec_items.py::test_rejects_commented_table_tbd_proof_wrong_owner_duplicate_and_missing_test`
+- `P1.7`: `scripts/tests/test_spec_items.py::test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs`
 - `P1.8`: `tests/Berth.Tests/Core/MessagesTests.cs::RefusalAndHelpersCoverEveryRowOfSpec18AndSpec10`, `tests/Berth.Tests/Core/FormatsTests.cs::CountsFormatSingularAndPluralAndRejectOutOfRange`
 - `P2.1`: `scripts/tests/test_readme.py::test_all_links_images_and_anchors_resolve`
 - `P2.2`: `tests/Berth.Tests/App/TrayIconTests.cs::EmbeddedTrayIconsLoadFromAssemblyAndContain16PxFrame`, `tests/Berth.Tests/App/TrayIconTests.cs::TrayIconSelectsSmallIconSizeMatchesDarkAndLightAssetsAndSwitchesLive`
@@ -215,7 +215,7 @@
 - `P3.4`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::MinWidthLongNameTrimsWithTooltipWrapsSubtitleAndMeets32PxControlHeight`, `tests/Berth.Tests/Window/StatusLineTests.cs::StatusLineWrapsLongSentenceCleanlyAtMinWidthHighContrastAnd150PercentScale`
 - `P3.5`: `tests/Berth.Tests/Core/FormatsTests.cs::WhenUsesLocalDatesAcrossMidnightInNonUtcZones`, `tests/Berth.Tests/Core/FormatsTests.cs::WhenGivesYesterdayPrecedenceAcrossNewYearAndAddsYearOtherwise`, `tests/Berth.Tests/Core/FormatsTests.cs::AllFormatsUseInvariantEnglishRegardlessOfCurrentCulture`
 - `P3.6`: `tests/Berth.Tests/Core/FormatsTests.cs::MonitorSizesOrdersAndJoinsWithMultiplicationSign`
-- `P3.7`: `tests/Berth.Tests/Core/UndoTests.cs::CanUndoLifecycleNeverTouchesTheDesktop`, `tests/Berth.Tests/Window/RevertDeleteTests.cs::RevertSwapsTwiceWithoutMovingDesktopShowsWorkingAndHandlesStaleRefusals`, `tests/Berth.Tests/Core/SaveTests.cs::AnUnreachableDesktopIsARefusalThatWritesNothing`, `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`
+- `P3.7`: `tests/Berth.Tests/Core/SaveTests.cs::AFirstSaveOnAFreshProfileWritesTheArrangementsLayout`, `tests/Berth.Tests/Core/UndoTests.cs::CanUndoLifecycleNeverTouchesTheDesktop`, `tests/Berth.Tests/Window/RevertDeleteTests.cs::RevertSwapsTwiceWithoutMovingDesktopShowsWorkingAndHandlesStaleRefusals`, `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`
 - `P3.8`: `tests/Berth.Tests/Core/BerthPathsTests.cs::ForRootPutsBothRootsUnderIt`, `tests/Berth.Tests/Desktop/RunValueTests.cs::SetWritesQuotedRegSzReadsBackAndDeletesCleanly`
 - `P4.1`: `tests/Berth.Tests/Window/MainWindowFrameTests.cs::FrameUsesSpecTitleIconTokensDividerAndPreservesLeftPaneOnResize`, `tests/Berth.Tests/Window/WindowPlacementTests.cs::StoredPlacementAppliesViaSetWindowPosAndNullOrOffScreenCentersOnPrimaryWorkArea`
 - `P4.2`: `tests/Berth.Tests/Window/MainWindowFrameTests.cs::FrameUsesSpecTitleIconTokensDividerAndPreservesLeftPaneOnResize`
@@ -377,7 +377,7 @@
 - `P19.6`: `tests/Berth.Tests/Window/RenameTests.cs::RendersAllFourSpec19RenameDialogStatesInLightAndDarkAndHighContrast150`, `tests/Berth.Tests/Window/RevertDeleteTests.cs::RendersDeleteDialogInLightAndDarkAndVerifies40CharNameAt150PercentHighContrast`
 - `P19.7`: `tests/Berth.Tests/App/TrayIconTests.cs::TrayIconSelectsSmallIconSizeMatchesDarkAndLightAssetsAndSwitchesLive`, `tests/Berth.Tests/App/TrayMenuTests.cs::OpeningRefreshesRestoreEnabledAndAutoCheckedOnSameMenuInstance`
 
-- `P20.1`: `scripts/tests/test_readme.py::test_readme_screenshots_badge_sections_and_limits`, `tests/Berth.Tests/Architecture/LayerRuleTests.cs::CoreUsesOnlyCoreAndTheBaseRuntime`
+- `P20.1`: `scripts/tests/test_readme.py::test_readme_screenshots_badge_sections_and_limits`, `tests/Berth.Tests/App/AutoRestoreTests.cs::NoLayoutForCurrentArrangementIsSilentCreatesNoLayoutAndLeavesUndoUntouched`, `tests/Berth.Tests/Core/LayoutStoreTests.cs::LayoutsSurviveInAFreshStoreWithEveryValue`, `tests/Berth.Tests/Release/PublishedTests.cs::PublishedExecutableHasValidChecksumManifestIconAndRunsWithoutSharedDotnetRuntime`, `tests/Berth.Tests/Architecture/LayerRuleTests.cs::CoreUsesOnlyCoreAndTheBaseRuntime`
 
 ## Operator-owned live-hardware observations
 
