@@ -48,7 +48,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 9 | §9 | Revert to previous save and delete | §8 | [x] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [x] |
-| 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [ ] |
+| 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [x] |
 | 13 | §13 | High contrast and 150% scale | §12 | [ ] |
 | 14 | §14 | UI Automation smoke of the running window | §13 | [ ] |
 
@@ -417,19 +417,22 @@ Every control reachable and named, and the map readable as a list (SPEC §3, §7
 1. Set tab order and names. Done when: a walk of the automation tree finds a name on every control.
 2. Name the map's items. Done when: each reads as SPEC §7 says.
 
-- [ ] Set the tab order: layouts list, the two switches, notices' buttons, `Restore`, `Save current layout`, `More`, the map, the status action. Done when: a test moves focus with `MoveFocus(Next)` from the first element and records exactly that order. Cheaper substitute: relying on declaration order, which the two hosts break.
-- [ ] Give every interactive control an `AutomationProperties.Name`, and the map list the name `Saved icon positions`. Done when: a test walks the `AutomationPeer` tree of the window and fails on any `Button`, `ListBox`, `ListBoxItem`, `TextBox` or switch with an empty name. Cheaper substitute: names only on the icon-only button.
-- [ ] Name each marker `Notes.txt, x 1436, y 702, monitor 1, in place` (the state word omitted for neutral markers, `off screen` added when flagged), and order the items in reading order. Done when: a test reads the names of three markers and the order of five. Cheaper substitute: the readout's dotted format, which a screen reader reads as "dot".
-- [ ] Arrow keys move the selection in the layouts list and in the map (up and down through reading order; left and right do the same), and `Home` and `End` go to the first and last. Done when: a test sends the keys to each list and reads the selected item. Cheaper substitute: none needed.
-- [ ] Check every interactive control is at least `Berth.ControlHeight` (32 px) high at 100% scale, except map markers, whose target must be exactly `Berth.MarkerTarget` (19 px) square (SPEC §3). Done when: a test measures them, fails on a smaller control, and fails on a marker target that is not 19 px. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/AccessibilityTests.cs`. Done when: all pass, and the name test fails when the `More` button's name is removed. Cheaper substitute: none needed.
-- [ ] Commit: `window: keyboard order and automation names`
+- [x] Set the tab order: layouts list, the two switches, notices' buttons, `Restore`, `Save current layout`, `More`, the map, the status action. Done when: a test moves focus with `MoveFocus(Next)` from the first element and records exactly that order. Cheaper substitute: relying on declaration order, which the two hosts break.
+- [x] Give every interactive control an `AutomationProperties.Name`, and the map list the name `Saved icon positions`. Done when: a test walks the `AutomationPeer` tree of the window and fails on any `Button`, `ListBox`, `ListBoxItem`, `TextBox` or switch with an empty name. Cheaper substitute: names only on the icon-only button.
+- [x] Name each marker `Notes.txt, x 1436, y 702, monitor 1, in place` (the state word omitted for neutral markers, `off screen` added when flagged), and order the items in reading order. Done when: a test reads the names of three markers and the order of five. Cheaper substitute: the readout's dotted format, which a screen reader reads as "dot".
+- [x] Arrow keys move the selection in the layouts list and in the map (up and down through reading order; left and right do the same), and `Home` and `End` go to the first and last. Done when: a test sends the keys to each list and reads the selected item. Cheaper substitute: none needed.
+- [x] Check every interactive control is at least `Berth.ControlHeight` (32 px) high at 100% scale, except map markers, whose target must be exactly `Berth.MarkerTarget` (19 px) square (SPEC §3). Done when: a test measures them, fails on a smaller control, and fails on a marker target that is not 19 px. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/AccessibilityTests.cs`. Done when: all pass, and the name test fails when the `More` button's name is removed. Cheaper substitute: none needed.
+- [x] Commit: `window: keyboard order and automation names`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*AccessibilityTests"` passes, and fails when the "More" button has no automation name.
 
 > **Started:** 2026-11-21T05:50Z
 
 **Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/05-window/D05-T01-s12-chain1.md`.
+
+> **Verified:** 2026-11-21 | §12 | 412503eecb1d8567ace6f4ff208ce33a9a30ca30
+> **Review:** `docs/reviews/d05-t01-s12.json`
 
 ## 13. High contrast and 150% scale
 

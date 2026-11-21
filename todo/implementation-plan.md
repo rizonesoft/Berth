@@ -118,7 +118,7 @@ Sections: 14 | Checklist items: 100
 | [x]    | D05 T01 §9  | Revert to previous save and delete        | windows-host, display-session | 7     |
 | [x]    | D05 T01 §10 | Start with Windows registry value         | none                          | 4     |
 | [x]    | D05 T01 §11 | Settings switches and version caption     | windows-host, display-session | 6     |
-| [ ]    | D05 T01 §12 | Keyboard order and automation names       | windows-host, display-session | 7     |
+| [x]    | D05 T01 §12 | Keyboard order and automation names       | windows-host, display-session | 7     |
 | [ ]    | D05 T01 §13 | High contrast and 150% scale              | windows-host, display-session | 6     |
 | [ ]    | D05 T01 §14 | UI Automation smoke of the running window | windows-host, display-session | 6     |
 
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 71/88 verified sections, 1 ready to run now.
+Progress: 72/88 verified sections, 1 ready to run now.
 
-Checklist: 430/521 items completed (includes Commit items).
+Checklist: 437/521 items completed (includes Commit items).
