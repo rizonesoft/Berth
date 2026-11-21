@@ -231,62 +231,107 @@ internal sealed class MapSurface : FrameworkElement
         double maxY = Math.Max(0d, viewportHeight - height);
         double clampedPreferred = Math.Clamp(preferredY, 0d, maxY);
 
-        // Pass 1: try preferred spacing (gap) plus viewport boundaries.
-        if (TryPickFreeY(x, clampedPreferred, width, height, gap, maxY, placed) is { } withGap)
-        {
-            return new Rect(x, withGap, width, height);
-        }
-
-        // Pass 2: relax the gap down to 0 DIP before ever accepting an overlap.
-        if (gap > 0d && TryPickFreeY(x, clampedPreferred, width, height, 0d, maxY, placed) is { } tight)
-        {
-            return new Rect(x, tight, width, height);
-        }
-
-        return new Rect(x, clampedPreferred, width, height);
-    }
-
-    private static double? TryPickFreeY(
-        double x,
-        double preferredY,
-        double width,
-        double height,
-        double gap,
-        double maxY,
-        IReadOnlyList<Rect> placed)
-    {
-        var candidatesY = new List<double> { preferredY, 0d, maxY };
+        // Build merged blocked vertical intervals for all previously placed labels overlapping [x, x + width].
+        var blocked = new List<(double Top, double Bottom)>();
         foreach (Rect prev in placed)
         {
-            if (prev.Right <= x || prev.Left >= x + width)
+            if (prev.Right > x && prev.Left < x + width)
             {
-                continue;
-            }
-
-            double above = prev.Top - height - gap;
-            if (above >= 0d && above <= maxY)
-            {
-                candidatesY.Add(above);
-            }
-
-            double below = prev.Bottom + gap;
-            if (below >= 0d && below <= maxY)
-            {
-                candidatesY.Add(below);
+                double top = Math.Clamp(prev.Top, 0d, viewportHeight);
+                double bottom = Math.Clamp(prev.Bottom, 0d, viewportHeight);
+                if (bottom > top)
+                {
+                    blocked.Add((top, bottom));
+                }
             }
         }
 
-        candidatesY.Sort((a, b) => Math.Abs(a - preferredY).CompareTo(Math.Abs(b - preferredY)));
-        foreach (double y in candidatesY)
+        blocked.Sort((a, b) => a.Top.CompareTo(b.Top));
+        var merged = new List<(double Top, double Bottom)>(blocked.Count);
+        foreach ((double top, double bottom) in blocked)
         {
-            var rect = new Rect(x, y, width, height);
-            if (!placed.Any(p => p.IntersectsWith(rect)))
+            if (merged.Count > 0 && top <= merged[^1].Bottom)
             {
-                return y;
+                merged[^1] = (merged[^1].Top, Math.Max(merged[^1].Bottom, bottom));
+            }
+            else
+            {
+                merged.Add((top, bottom));
             }
         }
 
-        return null;
+        // Complement merged blocked intervals inside [0, viewportHeight] to obtain exact open free intervals.
+        var free = new List<(double Start, double End)>(merged.Count + 1);
+        double cursor = 0d;
+        foreach ((double top, double bottom) in merged)
+        {
+            if (top > cursor)
+            {
+                free.Add((cursor, top));
+            }
+
+            cursor = Math.Max(cursor, bottom);
+        }
+
+        if (viewportHeight > cursor)
+        {
+            free.Add((cursor, viewportHeight));
+        }
+
+        // Pass 1: choose the closest position that preserves the full gap against neighboring labels.
+        double? bestWithGap = null;
+        double bestWithGapDist = double.PositiveInfinity;
+        foreach ((double start, double end) in free)
+        {
+            double lo = start > 0d ? start + gap : 0d;
+            double hi = end < viewportHeight ? end - gap - height : end - height;
+            if (lo <= hi)
+            {
+                double y = Math.Clamp(clampedPreferred, lo, hi);
+                double dist = Math.Abs(y - clampedPreferred);
+                if (dist < bestWithGapDist)
+                {
+                    bestWithGapDist = dist;
+                    bestWithGap = y;
+                }
+            }
+        }
+
+        if (bestWithGap is { } yGap)
+        {
+            return new Rect(x, yGap, width, height);
+        }
+
+        // Pass 2: choose the closest position in any free interval >= height, splitting available slack evenly as margin.
+        double? bestTight = null;
+        double bestTightDist = double.PositiveInfinity;
+        foreach ((double start, double end) in free)
+        {
+            double slack = (end - start) - height;
+            if (slack >= 0d)
+            {
+                bool hasTopNeighbor = start > 0d;
+                bool hasBottomNeighbor = end < viewportHeight;
+                double neighborSides = (hasTopNeighbor ? 1d : 0d) + (hasBottomNeighbor ? 1d : 0d);
+                double margin = neighborSides > 0d ? Math.Min(gap, slack / neighborSides) : 0d;
+                double lo = hasTopNeighbor ? start + margin : start;
+                double hi = hasBottomNeighbor ? end - margin - height : end - height;
+                if (lo > hi)
+                {
+                    lo = hi = start + (slack / 2d);
+                }
+
+                double y = Math.Clamp(clampedPreferred, lo, hi);
+                double dist = Math.Abs(y - clampedPreferred);
+                if (dist < bestTightDist)
+                {
+                    bestTightDist = dist;
+                    bestTight = y;
+                }
+            }
+        }
+
+        return new Rect(x, bestTight ?? clampedPreferred, width, height);
     }
 
     private double ResolveLabelGap() =>

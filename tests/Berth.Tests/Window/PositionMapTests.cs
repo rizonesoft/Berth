@@ -254,6 +254,24 @@ public sealed class PositionMapTests(AppFixture appFixture)
         Assert.Equal(0d, placed.Top, precision: 6);
         Assert.False(placed.IntersectsWith(existing));
         Assert.True(placed.Top >= 0d && placed.Bottom <= 34d);
+
+        // Interior tight gap: 50-DIP viewport, 16-DIP label, 4-DIP gap, existing labels at [0..16] and [34..50]:
+        // Pass 1 (full 4-DIP gap on both sides) cannot fit, so Pass 2 must place at Y=17 leaving 1 DIP clear on both sides!
+        Rect top = new(0, 0, 100, 16);
+        Rect bottom = new(0, 34, 100, 16);
+        Rect interior = MapSurface.FindFreeLabelRect(
+            x: 0,
+            preferredY: 0,
+            width: 100,
+            height: 16,
+            gap: 4,
+            viewportHeight: 50,
+            placed: [top, bottom]);
+
+        Assert.Equal(17d, interior.Top, precision: 6);
+        Assert.Equal(33d, interior.Bottom, precision: 6);
+        Assert.False(interior.IntersectsWith(top));
+        Assert.False(interior.IntersectsWith(bottom));
     }
 
     [Fact]
