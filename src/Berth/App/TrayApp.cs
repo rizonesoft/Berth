@@ -338,7 +338,7 @@ internal static class TrayApp
                 systemEvents.ExplorerRestarted -= OnExplorerRestarted;
                 systemEvents.SettingChanged -= OnSettingChanged;
                 systemEvents.Dispose();
-                autoRestore.DisposeAndWait(TimeSpan.FromSeconds(5));
+                autoRestore.Dispose();
             }
         }
         catch (Exception ex)

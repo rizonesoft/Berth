@@ -262,12 +262,16 @@ public sealed class AutoRestoreTests
         clock.Advance(TimeSpan.FromSeconds(1)); // t=4s
         auto.Trigger("Explorer restart", TimeSpan.FromSeconds(5));
 
-        // First restore finishes at t=6s (3s remaining until t=9s).
+        // Jump UTC wall clock forward by +2 hours while the restore runs: monotonic quiet time must NOT be affected!
+        clock.AdvanceWallClock(TimeSpan.FromHours(2));
+
+        // First restore finishes at t=6s monotonic (3s remaining until t=9s).
         clock.Advance(TimeSpan.FromSeconds(2)); // t=6s
         gate.TrySetResult();
         await firstFinished.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await timers.WaitForTimerCountAsync(2, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        // Follow-up timer must be armed for 3s (remaining to t=9s), NOT a full 5s!
+        // Follow-up timer must be armed for 3s (remaining to t=9s), NOT a full 5s and NOT 0s from the +2h UTC jump!
         Assert.Equal(2, timers.Created.Count);
         Assert.Equal(TimeSpan.FromSeconds(3), timers.Created[1].DueTime);
 
@@ -306,10 +310,11 @@ public sealed class AutoRestoreTests
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         auto.Trigger("Explorer restart", TimeSpan.FromSeconds(2));
-        // Advance 5 seconds past the 2-second deadline while restore is still running!
+        // Advance 5 seconds monotonic past the 2-second deadline while restore is still running!
         clock.Advance(TimeSpan.FromSeconds(5));
         gate.TrySetResult();
         await thirdFinished.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await timers.WaitForTimerCountAsync(4, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         Assert.Equal(TimeSpan.Zero, timers.Created[^1].DueTime);
         timers.FireDue();
@@ -352,37 +357,99 @@ public sealed class AutoRestoreTests
     private sealed class ManualClock(DateTimeOffset start) : TimeProvider
     {
         private DateTimeOffset _now = start;
-        public void Advance(TimeSpan delta) => _now += delta;
+        private long _monotonicTicks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public void Advance(TimeSpan delta)
+        {
+            _now += delta;
+            _monotonicTicks += delta.Ticks;
+        }
+
+        public void AdvanceWallClock(TimeSpan delta) => _now += delta;
+
         public override DateTimeOffset GetUtcNow() => _now;
+
+        public override long GetTimestamp() => _monotonicTicks;
     }
 
     private sealed class FakeTimerFactory(ManualClock clock) : ITimerFactory
     {
+        private readonly Lock _sync = new();
+        private readonly List<(int Target, TaskCompletionSource Tcs)> _waiters = [];
+
         public List<FakeTimer> Created { get; } = [];
 
         public IOneShotTimer Create(TimeSpan dueTime, Action callback)
         {
-            var timer = new FakeTimer(dueTime, clock.GetUtcNow() + dueTime, callback);
-            Created.Add(timer);
+            var timer = new FakeTimer(dueTime, clock.GetTimestamp() + dueTime.Ticks, callback);
+            List<TaskCompletionSource>? toSignal = null;
+            lock (_sync)
+            {
+                Created.Add(timer);
+                int count = Created.Count;
+                for (int i = _waiters.Count - 1; i >= 0; i--)
+                {
+                    if (count >= _waiters[i].Target)
+                    {
+                        toSignal ??= [];
+                        toSignal.Add(_waiters[i].Tcs);
+                        _waiters.RemoveAt(i);
+                    }
+                }
+            }
+
+            if (toSignal is not null)
+            {
+                foreach (TaskCompletionSource tcs in toSignal)
+                {
+                    tcs.TrySetResult();
+                }
+            }
+
             return timer;
+        }
+
+        public Task WaitForTimerCountAsync(int expectedCount, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            TaskCompletionSource tcs;
+            lock (_sync)
+            {
+                if (Created.Count >= expectedCount)
+                {
+                    return Task.CompletedTask;
+                }
+
+                tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _waiters.Add((expectedCount, tcs));
+            }
+
+            return tcs.Task.WaitAsync(timeout, cancellationToken);
         }
 
         public void FireDue()
         {
-            DateTimeOffset now = clock.GetUtcNow();
-            foreach (FakeTimer timer in Created.ToList())
+            long now = clock.GetTimestamp();
+            List<FakeTimer> snapshot;
+            lock (_sync)
             {
-                if (!timer.Cancelled && !timer.Fired && timer.Deadline <= now)
+                snapshot = [.. Created];
+            }
+
+            foreach (FakeTimer timer in snapshot)
+            {
+                if (!timer.Cancelled && !timer.Fired && timer.DeadlineTicks <= now)
                 {
                     timer.Fire();
                 }
             }
         }
 
-        public sealed class FakeTimer(TimeSpan dueTime, DateTimeOffset deadline, Action callback) : IOneShotTimer
+        public sealed class FakeTimer(TimeSpan dueTime, long deadlineTicks, Action callback) : IOneShotTimer
         {
             public TimeSpan DueTime { get; } = dueTime;
-            public DateTimeOffset Deadline { get; } = deadline;
+            public long DeadlineTicks { get; } = deadlineTicks;
             public bool Cancelled { get; private set; }
             public bool Fired { get; private set; }
 
@@ -401,7 +468,7 @@ public sealed class AutoRestoreTests
 }
 
 [Collection(DesktopCollectionDefinition.Name)]
-public sealed class AutoRestoreTrayIntegrationTests
+public sealed class TrayAutoRestoreTests
 {
     [Fact]
     public void TrayAppRestoresOnDisplayChangeAndExplorerRestartHonoursRuntimeSettingOffAndDrainsCleanlyOnExit()
@@ -422,6 +489,8 @@ public sealed class AutoRestoreTrayIntegrationTests
             .ToDictionary(parts => parts[0], parts => parts.Length > 1 ? parts[1] : string.Empty, StringComparer.Ordinal);
 
         Assert.Equal(string.Empty, report["workerError"]);
+        Assert.Equal("60", report["displayArmedMs"]);
+        Assert.Equal("120", report["explorerArmedMs"]);
         Assert.Equal("111,222", report["posAfterDisplay"]);
         Assert.Equal("333,444", report["posAfterExplorer"]);
         Assert.Equal("2", report["finishedCountAfterOff"]);
@@ -429,5 +498,28 @@ public sealed class AutoRestoreTrayIntegrationTests
         Assert.Equal("False", report["exitedBeforeGateRelease"]);
         Assert.Equal("True", report["hasDisplayLog"]);
         Assert.Equal("True", report["hasExplorerLog"]);
+    }
+
+    [Fact]
+    public void DirectAppShutdownWaitsForGatedAutoRestoreBeforeDisposingComposition()
+    {
+        using var data = new TestData();
+        string reportFile = Path.Combine(data.Root, "auto-restore-direct-shutdown-report.txt");
+        string instanceName = $"test-autorestore-shutdown-{Guid.NewGuid():N}";
+
+        (int exitCode, string stdout, string stderr) = IsolatedStaChildRunner.RunChild(
+            IsolatedStaChildRunner.AutoRestoreDirectShutdownScenario,
+            data.Root,
+            instanceName,
+            reportFile: reportFile);
+
+        Assert.True(exitCode == 0, $"Isolated child exited {exitCode}. stdout={stdout} stderr={stderr}");
+        Dictionary<string, string> report = File.ReadAllLines(reportFile)
+            .Select(line => line.Split('=', 2))
+            .ToDictionary(parts => parts[0], parts => parts.Length > 1 ? parts[1] : string.Empty, StringComparer.Ordinal);
+
+        Assert.Equal(string.Empty, report["workerError"]);
+        Assert.Equal("True", report["restoreCompletedBeforeReturn"]);
+        Assert.Equal("111,222", report["posAfterReturn"]);
     }
 }

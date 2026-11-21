@@ -31,6 +31,7 @@ internal static class IsolatedStaChildRunner
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
     public const string SystemEventsTrayWiringScenario = "system-events-tray-wiring";
     public const string AutoRestoreTrayScenario = "auto-restore-tray";
+    public const string AutoRestoreDirectShutdownScenario = "auto-restore-direct-shutdown";
 
     public static int RunMain(string[] args)
     {
@@ -198,6 +199,8 @@ internal static class IsolatedStaChildRunner
             SystemEventsTrayWiringScenario => RunSystemEventsTrayWiringScenario(paths, log, instanceName),
 
             AutoRestoreTrayScenario => RunAutoRestoreTrayScenario(paths, log, instanceName),
+
+            AutoRestoreDirectShutdownScenario => RunAutoRestoreDirectShutdownScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -1238,6 +1241,12 @@ internal static class IsolatedStaChildRunner
         using var firstDone = new ManualResetEventSlim(false);
         using var secondDone = new ManualResetEventSlim(false);
         using var thirdDone = new ManualResetEventSlim(false);
+        using var displayArmed = new ManualResetEventSlim(false);
+        using var explorerArmed1 = new ManualResetEventSlim(false);
+        using var explorerArmed2 = new ManualResetEventSlim(false);
+        int explorerArmedCount = 0;
+        int displayArmedMs = -1;
+        int explorerArmedMs = -1;
         string posAfterDisplay = string.Empty;
         string posAfterExplorer = string.Empty;
         int finishedCountAfterOff = -1;
@@ -1266,6 +1275,27 @@ internal static class IsolatedStaChildRunner
             onAutoRestoreCreated: auto =>
             {
                 capturedAuto = auto;
+                auto.TimerArmed += (reason, due) =>
+                {
+                    if (reason == "display change" && displayArmedMs < 0)
+                    {
+                        displayArmedMs = (int)Math.Round(due.TotalMilliseconds);
+                        displayArmed.Set();
+                    }
+                    else if (reason == "Explorer restart")
+                    {
+                        int n = Interlocked.Increment(ref explorerArmedCount);
+                        if (n == 1)
+                        {
+                            explorerArmedMs = (int)Math.Round(due.TotalMilliseconds);
+                            explorerArmed1.Set();
+                        }
+                        else if (n == 2)
+                        {
+                            explorerArmed2.Set();
+                        }
+                    }
+                };
                 auto.Finished += (_, reason, _) =>
                 {
                     int count;
@@ -1303,8 +1333,13 @@ internal static class IsolatedStaChildRunner
                 {
                     try
                     {
-                        // 1. Post WM_DISPLAYCHANGE -> restores Laptop (111,222).
+                        // 1. Post WM_DISPLAYCHANGE -> verify 60ms interval armed -> restores Laptop (111,222).
                         _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!displayArmed.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Display-change timer was not armed.");
+                        }
+
                         if (!firstDone.Wait(TimeSpan.FromSeconds(5)))
                         {
                             throw new TimeoutException("Display-change auto-restore did not finish.");
@@ -1313,8 +1348,13 @@ internal static class IsolatedStaChildRunner
                         IconPosition p1 = ((IDesktopIcons)desktop).ReadIcons().Single();
                         posAfterDisplay = $"{p1.X},{p1.Y}";
 
-                        // 2. Post TaskbarCreated, switch fake monitors to Docked BEFORE 120ms expiry -> restores Docked (333,444)!
+                        // 2. Post TaskbarCreated, wait until 120ms timer IS ARMED, THEN switch fake monitors to Docked BEFORE expiry -> restores Docked (333,444)!
                         _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        if (!explorerArmed1.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Explorer-restart timer 1 was not armed.");
+                        }
+
                         monitors.Monitors = [dockedMon];
                         if (!secondDone.Wait(TimeSpan.FromSeconds(5)))
                         {
@@ -1324,8 +1364,13 @@ internal static class IsolatedStaChildRunner
                         IconPosition p2 = ((IDesktopIcons)desktop).ReadIcons().Single();
                         posAfterExplorer = $"{p2.X},{p2.Y}";
 
-                        // 3. Arm a trigger, then flip RestoreAutomatically to FALSE before expiry -> zero work!
+                        // 3. Post TaskbarCreated, wait until timer IS ARMED, THEN flip RestoreAutomatically to FALSE before expiry -> zero work!
                         _ = SystemEventsTests.PostMessageW(hwnd, taskbarCreated, IntPtr.Zero, IntPtr.Zero);
+                        if (!explorerArmed2.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Explorer-restart timer 2 was not armed.");
+                        }
+
                         settingsStore.Save(Settings.Default with { RestoreAutomatically = false });
                         Thread.Sleep(250);
                         lock (finishedReasons)
@@ -1369,6 +1414,8 @@ internal static class IsolatedStaChildRunner
         File.WriteAllLines(
             reportFile,
             [
+                $"displayArmedMs={displayArmedMs}",
+                $"explorerArmedMs={explorerArmedMs}",
                 $"posAfterDisplay={posAfterDisplay}",
                 $"posAfterExplorer={posAfterExplorer}",
                 $"finishedCountAfterOff={finishedCountAfterOff}",
@@ -1376,6 +1423,94 @@ internal static class IsolatedStaChildRunner
                 $"exitedBeforeGateRelease={exitedBeforeGateRelease}",
                 $"hasDisplayLog={logContents.Contains("(automatic, display change)", StringComparison.Ordinal)}",
                 $"hasExplorerLog={logContents.Contains("(automatic, Explorer restart)", StringComparison.Ordinal)}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunAutoRestoreDirectShutdownScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
+        using var desktop = new GatedDesktopIcons(new IconPosition("id-a", "Alpha", 900, 900));
+        var store = new LayoutStore(paths);
+        string laptopKey = ArrangementKey.From([laptopMon]);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, laptopKey, "Laptop", fixedNow, [laptopMon], [new IconPosition("id-a", "Alpha", 111, 222)], null));
+
+        var settingsStore = new SettingsStore(paths);
+        settingsStore.Save(Settings.Default with { RestoreAutomatically = true });
+
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        SystemEvents? capturedEvents = null;
+        bool restoreCompletedBeforeReturn = false;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default with { RestoreAutomatically = true },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onSystemEventsCreated: ev => capturedEvents = ev,
+            displayChangeSettle: TimeSpan.FromMilliseconds(40),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(40),
+            onAppStartup: app =>
+            {
+                if (capturedEvents is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        desktop.ArmGate();
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
+
+                        // Call app.Shutdown(0) directly (NOT via tray Exit!) while the restore is gated, then release 120ms later.
+                        _ = app.Dispatcher.BeginInvoke(() => app.Shutdown(0));
+                        Thread.Sleep(120);
+                        desktop.ReleaseGate();
+                    }
+                    catch (Exception ex)
+                    {
+                        desktop.ReleaseGate();
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                });
+            });
+
+        IconPosition posAfterReturn = ((IDesktopIcons)desktop).ReadIcons().Single();
+        restoreCompletedBeforeReturn = (posAfterReturn.X, posAfterReturn.Y) == (111, 222);
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"restoreCompletedBeforeReturn={restoreCompletedBeforeReturn}",
+                $"posAfterReturn={posAfterReturn.X},{posAfterReturn.Y}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);

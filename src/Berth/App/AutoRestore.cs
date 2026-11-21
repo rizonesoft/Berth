@@ -86,7 +86,8 @@ internal sealed class AutoRestore : IDisposable
     private Task _activeTask = Task.CompletedTask;
     private bool _retriggerPending;
     private string? _retriggerReason;
-    private DateTimeOffset _retriggerDeadline;
+    private long _retriggerTimestamp;
+    private TimeSpan _retriggerSettle;
     private bool _stopping;
     private bool _disposed;
     private Action? _whenDrained;
@@ -115,6 +116,9 @@ internal sealed class AutoRestore : IDisposable
     /// </summary>
     public event Action<OperationResult, string, bool>? Finished;
 
+    /// <summary>Test seam raised when a one-shot settle timer is armed, carrying its reason and due interval.</summary>
+    internal event Action<string, TimeSpan>? TimerArmed;
+
     /// <summary>Schedules (or reschedules) an automatic restore after <paramref name="settleOverride"/> or the default settle interval.</summary>
     public void Trigger(string reason, TimeSpan? settleOverride = null)
     {
@@ -126,6 +130,7 @@ internal sealed class AutoRestore : IDisposable
         }
 
         IOneShotTimer? timerToDispose = null;
+        bool armed = false;
         lock (_sync)
         {
             if (_disposed || _stopping)
@@ -137,14 +142,20 @@ internal sealed class AutoRestore : IDisposable
             {
                 _retriggerPending = true;
                 _retriggerReason = reason;
-                _retriggerDeadline = _clock.GetUtcNow() + due;
+                _retriggerTimestamp = _clock.GetTimestamp();
+                _retriggerSettle = due;
                 return;
             }
 
             timerToDispose = ArmTimerLocked(reason, due);
+            armed = true;
         }
 
         timerToDispose?.Dispose();
+        if (armed)
+        {
+            TimerArmed?.Invoke(reason, due);
+        }
     }
 
     /// <summary>
@@ -181,8 +192,11 @@ internal sealed class AutoRestore : IDisposable
         }
     }
 
-    /// <summary>Stops accepting triggers, cancels pending timers, and waits up to <paramref name="timeout"/> for any in-flight restore to finish.</summary>
-    public void DisposeAndWait(TimeSpan timeout)
+    /// <summary>
+    /// Stops accepting triggers, cancels pending timers, and waits until any already-admitted in-flight restore
+    /// finishes so callers never dispose <see cref="Composition"/> while the restore still uses its desktop worker.
+    /// </summary>
+    public void Dispose()
     {
         Task activeTask;
         IOneShotTimer? timerToDispose;
@@ -203,16 +217,14 @@ internal sealed class AutoRestore : IDisposable
         {
             try
             {
-                _ = activeTask.Wait(timeout);
+                activeTask.GetAwaiter().GetResult();
             }
-            catch (AggregateException)
+            catch (Exception)
             {
-                // In-flight restore errors are already handled inside RunAdmittedAsync.
+                // In-flight restore errors are handled inside RunAdmittedAsync.
             }
         }
     }
-
-    public void Dispose() => DisposeAndWait(TimeSpan.FromSeconds(5));
 
     private IOneShotTimer? ArmTimerLocked(string reason, TimeSpan due)
     {
@@ -292,6 +304,8 @@ internal sealed class AutoRestore : IDisposable
         {
             Action? drainCallbacks = null;
             IOneShotTimer? timerToDispose = null;
+            string? armedNextReason = null;
+            TimeSpan armedNextDue = TimeSpan.Zero;
 
             lock (_sync)
             {
@@ -306,7 +320,8 @@ internal sealed class AutoRestore : IDisposable
                 else if (_retriggerPending && !string.IsNullOrWhiteSpace(_retriggerReason))
                 {
                     string nextReason = _retriggerReason;
-                    TimeSpan remaining = _retriggerDeadline - _clock.GetUtcNow();
+                    TimeSpan elapsed = _clock.GetElapsedTime(_retriggerTimestamp);
+                    TimeSpan remaining = _retriggerSettle - elapsed;
                     if (remaining < TimeSpan.Zero)
                     {
                         remaining = TimeSpan.Zero;
@@ -315,10 +330,17 @@ internal sealed class AutoRestore : IDisposable
                     _retriggerPending = false;
                     _retriggerReason = null;
                     timerToDispose = ArmTimerLocked(nextReason, remaining);
+                    armedNextReason = nextReason;
+                    armedNextDue = remaining;
                 }
             }
 
             timerToDispose?.Dispose();
+            if (armedNextReason is not null)
+            {
+                TimerArmed?.Invoke(armedNextReason, armedNextDue);
+            }
+
             completion.TrySetResult();
             drainCallbacks?.Invoke();
         }
