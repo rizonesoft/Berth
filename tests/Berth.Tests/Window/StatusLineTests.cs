@@ -82,8 +82,37 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 Assert.Equal("Undo", status.ActionButton.Content);
                 Assert.Equal("Undo", AutomationProperties.GetName(status.ActionButton));
                 Assert.True(status.ActionButton.ActualHeight >= 32d);
+            });
 
-                // Click Undo -> puts icons back at moved pre-restore coordinates and removes Undo button.
+            // A changed comparison clears sticky Undo and MUST restore RightTimeText visibility (Checked 09:14).
+            ((IDesktopIcons)desktop).SetPositions(
+            [
+                new("id-1", "One", 700, 100),
+                new("id-2", "Two", 200, 200),
+                new("id-3", "Three", 300, 300),
+            ]);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                MeasureAndArrange(window!);
+                StatusLine status = window!.StatusLineControl;
+                Assert.Equal("1 icon has moved since this layout was saved.", status.SentenceText.Text);
+                Assert.Equal(Visibility.Visible, status.RightTimeText.Visibility);
+                Assert.Equal("Checked 09:14", status.RightTimeText.Text);
+                Assert.Equal(Visibility.Collapsed, status.ActionButton.Visibility);
+            });
+
+            // Move icons back to [900, 900, 900], Restore again, then click Undo -> puts icons back at 900.
+            ((IDesktopIcons)desktop).SetPositions(moved);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() => InvokeButton(window!.DetailHeaderControl.RestoreButton));
+            await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            appFixture.Invoke(() =>
+            {
+                MeasureAndArrange(window!);
+                StatusLine status = window!.StatusLineControl;
+                Assert.Equal(Visibility.Visible, status.ActionButton.Visibility);
                 InvokeButton(status.ActionButton);
             });
 
@@ -293,17 +322,43 @@ public sealed class StatusLineTests(AppFixture appFixture)
             var window = new MainWindow { DataContext = vm };
             try
             {
-                vm.Status.SetResult(
-                    OperationResult.Restored("Laptop", 42, 38, 2, 2),
-                    canUndo: true);
-                MeasureAndArrange(window, width: 760, height: 560);
+                void AssertBoundsAtMinWidth(string expectedActionText)
+                {
+                    MeasureAndArrange(window, width: 760, height: 560);
+                    StatusLine status = window.StatusLineControl;
+                    Rect cardBounds = new(0, 0, status.StatusCard.ActualWidth, status.StatusCard.ActualHeight);
+                    Rect sentenceBounds = status.SentenceText
+                        .TransformToAncestor(status.StatusCard)
+                        .TransformBounds(new Rect(0, 0, status.SentenceText.ActualWidth, status.SentenceText.ActualHeight));
+                    Rect buttonBounds = status.ActionButton
+                        .TransformToAncestor(status.StatusCard)
+                        .TransformBounds(new Rect(0, 0, status.ActionButton.ActualWidth, status.ActionButton.ActualHeight));
 
-                StatusLine status = window.StatusLineControl;
-                Assert.True(status.ActualHeight > 32d);
-                Assert.True(status.SentenceText.ActualWidth > 0d);
-                Assert.Equal(Visibility.Visible, status.ActionButton.Visibility);
-                Assert.True(status.ActionButton.ActualWidth > 0d);
-                Assert.True(status.ActionButton.ActualHeight >= 32d);
+                    Assert.True(sentenceBounds.Width > 0d && sentenceBounds.Height > 0d);
+                    Assert.True(buttonBounds.Width > 0d && buttonBounds.Height >= 32d);
+                    Assert.True(sentenceBounds.Left >= 0d && sentenceBounds.Top >= 0d);
+                    Assert.True(sentenceBounds.Bottom <= cardBounds.Height + 0.5d);
+                    Assert.True(buttonBounds.Top >= 0d && buttonBounds.Bottom <= cardBounds.Height + 0.5d);
+                    Assert.True(sentenceBounds.Right <= buttonBounds.Left + 0.5d);
+                    Assert.Equal(Visibility.Visible, status.ActionButton.Visibility);
+                    Assert.Equal(expectedActionText, status.ActionButton.Content);
+                    Assert.True(status.ActionButton.Focusable);
+                    Assert.True(System.Windows.Input.KeyboardNavigation.GetIsTabStop(status.ActionButton));
+                }
+
+                // 1. Long partial-restore with Undo at 760 DIP in Light, High Contrast, and 144 DPI (150% scale).
+                vm.Status.SetResult(OperationResult.Restored("Laptop", 42, 38, 2, 2), canUndo: true);
+                AssertBoundsAtMinWidth("Undo");
+
+                // 2. Long §18 write failure with Retry at 760 DIP in High Contrast and 144 DPI (150% scale).
+                var retryReq = new WindowOperationRequest(WindowOperationKind.Save, () => OperationResult.Saved("Laptop", 1, false));
+                vm.Status.SetResult(
+                    OperationResult.Failed(
+                        FailureKind.WriteFailed,
+                        @"C:\Users\Owner\AppData\Local\Berth\layouts\long-monitor-arrangement-key.json",
+                        "Access to the path is denied by another process"),
+                    canUndo: false,
+                    retryRequest: retryReq);
 
                 string hcPath = Path.Combine(data.Root, "status-min-hc.png");
                 string dpiPath = Path.Combine(data.Root, "status-min-150.png");
@@ -312,6 +367,7 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 try
                 {
                     berthApp.ApplyColorTheme(ColorTheme.HighContrast);
+                    AssertBoundsAtMinWidth("Retry");
                     WindowRenderer.Render(window.RootGrid, 760, 560, hcPath, theme: null);
                 }
                 finally
@@ -320,6 +376,7 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 }
 
                 VisualTreeHelper.SetRootDpi(window.RootGrid, new DpiScale(1.5, 1.5));
+                AssertBoundsAtMinWidth("Retry");
                 WindowRenderer.Render(window.RootGrid, 760, 560, dpiPath, RenderTheme.Light);
                 Assert.True(new FileInfo(hcPath).Length > 0);
                 Assert.True(new FileInfo(dpiPath).Length > 0);
@@ -329,6 +386,80 @@ public sealed class StatusLineTests(AppFixture appFixture)
                 window.CloseForShutdown();
             }
         });
+    }
+
+    [Fact]
+    public async Task MidPlacementDesktopLossOffersUndoNotRetryAndRestoresPreRestorePositions()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        IconPosition[] saved =
+        [
+            new("id-1", "One", 100, 100),
+            new("id-2", "Two", 200, 200),
+        ];
+        SaveLayout(store, [MonSingle], "Laptop", FixedNow, saved);
+
+        IconPosition[] beforeRestore =
+        [
+            new("id-1", "One", 800, 100),
+            new("id-2", "Two", 800, 200),
+        ];
+        var monitors = new FakeMonitors(MonSingle);
+        var desktop = new InterruptingDesktopIcons(new FakeDesktopIcons(beforeRestore));
+        LayoutService service = CreateService(paths, store, desktop, monitors);
+        var vm = CreateViewModel(store, desktop, monitors, service);
+        await vm.RefreshAsync();
+
+        // Interrupt placement after moving icon 1 -> undo.json preserved; window MUST offer Undo, not Retry!
+        desktop.FailAfterFirstMove = true;
+        await vm.Detail.RestoreAsync();
+        Assert.Equal(Messages.DesktopLostDuringRestore, vm.Status.Sentence);
+        Assert.Equal(StatusAction.Undo, vm.Status.Action);
+
+        // Explorer recovers; invoking the offered action puts both icons back at [800, 800]!
+        desktop.FailAfterFirstMove = false;
+        vm.Status.ActionCommand.Execute(null);
+        await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        IReadOnlyList<IconPosition> afterUndo = ((IDesktopIcons)desktop).ReadIcons();
+        Assert.Equal([800, 800], afterUndo.Select(i => i.X));
+        Assert.Equal("Put 2 icons back where they were before the restore.", vm.Status.Sentence);
+        Assert.Equal(StatusAction.None, vm.Status.Action);
+    }
+
+    [Fact]
+    public async Task SupersededTrayCompletionDoesNotReplaceWorkingDuringNewerOperation()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
+
+        var monitors = new FakeMonitors(MonSingle);
+        var desktop = new GatedDesktopIcons(new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 100)));
+        LayoutService service = CreateService(paths, store, desktop, monitors);
+        var vm = CreateViewModel(store, desktop, monitors, service);
+        await vm.RefreshAsync();
+
+        // Hold the first tray completion's post-operation refresh open while a newer operation starts.
+        desktop.ArmGate();
+        Task staleCompletion = vm.OnExternalOperationFinishedAsync(
+            WindowOperationKind.Restore,
+            OperationResult.Restored("Laptop", 1, 1, 0, 0));
+        await desktop.EnteredGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Newer operation starts -> Detail.IsBusy becomes true and status shows "Working".
+        appFixture.Invoke(() => vm.Detail.SetExternalBusy(true));
+        Assert.Equal("Working", vm.Status.Sentence);
+
+        // Release the older completion's refresh -> it MUST be discarded and NOT overwrite "Working"!
+        desktop.ReleaseGate();
+        await staleCompletion.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal("Working", vm.Status.Sentence);
+        Assert.Equal(StatusAction.None, vm.Status.Action);
     }
 
     [Fact]
@@ -577,6 +708,31 @@ public sealed class StatusLineTests(AppFixture appFixture)
         public void SetPositions(IReadOnlyList<IconPosition> positions) => ((IDesktopIcons)inner).SetPositions(positions);
 
         public void SetPositions(IReadOnlyList<IconPosition> positions, Action beforeMove) => ((IDesktopIcons)inner).SetPositions(positions, beforeMove);
+
+        public bool AutoArrange => ((IDesktopIcons)inner).AutoArrange;
+
+        public bool TryTurnAutoArrangeOff() => ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
+    }
+
+    private sealed class InterruptingDesktopIcons(FakeDesktopIcons inner) : IDesktopIcons
+    {
+        public bool FailAfterFirstMove { get; set; }
+
+        public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)inner).ReadIcons();
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions) => SetPositions(positions, () => { });
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions, Action beforeMove)
+        {
+            beforeMove();
+            if (FailAfterFirstMove && positions.Count > 0)
+            {
+                ((IDesktopIcons)inner).SetPositions([positions[0]]);
+                throw new DesktopUnavailableException("Explorer disappeared mid-placement.");
+            }
+
+            ((IDesktopIcons)inner).SetPositions(positions);
+        }
 
         public bool AutoArrange => ((IDesktopIcons)inner).AutoArrange;
 

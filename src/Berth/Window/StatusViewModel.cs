@@ -80,6 +80,7 @@ internal sealed class StatusViewModel : ObservableObject
         {
             if (Set(ref _action, value))
             {
+                RaisePropertyChanged(nameof(ShowRightText));
                 RaisePropertyChanged(nameof(ShowActionButton));
                 RaisePropertyChanged(nameof(ActionButtonText));
                 ActionCommand.RaiseCanExecuteChanged();
@@ -155,7 +156,8 @@ internal sealed class StatusViewModel : ObservableObject
         _retryRequest = null;
 
         if (result.Kind == OperationKind.Restored
-            || (result.Kind == OperationKind.Failed && result.Failure == FailureKind.NotPlaced))
+            || (result.Kind == OperationKind.Failed
+                && result.Failure is FailureKind.NotPlaced or FailureKind.DesktopUnavailable))
         {
             _stickyAction = canUndo ? StatusAction.Undo : StatusAction.None;
         }
@@ -242,9 +244,10 @@ internal sealed class StatusViewModel : ObservableObject
 
         if (result.Kind == OperationKind.Failed)
         {
+            // Mid-placement DesktopUnavailable preserves undo.json (Restore says "Undo puts back what was there."),
+            // so offering Retry would overwrite the pre-restore snapshot. Pre-placement unavailability is Refusal.DesktopUnavailable.
             return result.Failure is FailureKind.WriteFailed
                 or FailureKind.ReadFailed
-                or FailureKind.DesktopUnavailable
                 or FailureKind.DisplaysChanged
                 or FailureKind.Unexpected;
         }

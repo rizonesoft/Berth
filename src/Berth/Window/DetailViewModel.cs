@@ -89,7 +89,7 @@ internal sealed class DetailViewModel : ObservableObject
 
     public event Action<WindowOperationKind, OperationResult>? OperationFinished;
 
-    internal event Action<WindowOperationRequest, OperationResult, bool>? OperationCompleted;
+    internal event Action<WindowOperationRequest, OperationResult>? OperationCompleted;
 
     public DetailKind Kind
     {
@@ -244,7 +244,6 @@ internal sealed class DetailViewModel : ObservableObject
         }
 
         OperationResult? result = null;
-        bool canUndoAfter = false;
         try
         {
             await _main.MarshalToUiAsync(() =>
@@ -254,12 +253,7 @@ internal sealed class DetailViewModel : ObservableObject
                 OperationStarted?.Invoke(request.Kind);
             }).ConfigureAwait(false);
 
-            result = await Task.Run(() =>
-            {
-                OperationResult opResult = request.Action();
-                canUndoAfter = _service?.CanUndo ?? false;
-                return opResult;
-            }).ConfigureAwait(false);
+            result = await Task.Run(request.Action).ConfigureAwait(false);
 
             string? selectKey = request.SelectKeyAfter?.Invoke(result);
             try
@@ -276,7 +270,6 @@ internal sealed class DetailViewModel : ObservableObject
         finally
         {
             OperationResult? finalResult = result;
-            bool finalCanUndo = canUndoAfter;
             await _main.MarshalToUiAsync(() =>
             {
                 Volatile.Write(ref _operationInFlight, 0);
@@ -284,7 +277,7 @@ internal sealed class DetailViewModel : ObservableObject
                 IsBusy = _externalBusy;
                 if (finalResult is not null)
                 {
-                    OperationCompleted?.Invoke(request, finalResult, finalCanUndo);
+                    OperationCompleted?.Invoke(request, finalResult);
                     OperationFinished?.Invoke(request.Kind, finalResult);
                 }
             }).ConfigureAwait(false);

@@ -186,6 +186,52 @@ public sealed class StatusViewModelTests
         Assert.Equal("Working", vm.Sentence);
     }
 
+    [Fact]
+    public void MidPlacementDesktopLossOffersUndoNotRetryAndClearingActionNotifiesShowRightText()
+    {
+        var vm = new StatusViewModel(new FixedClock(FixedNow), TimeZoneInfo.Utc);
+        var retryReq = new WindowOperationRequest(WindowOperationKind.Restore, () => OperationResult.Restored("Docked", 2, 2, 0, 0));
+
+        OperationResult lostDuringRestore = OperationResult.Failed(
+            FailureKind.DesktopUnavailable,
+            path: null,
+            Messages.DesktopLostDuringRestore,
+            layoutName: "Docked");
+        Assert.False(StatusViewModel.OffersRetry(lostDuringRestore));
+
+        vm.SetResult(lostDuringRestore, canUndo: true, retryRequest: retryReq);
+        Assert.Equal(Messages.DesktopLostDuringRestore, vm.Sentence);
+        Assert.Equal(StatusAction.Undo, vm.Action);
+        Assert.False(vm.ShowRightText);
+
+        // Moving an icon clears Undo and MUST raise PropertyChanged(ShowRightText) so Checked time reappears.
+        var layout = new Layout(
+            Layout.CurrentSchemaVersion,
+            ArrangementKey.From([MonA]),
+            "Docked",
+            FixedNow,
+            [MonA],
+            [new IconPosition("a", "A", 10, 10)],
+            null);
+        LayoutRow row = LayoutRow.FromSaved(layout, isActive: true);
+        var desktop1 = new DesktopState([new IconPosition("a", "A", 10, 10)], [MonA], false, false, FixedNow);
+        vm.SetComparison(row, LayoutComparison.Compare(layout, desktop1.Icons), ComparisonKind.Compared, desktop1, canUndo: true);
+        vm.SetResult(OperationResult.Restored("Docked", 1, 1, 0, 0), canUndo: true);
+        Assert.Equal(StatusAction.Undo, vm.Action);
+        Assert.False(vm.ShowRightText);
+
+        var changedProps = new List<string?>();
+        vm.PropertyChanged += (_, e) => changedProps.Add(e.PropertyName);
+
+        var desktop2 = new DesktopState([new IconPosition("a", "A", 99, 99)], [MonA], false, false, FixedNow.AddMinutes(1));
+        vm.SetComparison(row, LayoutComparison.Compare(layout, desktop2.Icons), ComparisonKind.Compared, desktop2, canUndo: true);
+
+        Assert.Equal(StatusAction.None, vm.Action);
+        Assert.True(vm.ShowRightText);
+        Assert.Equal("Checked 09:15", vm.RightText);
+        Assert.Contains(nameof(StatusViewModel.ShowRightText), changedProps);
+    }
+
     private static LayoutComparison MakeComparison(int inPlace, int moved, int missing)
     {
         var icons = new List<ComparedIcon>();

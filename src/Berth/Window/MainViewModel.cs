@@ -25,6 +25,8 @@ internal sealed class MainViewModel : ObservableObject
     private Task? _activeRefreshTask;
     private bool _isApplyingSnapshot;
     private bool _lastCanUndo;
+    private volatile bool _checkCanUndoOnPoll;
+    private long _operationEpoch;
     private LayoutRow? _selected;
     private string? _lastKnownSelectedKey;
     private string? _pendingSelectedKey;
@@ -71,13 +73,27 @@ internal sealed class MainViewModel : ObservableObject
         {
             if (e.PropertyName is nameof(DetailViewModel.IsBusy) or "")
             {
+                if (Detail.IsBusy)
+                {
+                    Interlocked.Increment(ref _operationEpoch);
+                }
+
                 Status.SetBusyState(Detail.IsBusy);
             }
         };
-        Detail.OperationCompleted += (request, result, canUndo) =>
+        Status.PropertyChanged += (_, e) =>
         {
-            _lastCanUndo = canUndo;
-            Status.SetResult(result, canUndo, request);
+            if (e.PropertyName is nameof(StatusViewModel.Action) or "")
+            {
+                _checkCanUndoOnPoll = Status.Action == StatusAction.Undo;
+            }
+        };
+        Detail.OperationCompleted += (request, result) =>
+        {
+            if (!Detail.IsBusy)
+            {
+                Status.SetResult(result, _lastCanUndo, request);
+            }
         };
     }
 
@@ -175,7 +191,7 @@ internal sealed class MainViewModel : ObservableObject
             _activeRefreshTask = gate.Task;
         }
 
-        _ = RunRefreshCoreAsync(gate);
+        _ = RunRefreshCoreAsync(gate, includeCanUndo: _checkCanUndoOnPoll);
         return gate.Task;
     }
 
@@ -223,18 +239,18 @@ internal sealed class MainViewModel : ObservableObject
                 }).ConfigureAwait(false);
             }
 
-            _ = RunRefreshCoreAsync(gate!);
+            _ = RunRefreshCoreAsync(gate!, includeCanUndo: true);
             await gate!.Task.ConfigureAwait(false);
             return;
         }
     }
 
-    private async Task RunRefreshCoreAsync(TaskCompletionSource gate)
+    private async Task RunRefreshCoreAsync(TaskCompletionSource gate, bool includeCanUndo)
     {
         Exception? failure = null;
         try
         {
-            RefreshSnapshot? snapshot = await Task.Run(CaptureSnapshot).ConfigureAwait(false);
+            RefreshSnapshot? snapshot = await Task.Run(() => CaptureSnapshot(includeCanUndo)).ConfigureAwait(false);
             if (snapshot is not null)
             {
                 await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
@@ -268,7 +284,7 @@ internal sealed class MainViewModel : ObservableObject
     /// <summary>Fire-and-forget convenience entry point delegating to <see cref="RefreshAsync"/>.</summary>
     public Task Refresh() => RefreshAsync();
 
-    private RefreshSnapshot? CaptureSnapshot()
+    private RefreshSnapshot? CaptureSnapshot(bool includeCanUndo)
     {
         DateTimeOffset checkedAt = _clock.GetUtcNow();
 
@@ -368,18 +384,20 @@ internal sealed class MainViewModel : ObservableObject
             storeReadError = ex.Message;
         }
 
-        bool canUndo = _service?.CanUndo ?? false;
+        bool canUndo = includeCanUndo && (_service?.CanUndo ?? false);
         return new RefreshSnapshot(currentKey, desktopState, layouts, unreadable, storeReadError, canUndo);
     }
 
     /// <summary>
     /// Refreshes the window's comparison baseline after a tray-initiated operation finishes and publishes the result
-    /// to <see cref="Status"/> with Undo/Retry support (SPEC §8).
+    /// to <see cref="Status"/> with Undo/Retry support (SPEC §8). Discards superseded completions if a newer operation
+    /// started while the refresh was in flight.
     /// </summary>
     internal async Task OnExternalOperationFinishedAsync(WindowOperationKind kind, OperationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
 
+        long epoch = Volatile.Read(ref _operationEpoch);
         string? selectKey = kind == WindowOperationKind.Save && result.Done ? result.ArrangementKey : null;
         try
         {
@@ -408,6 +426,11 @@ internal sealed class MainViewModel : ObservableObject
 
         await _marshalToUiAsync(() =>
         {
+            if (Detail.IsBusy || Volatile.Read(ref _operationEpoch) != epoch)
+            {
+                return;
+            }
+
             Status.SetResult(result, _lastCanUndo, retryRequest);
         }).ConfigureAwait(false);
     }

@@ -222,7 +222,7 @@ The card under the map: one sentence chosen by the SPEC §8 table, with a time o
 **Fidelity:** `design/SPEC.md` §8.
 **Job:** the user always knows what Berth just did and whether the icons are where they should be.
 **Treatment:** one sentence with a square, and Undo or Retry only when it can act. Cheaper substitute that fails: a toast that disappears before it is read.
-**Chrome:** a card in the theme's card brush with radius `Berth.RadiusControl`; a Fluent hyperlink-style `Button` for the action.
+**Chrome:** a card in the theme's card brush with radius `Berth.RadiusCard` (**Corrected 2026-11-21:** Opus 5.5 visual design check aligned the status card radius with the map card above, 6 px `Berth.RadiusCard`, replacing `Berth.RadiusControl`); a Fluent hyperlink-style `Button` for the action.
 
 **Build order:**
 
