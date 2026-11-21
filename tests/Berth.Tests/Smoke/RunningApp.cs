@@ -67,7 +67,7 @@ internal sealed class RunningApp : IDisposable
         }
     }
 
-    public static AutomationElement? FindWindow(int processId)
+    public static bool TryFindWindow(int processId, out AutomationElement? window)
     {
         var condition = new AndCondition(
             new PropertyCondition(AutomationElement.ProcessIdProperty, processId),
@@ -75,13 +75,18 @@ internal sealed class RunningApp : IDisposable
             new PropertyCondition(AutomationElement.NameProperty, "Berth"));
         try
         {
-            return AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
+            window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
+            return true;
         }
         catch (ElementNotAvailableException)
         {
-            return null;
+            window = null;
+            return false;
         }
     }
+
+    public static AutomationElement? FindWindow(int processId) =>
+        TryFindWindow(processId, out AutomationElement? window) ? window : null;
 
     public static AutomationElement WaitForWindow(int processId, TimeSpan timeout, Func<bool>? hasProcessExited = null)
     {
@@ -100,14 +105,14 @@ internal sealed class RunningApp : IDisposable
                     $"berth.exe (PID {processId}) exited before its 'Berth' window appeared.");
             }
 
-            AutomationElement? found = FindWindow(processId);
+            bool queried = TryFindWindow(processId, out AutomationElement? found);
             if (elapsed.Elapsed >= timeout)
             {
                 throw new TimeoutException(
                     $"Timed out after {timeout.TotalMilliseconds:F0} ms waiting for top-level 'Berth' window for PID {processId}.");
             }
 
-            if (found is not null)
+            if (queried && found is not null)
             {
                 return found;
             }
@@ -127,7 +132,7 @@ internal sealed class RunningApp : IDisposable
         var elapsed = Stopwatch.StartNew();
         while (elapsed.Elapsed < timeout)
         {
-            if (FindWindow(processId) is null)
+            if (TryFindWindow(processId, out AutomationElement? found) && found is null)
             {
                 return true;
             }
@@ -135,7 +140,7 @@ internal sealed class RunningApp : IDisposable
             Thread.Sleep(PollInterval);
         }
 
-        return FindWindow(processId) is null;
+        return TryFindWindow(processId, out AutomationElement? finalFound) && finalFound is null;
     }
 
     public AutomationElement RefreshWindow(TimeSpan timeout)
@@ -188,31 +193,35 @@ internal sealed class RunningApp : IDisposable
 
     public bool WaitForButtonGone(string name, TimeSpan timeout)
     {
+        var condition = new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+            new PropertyCondition(AutomationElement.NameProperty, name));
         var elapsed = Stopwatch.StartNew();
         while (elapsed.Elapsed < timeout)
         {
-            AutomationElement? button = TryFindButton(name);
-            if (button is null)
-            {
-                return true;
-            }
-
             try
             {
-                if (button.Current.IsOffscreen)
+                if (Window.FindFirst(TreeScope.Descendants, condition) is null)
                 {
                     return true;
                 }
             }
             catch (ElementNotAvailableException)
             {
-                return true;
+                // Transient stale automation tree during update; retry until live query succeeds.
             }
 
             Thread.Sleep(PollInterval);
         }
 
-        return TryFindButton(name) is null;
+        try
+        {
+            return Window.FindFirst(TreeScope.Descendants, condition) is null;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
     }
 
     public void InvokeButton(string name, TimeSpan? timeout = null)

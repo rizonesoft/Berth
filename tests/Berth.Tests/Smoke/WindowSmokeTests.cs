@@ -39,11 +39,13 @@ public sealed class WindowSmokeTests
         using (var timeoutData = new TestData())
         {
             Assert.Throws<TimeoutException>(() =>
-                RunningApp.Start(
+            {
+                using RunningApp unexpected = RunningApp.Start(
                     timeoutData,
                     prefix,
                     windowWaitTimeout: TimeSpan.FromMilliseconds(1),
-                    onStarted: pid => timedOutPid = pid));
+                    onStarted: pid => timedOutPid = pid);
+            });
         }
 
         Assert.True(timedOutPid > 0, "onStarted callback did not capture a positive process id.");
@@ -192,10 +194,13 @@ public sealed class WindowSmokeTests
             secondResult.Elapsed <= TimeSpan.FromSeconds(10),
             $"Second berth.exe took {secondResult.Elapsed.TotalSeconds:F2}s (expected <= 10s).");
 
-        // Primary window must reopen and be owned by the original primary PID; secondary must no longer be running.
+        // Primary window must reopen onscreen (non-minimized) and be owned by the original primary PID; secondary must no longer be running.
         AutomationElement reopened = primary.RefreshWindow(TimeSpan.FromSeconds(10));
         Assert.Equal("Berth", reopened.Current.Name);
         Assert.Equal(primaryPid, reopened.Current.ProcessId);
+        Assert.False(reopened.Current.IsOffscreen, "Reopened primary Berth window reported IsOffscreen = true.");
+        var reopenedPattern = (WindowPattern)reopened.GetCurrentPattern(WindowPattern.Pattern);
+        Assert.NotEqual(WindowVisualState.Minimized, reopenedPattern.Current.WindowVisualState);
         Assert.True(RunningApp.IsProcessAlive(primaryPid), "Primary process is no longer alive after secondary activation.");
         Assert.False(RunningApp.IsProcessAlive(secondaryPid), $"Secondary process {secondaryPid} remained alive.");
     }
