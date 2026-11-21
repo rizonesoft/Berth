@@ -38,7 +38,7 @@ depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-rest
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Single-file self-contained publish | D05 T01 §14, D06 T01 §5 | [x] |
-| 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [ ] |
+| 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [x] |
 | 3 | §3 | README for the built app with real screenshots | §1 | [ ] |
 | 4 | §4 | Changelog and third-party notices | §3 | [ ] |
 | 5 | §5 | Acceptance sweep against the SPEC | §2, §4 | [ ] |
@@ -87,11 +87,14 @@ A tag builds, tests and drafts a release. Publishing the draft is the owner's st
 - [x] On a tag only, fail unless the tag equals `v` plus `Version` from `Directory.Build.props`, then create a draft release with `gh release create "$tag" --draft --verify-tag --title "Berth <version>" --notes-file <the tag's section of CHANGELOG.md>` and attach both files. Done when: the step is guarded by `if: startsWith(github.ref, 'refs/tags/')` and a script `scripts/changelog-section.py <version>` prints that version's section (with a unit test in `scripts/tests/`). Cheaper substitute: a published (not draft) release nobody looked at.
 - [x] Run the workflow once through `gh workflow run release.yml` on `main` and confirm it is green and created no release. Done when: `gh run list --workflow release.yml --limit 1` shows `completed success` and `gh release list` is empty. Cheaper substitute: pushing a real tag to test, which only the owner does (`D99 T01 §3`).
 - [x] Add `release.yml` to nothing in `.conclave/ci.json`: it is not a per-push gate. Done when: `python scripts/ci_status.py` still lists only `build.yml` and `plan.yml`. Cheaper substitute: watching a workflow that runs only on tags, which would read as unknown.
-- [ ] Commit: `ci: release workflow on a version tag`
+- [x] Commit: `ci: release workflow on a version tag`
 
 **Test checkpoint:** `gh run list --workflow release.yml --limit 1 --json conclusion` reports `success` for the manual run, and `python -m unittest discover -s scripts/tests` passes with the changelog script's test, which fails when the wrong version's section is returned.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §2 | 18445977503af6da46d5ea5374c2b97f6efdbc45
+> **Review:** `docs/reviews/d07-t01-s2.json`
 
 ## 3. README for the built app with real screenshots
 
