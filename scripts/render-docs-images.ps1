@@ -8,8 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solution = Join-Path $repoRoot 'Berth.slnx'
-$docsDir = Join-Path $repoRoot 'docs'
-$destDir = Join-Path $docsDir 'images'
+$destDir = Join-Path $repoRoot 'docs\images'
 $scratchBase = if (Test-Path -LiteralPath 'R:\') { 'R:\scratch' } else { [System.IO.Path]::GetTempPath() }
 $stageDir = Join-Path $scratchBase ("berth-docs-images-" + [Guid]::NewGuid().ToString('N'))
 
@@ -39,45 +38,51 @@ try {
         }
     }
 
-    # Build a complete sibling directory and swap directories so both screenshots publish as one matched pair.
-    New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
-    $nextDir = Join-Path $docsDir ("images.next-" + [Guid]::NewGuid().ToString('N'))
-    $prevDir = Join-Path $docsDir ("images.prev-" + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $nextDir -Force | Out-Null
-
-    if (Test-Path -LiteralPath $destDir) {
-        foreach ($existing in Get-ChildItem -LiteralPath $destDir -Force) {
-            if ($expected -notcontains $existing.Name) {
-                Copy-Item -LiteralPath $existing.FullName -Destination (Join-Path $nextDir $existing.Name) -Recurse -Force
-            }
-        }
-    }
-
+    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+    $nextPaths = @{}
+    $backupPaths = @{}
     foreach ($name in $expected) {
-        Copy-Item -LiteralPath (Join-Path $stageDir $name) -Destination (Join-Path $nextDir $name) -Force
+        $dst = Join-Path $destDir $name
+        $next = "$dst.next"
+        Copy-Item -LiteralPath (Join-Path $stageDir $name) -Destination $next -Force
+        $nextPaths[$name] = $next
+        $backupPaths[$name] = "$dst.prev"
     }
 
-    $movedOld = $false
+    # Use File.Replace (Win32 ReplaceFileW) so canonical docs/images/*.png paths never disappear even if interrupted.
+    $replaced = @()
     try {
-        if (Test-Path -LiteralPath $destDir) {
-            Move-Item -LiteralPath $destDir -Destination $prevDir -Force
-            $movedOld = $true
+        foreach ($name in $expected) {
+            $dst = Join-Path $destDir $name
+            if (Test-Path -LiteralPath $dst) {
+                [System.IO.File]::Replace($nextPaths[$name], $dst, $backupPaths[$name], $true)
+            }
+            else {
+                Move-Item -LiteralPath $nextPaths[$name] -Destination $dst -Force
+            }
+            $replaced += $name
         }
-
-        Move-Item -LiteralPath $nextDir -Destination $destDir -Force
     }
     catch {
-        if ($movedOld -and -not (Test-Path -LiteralPath $destDir) -and (Test-Path -LiteralPath $prevDir)) {
-            Move-Item -LiteralPath $prevDir -Destination $destDir -Force -ErrorAction SilentlyContinue
+        foreach ($name in $replaced) {
+            $dst = Join-Path $destDir $name
+            if (Test-Path -LiteralPath $backupPaths[$name]) {
+                [System.IO.File]::Replace($backupPaths[$name], $dst, $null, $true)
+            }
         }
-        if (Test-Path -LiteralPath $nextDir) {
-            Remove-Item -LiteralPath $nextDir -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($name in $expected) {
+            if (Test-Path -LiteralPath $nextPaths[$name]) {
+                Remove-Item -LiteralPath $nextPaths[$name] -Force -ErrorAction SilentlyContinue
+            }
         }
         throw
     }
-
-    if (Test-Path -LiteralPath $prevDir) {
-        Remove-Item -LiteralPath $prevDir -Recurse -Force -ErrorAction SilentlyContinue
+    finally {
+        foreach ($name in $expected) {
+            if (Test-Path -LiteralPath $backupPaths[$name]) {
+                Remove-Item -LiteralPath $backupPaths[$name] -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     $modesFile = Join-Path $stageDir 'capture-modes.txt'
