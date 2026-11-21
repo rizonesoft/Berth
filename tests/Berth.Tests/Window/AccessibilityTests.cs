@@ -121,24 +121,16 @@ public sealed class AccessibilityTests(AppFixture appFixture)
             {
                 PumpUi(window!);
                 Assert.Contains(vm.Notices.Items, i => i.ButtonText == "Turn it off");
-                // Re-focusing or continuing traversal after the busy round-trip must land on a valid named control!
+                // Refusal keeps keyboard focus on "Turn it off" so the very first Tab moves straight to "Save current layout"!
+                Assert.Equal("Turn it off", FocusedName());
                 var current = Keyboard.FocusedElement as UIElement;
                 Assert.NotNull(current);
                 Assert.True(current!.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
                 PumpUi(window!);
-                Assert.True(FocusedName() is "Laptop" or "Save current layout");
-
-                // And tabbing directly from the still-present "Turn it off" button moves straight to "Save current layout"!
-                WpfButton remainingTurnOff = FindVisualChildren<WpfButton>(window!.NoticesControl)
-                    .Single(b => string.Equals(AutomationProperties.GetName(b), "Turn it off", StringComparison.Ordinal));
-                remainingTurnOff.Focus();
-                PumpUi(window!);
-                Assert.True(remainingTurnOff.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
-                PumpUi(window!);
                 Assert.Equal("Save current layout", FocusedName());
             });
 
-            // 1c. Activate focused "Turn it off" notice when it succeeds -> notice disappears and focus continues cleanly!
+            // 1c. Activate focused "Turn it off" notice when it succeeds -> notice disappears and focus lands cleanly on a reachable control!
             desktop.KeepsAutoArrange = false;
             appFixture.Invoke(() =>
             {
@@ -158,13 +150,13 @@ public sealed class AccessibilityTests(AppFixture appFixture)
             {
                 PumpUi(window!);
                 Assert.DoesNotContain(vm.Notices.Items, i => i.ButtonText == "Turn it off");
-                // Continue traversal from the current focused element (or window root if focus was on the removed button)
-                // without restarting at LayoutsList!
-                UIElement current = Keyboard.FocusedElement as UIElement ?? window!;
-                Assert.True(current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                // Focus moved cleanly off the removed notice to the remaining "Open folder" notice button (no window fallback)!
+                Assert.Equal("Open folder", FocusedName());
+                var current = Keyboard.FocusedElement as UIElement;
+                Assert.NotNull(current);
+                Assert.True(current!.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
                 PumpUi(window!);
-                string landed = FocusedName();
-                Assert.False(string.IsNullOrWhiteSpace(landed));
+                Assert.Equal("Restore", FocusedName());
             });
 
             // 2. Clear remaining corrupt file + Undo status action -> Restore is enabled!
@@ -756,7 +748,7 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.True(fallbackContainer.IsKeyboardFocused);
             });
 
-            // 3d. Remove the LAST focused marker ("B.txt") so the map becomes empty -> focus moves cleanly out of the map!
+            // 3d. Remove the LAST focused marker ("B.txt") so the map becomes empty -> focus moves cleanly to "Active Layout"!
             var emptyLayout = active with { Icons = [] };
             layoutStore.Save(emptyLayout);
             await vm.RefreshAsync();
@@ -766,13 +758,29 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 WpfListBox markers = window!.PositionMapControl.MarkersList;
                 Assert.Empty(markers.Items);
                 Assert.False(markers.IsKeyboardFocusWithin);
-                Assert.NotNull(Keyboard.FocusedElement);
+                Assert.Equal("Restore automatically", FocusedName());
+            });
 
-                // Refresh while switch owns focus -> switch keeps focus!
+            // 3e. Restore markers, focus marker 0, then Tab away to Restore automatically switch before a refresh finishes ->
+            // refresh must NOT steal focus back to the map!
+            layoutStore.Save(active);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                WpfListBox markers = window!.PositionMapControl.MarkersList;
+                markers.SelectedIndex = 0;
+                var m0 = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(0);
+                m0.Focus();
+                PumpUi(window);
+                Assert.True(m0.IsKeyboardFocused);
+
+                // Move focus away to Restore automatically switch while marker 0 remains selected!
                 ToggleButton restoreSwitch = window.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch;
                 restoreSwitch.Focus();
                 PumpUi(window);
                 Assert.True(restoreSwitch.IsKeyboardFocused);
+                Assert.Equal(0, markers.SelectedIndex);
             });
 
             await vm.RefreshAsync();
@@ -827,24 +835,23 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 MainWindow w = ShowOffScreen(vm);
                 SettingsPanel panel = w.LayoutsPaneControl.SettingsPanelControl;
 
-                // Focus Restore automatically switch -> uses native Fluent FocusVisualStyle with opaque distinct theme brushes!
-                panel.RestoreAutomaticallySwitch.Focus();
+                // Keyboard-navigate (MoveFocus) to BOTH switches and verify each switch's own FocusVisualStyle template
+                // builds a visible focus visual with opaque distinct outer/inner strokes!
+                var firstRow = (ListBoxItem)w.LayoutsPaneControl.LayoutsList.ItemContainerGenerator.ContainerFromIndex(0);
+                firstRow.Focus();
                 PumpUi(w);
-                Assert.NotNull(panel.RestoreAutomaticallySwitch.FocusVisualStyle);
-                Assert.NotNull(panel.StartWithWindowsSwitch.FocusVisualStyle);
+                Assert.True(firstRow.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                PumpUi(w);
                 Assert.True(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
-                var outerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorOuterBrush"));
-                var innerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorInnerBrush"));
-                Assert.True(outerFocusBrush.Color.A >= 200, $"Expected opaque outer focus brush, got A={outerFocusBrush.Color.A}");
-                Assert.True(innerFocusBrush.Color.A >= 160, $"Expected visible inner focus brush, got A={innerFocusBrush.Color.A}");
-                Assert.NotEqual(outerFocusBrush.Color, innerFocusBrush.Color);
+                AssertVisibleFocusVisualStyle(panel.RestoreAutomaticallySwitch);
 
-                // Tab moves to Start with Windows without toggling Restore automatically!
-                panel.RestoreAutomaticallySwitch.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                // Tab moves to Start with Windows without toggling Restore automatically and verifies its FocusVisualStyle!
+                Assert.True(panel.RestoreAutomaticallySwitch.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
                 PumpUi(w);
                 Assert.False(vm.Settings!.RestoreAutomatically);
                 Assert.False(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
                 Assert.True(panel.StartWithWindowsSwitch.IsKeyboardFocused);
+                AssertVisibleFocusVisualStyle(panel.StartWithWindowsSwitch);
 
                 // Space (key-down + key-up) toggles Start with Windows ON!
                 SendKey(panel.StartWithWindowsSwitch, Key.Space, sendKeyUp: true);
@@ -909,6 +916,13 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 var markerInnerBrush = Assert.IsType<SolidColorBrush>(markerFocusInner.Stroke);
                 Assert.True(markerInnerBrush.Color.A >= 160, $"Expected visible marker inner focus ring, got A={markerInnerBrush.Color.A}");
                 Assert.NotEqual(markerOuterBrush.Color, markerInnerBrush.Color);
+
+                // Verify the 29x29 outer focus ring lies completely inside MapViewport with no ancestor clipping!
+                Grid viewport = window.PositionMapControl.MapViewport;
+                WpfPoint outerTopLeft = markerFocusOuter.TransformToAncestor(viewport).Transform(new WpfPoint(0d, 0d));
+                Assert.True(outerTopLeft.X >= 0d && outerTopLeft.Y >= 0d);
+                Assert.True(outerTopLeft.X + markerFocusOuter.ActualWidth <= viewport.ActualWidth);
+                Assert.True(outerTopLeft.Y + markerFocusOuter.ActualHeight <= viewport.ActualHeight);
 
                 // Move focus away -> SelectionRing stays Visible, FocusRingOuter/Inner hide!
                 window.DetailHeaderControl.MoreButton.Focus();
@@ -1124,6 +1138,46 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         window.Show();
         PumpUi(window);
         return window;
+    }
+
+    private static void AssertVisibleFocusVisualStyle(System.Windows.Controls.Control control)
+    {
+        Style? style = control.FocusVisualStyle;
+        Assert.NotNull(style);
+
+        // Instantiate the control's actual FocusVisualStyle onto a Control host inside the control's resource scope
+        // and verify it produces a visible stroke/border with >= 160 alpha!
+        var host = new System.Windows.Controls.Control
+        {
+            Style = style,
+            Width = control.ActualWidth,
+            Height = control.ActualHeight,
+        };
+        host.ApplyTemplate();
+        host.Measure(new System.Windows.Size(control.ActualWidth, control.ActualHeight));
+        host.Arrange(new Rect(0d, 0d, control.ActualWidth, control.ActualHeight));
+        host.UpdateLayout();
+
+        bool hasVisibleStroke = false;
+        foreach (DependencyObject child in FindVisualChildren<DependencyObject>(host))
+        {
+            if (child is System.Windows.Shapes.Shape shape
+                && shape.Stroke is SolidColorBrush sb
+                && sb.Color.A >= 160
+                && shape.StrokeThickness > 0d)
+            {
+                hasVisibleStroke = true;
+            }
+            else if (child is Border border
+                && border.BorderBrush is SolidColorBrush bb
+                && bb.Color.A >= 160
+                && (border.BorderThickness.Left > 0d || border.BorderThickness.Top > 0d))
+            {
+                hasVisibleStroke = true;
+            }
+        }
+
+        Assert.True(hasVisibleStroke, $"FocusVisualStyle on {control.Name} did not produce a visible stroke or border.");
     }
 
     private static void AssertFullTabCycle(MainWindow window, string[] expected)

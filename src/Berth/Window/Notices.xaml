@@ -73,7 +73,8 @@
                                         Command="{Binding ActionCommand}"
                                         MinHeight="{DynamicResource Berth.ControlHeight}"
                                         VerticalAlignment="Top"
-                                        AutomationProperties.Name="{Binding ButtonText}" />
+                                        AutomationProperties.Name="{Binding ButtonText}"
+                                        IsEnabledChanged="OnNoticeButtonIsEnabledChanged" />
                             </Grid>
                         </Border>
                     </DataTemplate>
