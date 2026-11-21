@@ -54,7 +54,7 @@ public sealed class BalloonTests
         Assert.Contains('\u2026', unexpected.Text);
 
         string longPath = @"C:\Users\Test\" + new string('D', 300) + @"\undo.json";
-        const string colonReason = "Access denied: file is locked";
+        const string colonReason = "Access denied: file is locked.";
 
         BalloonMessage writeFailed = BalloonPolicy.For(
             OperationResult.Failed(FailureKind.WriteFailed, path: longPath, detail: colonReason))!;
@@ -67,6 +67,13 @@ public sealed class BalloonTests
         Assert.True(readFailed.Text.Length <= 255);
         Assert.EndsWith(": Access denied: file is locked.", readFailed.Text, StringComparison.Ordinal);
         Assert.Contains('\u2026', readFailed.Text);
+
+        // Exact 255-char boundary: "Berth could not write " (22) + ellipsis (1) + ": " (2) + 229-char reason + "." (1) = 255.
+        string exactReason229 = new string('R', 229);
+        BalloonMessage exactBoundary = BalloonPolicy.For(
+            OperationResult.Failed(FailureKind.WriteFailed, path: longPath, detail: exactReason229))!;
+        Assert.Equal(255, exactBoundary.Text.Length);
+        Assert.Equal($"Berth could not write \u2026: {exactReason229}.", exactBoundary.Text);
 
         string longUnreadableFile = new string('U', 300) + ".json";
         BalloonMessage unreadable = BalloonPolicy.For(

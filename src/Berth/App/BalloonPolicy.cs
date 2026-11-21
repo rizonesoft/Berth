@@ -63,19 +63,23 @@ internal static class BalloonPolicy
             return TruncateOnTextElements(head, budget) + suffix;
         }
 
-        // For read/write failures, shorten ONLY the structured Path field so a Detail containing ": " stays completely intact.
+        // For read/write failures, shorten ONLY the structured Path field using the exact prefix and normalized
+        // detail so punctuated reasons (trailing period) and exact-255-char boundaries stay completely intact.
         if (result.Kind == OperationKind.Failed
             && result.Failure is FailureKind.WriteFailed or FailureKind.ReadFailed
             && !string.IsNullOrEmpty(result.Path)
             && !string.IsNullOrEmpty(result.Detail))
         {
-            string reasonTail = $": {Messages.SingleLine(result.Detail)}.";
-            if (text.EndsWith(reasonTail, StringComparison.Ordinal) && reasonTail.Length + 24 <= MaxBodyLength)
+            string prefix = result.Failure == FailureKind.WriteFailed
+                ? "Berth could not write "
+                : "Berth could not read ";
+            string normalizedDetail = Messages.SingleLine(result.Detail).TrimEnd().TrimEnd('.');
+            string reasonTail = string.IsNullOrEmpty(normalizedDetail) ? "." : $": {normalizedDetail}.";
+            int pathBudget = MaxBodyLength - prefix.Length - 1 - reasonTail.Length;
+            if (pathBudget >= 0)
             {
-                string suffix = Ellipsis + reasonTail;
-                int budget = MaxBodyLength - suffix.Length;
-                string head = text[..^reasonTail.Length];
-                return TruncateOnTextElements(head, budget) + suffix;
+                string shortenedPath = TruncateOnTextElements(Messages.SingleLine(result.Path), pathBudget);
+                return prefix + shortenedPath + Ellipsis + reasonTail;
             }
         }
 
