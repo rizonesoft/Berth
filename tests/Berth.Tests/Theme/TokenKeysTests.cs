@@ -51,7 +51,7 @@ public sealed partial class TokenKeysTests
             HashSet<string> hcKeys = KeysOf(hcLoose);
             HashSet<string> sharedKeys = KeysOf(sharedLoose);
 
-            Assert.Equal(17, lightKeys.Count);
+            Assert.Equal(19, lightKeys.Count);
             Assert.Equal(lightKeys, darkKeys);
             Assert.Equal(lightKeys, hcKeys);
             Assert.Empty(sharedKeys.Intersect(lightKeys));

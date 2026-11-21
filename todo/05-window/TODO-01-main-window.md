@@ -43,7 +43,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [x] |
 | 5 | §5 | Marker states, selection and readout | §4 | [x] |
 | 6 | §6 | Status line with Undo and Retry | §3 | [x] |
-| 7 | §7 | Notices and the controls they disable | §6 | [ ] |
+| 7 | §7 | Notices and the controls they disable | §6 | [x] |
 | 8 | §8 | Rename dialog | §3 | [ ] |
 | 9 | §9 | Revert to previous save and delete | §8 | [ ] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
@@ -263,19 +263,22 @@ The three notices of SPEC §9, their buttons, and what each one disables.
 1. Add `NoticesViewModel` (pure). Done when: the right notices appear in the right order.
 2. Add `Notices.xaml` and the three buttons. Done when: each button does its SPEC job.
 
-- [ ] Add `Notice(NoticeKind Kind, bool IsError, string Text, string ButtonText)` and `NoticesViewModel.For(DesktopState desktop, IReadOnlyList<UnreadableFile> unreadable)` returning, errors first: the unreachable desktop, each unreadable file (with its file name), then auto arrange, with the SPEC §9 texts and button texts. Done when: unit tests cover none, each alone, and auto arrange with an unreadable file (two, in order). Cheaper substitute: showing only the first notice.
-- [ ] Add `src/Berth/Window/Notices.xaml`: an `ItemsControl` between the header and the map, each notice with an icon (a warning or error glyph from the Segoe Fluent Icons font, with the word in its automation name), the sentence and its button. Done when: a test with two notices finds two bars with their texts and buttons. Cheaper substitute: colour alone to tell a warning from an error.
-- [ ] `Turn it off` calls `IDesktopIcons.TryTurnAutoArrangeOff()` off the UI thread, refreshes, and when the read-back still says on leaves the notice and puts the SPEC §18 "Windows did not turn auto arrange off" message in the status line. Done when: tests with the fake cover both outcomes. Cheaper substitute: removing the notice without reading back.
-- [ ] `Retry` (unreachable desktop) calls `Refresh()` now. Done when: a test makes the fake available, clicks it, and the notice is gone. Cheaper substitute: waiting for the next poll.
-- [ ] `Open folder` starts File Explorer with `/select,` and the file's full path, through an `IFolderOpener` seam so tests do not open a window. Done when: a test clicks it and the fake opener received the layout file's path. Cheaper substitute: opening a real Explorer window in a test (`AGENTS.md`).
-- [ ] While auto arrange is on, disable `Restore` (window) with a tooltip repeating the notice; while the desktop is unreachable, disable `Restore` and `Save current layout` (SPEC §9). Done when: tests read `IsEnabled` and the tooltip in both conditions, and `Save current layout` stays enabled under auto arrange. Cheaper substitute: disabling with no explanation.
-- [ ] Add render tests writing `notice-none`, `notice-auto-arrange`, `notice-unreachable`, `notice-unreadable` and `notice-two` in light and dark (SPEC §19 "Notices"). Done when: `pwsh scripts/render-window.ps1` writes the ten files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/NoticesTests.cs`. Done when: all pass, and the order test fails when the warning is listed before the error. Cheaper substitute: none needed.
-- [ ] Commit: `window: notices and the controls they disable`
+- [x] Add `Notice(NoticeKind Kind, bool IsError, string Text, string ButtonText)` and `NoticesViewModel.For(DesktopState desktop, IReadOnlyList<UnreadableFile> unreadable)` returning, errors first: the unreachable desktop, each unreadable file (with its file name), then auto arrange, with the SPEC §9 texts and button texts. Done when: unit tests cover none, each alone, and auto arrange with an unreadable file (two, in order). Cheaper substitute: showing only the first notice.
+- [x] Add `src/Berth/Window/Notices.xaml`: an `ItemsControl` between the header and the map, each notice with an icon (a warning or error glyph from the Segoe Fluent Icons font, with the word in its automation name), the sentence and its button. Done when: a test with two notices finds two bars with their texts and buttons. Cheaper substitute: colour alone to tell a warning from an error.
+- [x] `Turn it off` calls `IDesktopIcons.TryTurnAutoArrangeOff()` off the UI thread, refreshes, and when the read-back still says on leaves the notice and puts the SPEC §18 "Windows did not turn auto arrange off" message in the status line. Done when: tests with the fake cover both outcomes. Cheaper substitute: removing the notice without reading back.
+- [x] `Retry` (unreachable desktop) calls `Refresh()` now. Done when: a test makes the fake available, clicks it, and the notice is gone. Cheaper substitute: waiting for the next poll.
+- [x] `Open folder` starts File Explorer with `/select,` and the file's full path, through an `IFolderOpener` seam so tests do not open a window. Done when: a test clicks it and the fake opener received the layout file's path. Cheaper substitute: opening a real Explorer window in a test (`AGENTS.md`).
+- [x] While auto arrange is on, disable `Restore` (window) with a tooltip repeating the notice; while the desktop is unreachable, disable `Restore` and `Save current layout` (SPEC §9). Done when: tests read `IsEnabled` and the tooltip in both conditions, and `Save current layout` stays enabled under auto arrange. Cheaper substitute: disabling with no explanation.
+- [x] Add render tests writing `notice-none`, `notice-auto-arrange`, `notice-unreachable`, `notice-unreadable` and `notice-two` in light and dark (SPEC §19 "Notices"). Done when: `pwsh scripts/render-window.ps1` writes the ten files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/NoticesTests.cs`. Done when: all pass, and the order test fails when the warning is listed before the error. Cheaper substitute: none needed.
+- [x] Commit: `window: notices and the controls they disable`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*NoticesTests"` passes, and fails when "Restore" stays enabled while auto arrange is on.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §7 | 7d1a036cb1fed662ee6aa34a2399b9cd0a79305a
+> **Review:** `docs/reviews/d05-t01-s7.json`
 
 ## 8. Rename dialog
 

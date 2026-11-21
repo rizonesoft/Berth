@@ -1,0 +1,85 @@
+{
+  "ref": "D05 T01 \u00a77",
+  "title": "Notices and the controls they disable",
+  "implementation_sha": "7d1a036cb1fed662ee6aa34a2399b9cd0a79305a",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s7.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "notices-tests(41/41)+render(78 PNGs)+full-suite:pass"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s7.md",
+    "verdict": "filed",
+    "candidate": "7d1a036cb1fed662ee6aa34a2399b9cd0a79305a",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D05 T01 \u00a714"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s7.md",
+    "candidate": "1a92ff7e5b12256c62b01c157dd4da6f568104c0",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "1a92ff7e5b12256c62b01c157dd4da6f568104c0",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 3,
+  "pass_cap": 33
+}
