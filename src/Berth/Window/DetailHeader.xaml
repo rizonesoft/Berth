@@ -74,7 +74,9 @@
                             Click="OnMoreButtonClick">
                         <Button.ContextMenu>
                             <ContextMenu x:Name="MoreMenu">
-                                <MenuItem x:Name="RenameMenuItem" Header="Rename" />
+                                <MenuItem x:Name="RenameMenuItem"
+                                          Header="Rename"
+                                          Click="OnRenameMenuItemClick" />
                                 <MenuItem x:Name="RevertMenuItem"
                                           Header="Revert to previous save"
                                           IsEnabled="{Binding HasPreviousSave}" />

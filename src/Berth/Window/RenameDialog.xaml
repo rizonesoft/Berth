@@ -1,0 +1,68 @@
+<Window x:Class="Berth.Window.RenameDialog"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rename layout"
+        Width="{DynamicResource Berth.DialogWidth}"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        PreviewKeyDown="OnDialogPreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </Window.Resources>
+
+    <Grid x:Name="DialogRoot"
+          Margin="{DynamicResource Berth.Space.DialogPadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Layout name"
+                   Style="{DynamicResource Berth.Type.Body}" />
+
+        <TextBox x:Name="NameBox"
+                 Grid.Row="1"
+                 Margin="{DynamicResource Berth.Space.ItemGapTop}"
+                 MinHeight="{DynamicResource Berth.ControlHeight}"
+                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                 AutomationProperties.Name="Layout name" />
+
+        <TextBlock x:Name="ErrorText"
+                   Grid.Row="2"
+                   Margin="{DynamicResource Berth.Space.ItemGapTop}"
+                   Text="{Binding Error}"
+                   Style="{DynamicResource Berth.Type.Caption}"
+                   Foreground="{DynamicResource Berth.NoticeErrorIcon}"
+                   TextWrapping="Wrap"
+                   Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+
+        <StackPanel Grid.Row="3"
+                    Margin="{DynamicResource Berth.Space.SectionGapTop}"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="RenameButton"
+                    Content="Rename"
+                    Style="{DynamicResource AccentButtonStyle}"
+                    MinWidth="{DynamicResource Berth.DialogButtonMinWidth}"
+                    MinHeight="{DynamicResource Berth.ControlHeight}"
+                    IsDefault="True"
+                    IsEnabled="{Binding CanRename}"
+                    AutomationProperties.Name="Rename"
+                    Click="OnRenameClick" />
+
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    MinWidth="{DynamicResource Berth.DialogButtonMinWidth}"
+                    MinHeight="{DynamicResource Berth.ControlHeight}"
+                    Margin="{DynamicResource Berth.Space.ControlGapLeft}"
+                    IsCancel="True"
+                    AutomationProperties.Name="Cancel" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -331,6 +331,31 @@ internal sealed class DetailViewModel : ObservableObject
             () => _service.Undo()));
     }
 
+    public Task<OperationResult?> RenameAsync(string key, string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(newName);
+        if (_service is null)
+        {
+            return Task.FromResult<OperationResult?>(null);
+        }
+
+        _lastOperationTask = RunOperationAsync(new WindowOperationRequest(
+            WindowOperationKind.Rename,
+            () => _service.Rename(key, newName),
+            _ => key));
+        return (Task<OperationResult?>)_lastOperationTask;
+    }
+
+    internal string? SelectedSavedKey => _main.Selected is { IsUnsaved: false } row ? row.Key : null;
+
+    internal System.Collections.Specialized.INotifyCollectionChanged RowsCollection => _main.Rows;
+
+    internal IReadOnlyList<string> GetOtherSavedNames(string excludeKey) =>
+        [.. _main.Rows
+            .Where(r => !r.IsUnsaved && !string.Equals(r.Key, excludeKey, StringComparison.Ordinal))
+            .Select(r => r.Name)];
+
     /// <summary>
     /// Runs a non-OperationResult action (such as §9 "Turn it off") under the same busy lock as Save/Restore/Undo so it
     /// is mutually exclusive with window and tray operations, then invokes <paramref name="onFinishedOnUi"/> once idle.

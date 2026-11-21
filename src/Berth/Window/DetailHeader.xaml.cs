@@ -1,3 +1,5 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -34,5 +36,54 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         menu.PlacementTarget = MoreButton;
         menu.Placement = PlacementMode.Bottom;
         menu.IsOpen = true;
+    }
+
+    private void OnRenameMenuItemClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        {
+            return;
+        }
+
+        var renameVm = new RenameViewModel(detail.Title, detail.GetOtherSavedNames(capturedKey))
+        {
+            IsBusy = detail.IsBusy,
+        };
+
+        void OnRowsChanged(object? _, NotifyCollectionChangedEventArgs __) =>
+            renameVm.UpdateOthers(detail.GetOtherSavedNames(capturedKey));
+
+        void OnDetailPropertyChanged(object? _, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName is nameof(DetailViewModel.IsBusy) or "")
+            {
+                renameVm.IsBusy = detail.IsBusy;
+            }
+        }
+
+        detail.RowsCollection.CollectionChanged += OnRowsChanged;
+        detail.PropertyChanged += OnDetailPropertyChanged;
+        bool? accepted;
+        try
+        {
+            var dialog = new RenameDialog(renameVm);
+            System.Windows.Window? owner = System.Windows.Window.GetWindow(this);
+            if (owner is not null && owner.IsLoaded)
+            {
+                dialog.Owner = owner;
+            }
+
+            accepted = dialog.ShowDialog();
+        }
+        finally
+        {
+            detail.RowsCollection.CollectionChanged -= OnRowsChanged;
+            detail.PropertyChanged -= OnDetailPropertyChanged;
+        }
+
+        if (accepted == true)
+        {
+            _ = detail.RenameAsync(capturedKey, renameVm.TrimmedName);
+        }
     }
 }

@@ -307,6 +307,8 @@ The More menu's Rename (SPEC §10, first bullet).
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RenameTests"` passes, and fails when "Rename" is enabled for a name another layout already has.
 
+> **Started:** 2026-11-21
+
 ## 9. Revert to previous save and delete
 
 The other two More menu items (SPEC §10).
