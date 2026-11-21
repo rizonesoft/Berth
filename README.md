@@ -88,6 +88,7 @@ From PowerShell or a script, run the same operations as commands from the folder
 2. Right-click the Berth tray icon and choose **Exit** (closing the window only hides Berth to the notification area).
 3. Delete `berth.exe` (and `berth.exe.sha256` if you kept it beside the executable).
 4. Delete `%APPDATA%\Berth` (your saved layouts and settings) and `%LOCALAPPDATA%\Berth` (the undo snapshot and log file). Deleting `%APPDATA%\Berth` permanently removes your saved layouts; keep that folder if you plan to reinstall Berth later.
+5. Optionally delete `%TEMP%\.net\Berth` (the .NET single-file runtime extraction cache for Berth only; leave other folders under `%TEMP%\.net` intact for other single-file apps).
 
 ## What does it look like?
 
