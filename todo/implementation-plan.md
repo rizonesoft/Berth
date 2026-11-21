@@ -142,7 +142,7 @@ Sections: 5 | Checklist items: 26
 | ------ | ---------- | ---------------------------------------------- | ----------------------------- | ----- |
 | [x]    | D07 T01 §1 | Single-file self-contained publish             | windows-host, display-session | 6     |
 | [x]    | D07 T01 §2 | Release workflow on a version tag              | none                          | 5     |
-| [ ]    | D07 T01 §3 | README for the built app with real screenshots | windows-host, display-session | 6     |
+| [x]    | D07 T01 §3 | README for the built app with real screenshots | windows-host, display-session | 6     |
 | [ ]    | D07 T01 §4 | Changelog and third-party notices              | none                          | 4     |
 | [ ]    | D07 T01 §5 | Acceptance sweep against the SPEC              | windows-host, display-session | 5     |
 
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 18
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 5     |
 
-Progress: 81/88 verified sections, 1 ready to run now.
+Progress: 82/88 verified sections, 1 ready to run now.
 
-Checklist: 495/523 items completed (includes Commit items).
+Checklist: 496/523 items completed (includes Commit items).

@@ -39,7 +39,7 @@ depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-rest
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Single-file self-contained publish | D05 T01 §14, D06 T01 §5 | [x] |
 | 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [x] |
-| 3 | §3 | README for the built app with real screenshots | §1 | [ ] |
+| 3 | §3 | README for the built app with real screenshots | §1 | [x] |
 | 4 | §4 | Changelog and third-party notices | §3 | [ ] |
 | 5 | §5 | Acceptance sweep against the SPEC | §2, §4 | [ ] |
 
@@ -114,7 +114,7 @@ The README stops describing a plan and describes the program (`README.md`).
 - [x] Rewrite "What works today?" as a table of what the release does, and "How will I use it?" as "How do I use it?", adding "How do I install it?": pre-release source-build via `pwsh scripts/publish.ps1` (PowerShell 7 and .NET 11 SDK) and post-release download of `berth.exe` + `berth.exe.sha256` with `Get-FileHash` verification, put it anywhere, run it, and turn on "Start with Windows" if wanted; and "How do I remove it?": turn off "Start with Windows", exit from the tray, delete `berth.exe` (and `berth.exe.sha256`), the two data folders, and optionally `%TEMP%\.net\berth`. Done when: every runnable command in the README (`pwsh scripts/publish.ps1`, `Get-FileHash` match and 1-byte tamper mismatch refusal, `.\berth.exe --version`/`save`/`restore`/`undo`/`list`, `python assets/build.py`) ran on the build machine with matching output, `TrayAppTests` proves `ExitItem.PerformClick()` exits cleanly, and the disposable published walkthrough confirms first-run window launch, file lock while running, hide-to-tray on close, `%TEMP%\.net\berth`, and post-exit deletion (interactive taskbar right-click -> **Exit** and `scripts/start-run.ps1` are operator-only under `AGENTS.md` and owned by `D99 T01 §4`). Cheaper substitute: instructions nobody ran.
 - [x] State the limits honestly in a "What does it not do?" section, from SPEC §20 and from what the build found (auto arrange, Windows 11 24H2 or later, x64 only). Done when: each SPEC §20 item appears. Cheaper substitute: leaving a reader to find the limits by trial.
 - [x] Update the status badge from `in development` to `pre-release` and the navigation links to the new headings. Done when: every anchor in the navigation row resolves to a heading. Cheaper substitute: dead links.
-- [ ] Commit: `docs: README for the built app with real screenshots`
+- [x] Commit: `docs: README for the built app with real screenshots`
 
 **Test checkpoint:** A script check in `scripts/tests/test_readme.py` passes: every relative link and image in `README.md` exists on disk and every in-page anchor matches a heading; it fails when an image path is misspelled.
 
@@ -127,6 +127,9 @@ The README stops describing a plan and describes the program (`README.md`).
 **Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21T12:07Z; its review chain is kept as `docs/reviews/07-release/D07-T01-s3-chain2.md`.
 
 **Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/07-release/D07-T01-s3-chain1.md`.
+
+> **Verified:** 2026-11-21 | §3 | 765d37341e99c8de033689b126b8812605b59dea
+> **Review:** `docs/reviews/d07-t01-s3.json`
 
 ## 4. Changelog and third-party notices
 

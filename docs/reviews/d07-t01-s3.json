@@ -1,0 +1,84 @@
+{
+  "ref": "D07 T01 \u00a73",
+  "title": "README for the built app with real screenshots",
+  "implementation_sha": "765d37341e99c8de033689b126b8812605b59dea",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/07-release/D07-T01-s3.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python -m unittest scripts/tests/test_readme.py scripts/tests/test_render_docs_images.py; pwsh scripts/render-docs-images.ps1"
+  ],
+  "completion": {
+    "report": "docs/reviews/07-release/D07-T01-s3.md",
+    "verdict": "reconciled",
+    "candidate": "765d37341e99c8de033689b126b8812605b59dea",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/07-release/D07-T01-s3.md",
+    "candidate": "f8db98251fe0c4c0bdf35f9e5b66814bad060a63",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "f8db98251fe0c4c0bdf35f9e5b66814bad060a63",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 8,
+  "pass_cap": 33
+}
