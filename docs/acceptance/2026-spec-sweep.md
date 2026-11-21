@@ -217,7 +217,7 @@
 - `P6.3`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::ShowsExactTitleSubtitleAndButtonsForActiveUnsavedOtherAndNone`
 - `P6.4`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::ShowsExactTitleSubtitleAndButtonsForActiveUnsavedOtherAndNone`
 - `P6.5`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::ShowsExactTitleSubtitleAndButtonsForActiveUnsavedOtherAndNone`
-- `P6.6`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::BoundSaveAndRestoreButtonsWriteLayoutMoveFakeDesktopDisableAllThreeWhileBusyAndPreventReentry`
+- `P6.6`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::BoundSaveAndRestoreButtonsWriteLayoutMoveFakeDesktopDisableAllThreeWhileBusyAndPreventReentry`, `tests/Berth.Tests/Core/SaveTests.cs::ALaterSaveKeepsTheNameAndMovesTheEarlierSaveIntoPrevious`
 - `P6.7`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::BoundSaveAndRestoreButtonsWriteLayoutMoveFakeDesktopDisableAllThreeWhileBusyAndPreventReentry`, `tests/Berth.Tests/Window/StatusLineTests.cs::HostedStatusLineShowsComparisonTimeThenRestoresAndUndoesBackToPreRestorePositions`
 - `P6.8`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::MoreMenuListsThreeItemsInSpecOrderAndEnablesRevertOnlyWithPreviousSave`
 - `P6.9`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::BoundSaveAndRestoreButtonsWriteLayoutMoveFakeDesktopDisableAllThreeWhileBusyAndPreventReentry`, `tests/Berth.Tests/Window/DetailHeaderTests.cs::TrayOperationDisablesOpenWindowHeaderButtonsUntilComplete`
@@ -298,27 +298,27 @@
 - `P13.22`: `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::DetachedLaunchAllocatesNoConsoleForBerthAndAllocatesOneWhenPolicyIsStripped`, `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::InteractiveTerminalInheritsConsolePrintsVersionWaitsForHoldAndCapturesLiveExitCode`
 - `P14.1`: `tests/Berth.Tests/Core/BerthPathsTests.cs::ForRootPutsBothRootsUnderIt`
 - `P14.2`: `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs::SetPositionsRefreshesLiveScopeWhenProbeIsRemovedOrRenamedOutsidePrefix`
-- `P14.3`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::TheSameIdOnceInEachSaveIsFine`
-- `P14.4`: `tests/Berth.Tests/Core/LayoutJsonTests.cs::SpecExampleParsesToItsValues`
+- `P14.3`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::LayoutsSurviveInAFreshStoreWithEveryValue`
+- `P14.4`: `tests/Berth.Tests/Core/LayoutJsonTests.cs::SpecExampleParsesToItsValues`, `tests/Berth.Tests/Core/LayoutJsonTests.cs::WritingGivesTheExpectedDocument`
 - `P14.5`: `tests/Berth.Tests/Core/ArrangementKeyTests.cs::TheSpecExampleKeyIsItsMonitorsKey`
 - `P14.6`: `tests/Berth.Tests/Core/LayoutJsonTests.cs::PreviousSaveParsesToItsValues`
-- `P14.7`: `tests/Berth.Tests/Core/SettingsStoreTests.cs::TheDefaultsHaveTheSpecShape`
+- `P14.7`: `tests/Berth.Tests/Core/SettingsStoreTests.cs::TheDefaultsHaveTheSpecShape`, `tests/Berth.Tests/Core/SettingsStoreTests.cs::SettingsSurviveInAFreshStoreAndCanBeCleared`
 - `P14.8`: `tests/Berth.Tests/Core/UndoTests.cs::ARestoreFollowedByAnUndoReturnsEveryIconWhereItWasAndDeletesTheSnapshot`
-- `P14.9`: `tests/Berth.Tests/Core/LogTests.cs::AnErrorWhoseTextFailsStillLogsItsLine`
+- `P14.9`: `tests/Berth.Tests/Core/LogTests.cs::ALineHasTheUtcTimeTheLevelAndTheMessage`
 - `P14.10`: `tests/Berth.Tests/Core/JsonFileTests.cs::AWriteCanBeReadBackAndLeavesNoTemporaryFile`
-- `P14.11`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::ASaveOverAnUnreadableFileIsRefusedAndTheFileKept`
-- `P14.12`: `tests/Berth.Tests/Core/LayoutJsonTests.cs::SpecExampleParsesToItsValues`
+- `P14.11`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::ASaveOverAnUnreadableFileIsRefusedAndTheFileKept`, `tests/Berth.Tests/Core/SettingsStoreTests.cs::AnUnreadableFileExistsGivesTheDefaultsAndIsNeverReplaced`
+- `P14.12`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::ALayoutMayNameAtMost64Monitors`
 - `P14.13`: `tests/Berth.Tests/Core/JsonFileTests.cs::ANotePendingDeletionDoesNotFailRecoveryOrNextWrite`
-- `P14.14`: `tests/Berth.Tests/Core/UndoTests.cs::AnEmptySnapshotAndAnAllMissingSnapshotAreUndoneAndDeleteTheSnapshot`
-- `P14.15`: `tests/Berth.Tests/Core/ArrangementKeyTests.cs::AKeyIsSixteenLowercaseHexCharacters`
+- `P14.14`: `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreadableUndoFileIsReplaced`, `tests/Berth.Tests/Core/UndoTests.cs::InvalidOrForeignSnapshotsRefuseWithNothingToUndoAndDisableCanUndo`
+- `P14.15`: `tests/Berth.Tests/Core/ArrangementKeyTests.cs::TheExpectedKeysAreTheShaOfTheHandWrittenStrings`, `tests/Berth.Tests/Core/ArrangementKeyTests.cs::ThreeMonitorsInAnyOrderHaveOneKey`, `tests/Berth.Tests/Core/ArrangementKeyTests.cs::TheCultureDoesNotChangeTheKey`, `tests/Berth.Tests/Core/ArrangementKeyTests.cs::AKeyIsSixteenLowercaseHexCharacters`
 - `P15.1`: `tests/Berth.Tests/Desktop/ReadIconsTests.cs::ReadIconsAssignsExactSignedCoordinatesIncludingOffScreenAndPreservesRecycleBinId`
-- `P15.2`: `tests/Berth.Tests/Core/SaveTests.cs::ALaterSaveKeepsTheNameAndMovesTheEarlierSaveIntoPrevious`
-- `P15.3`: `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`
-- `P15.4`: `tests/Berth.Tests/Core/RestoreTests.cs::OnlySavedIconsStillOnTheDesktopAreMovedToTheirSavedPositions`
-- `P15.5`: `tests/Berth.Tests/Core/UndoTests.cs::ARestoreFollowedByAnUndoReturnsEveryIconWhereItWasAndDeletesTheSnapshot`
+- `P15.2`: `tests/Berth.Tests/Core/SaveTests.cs::AFirstSaveOnAFreshProfileWritesTheArrangementsLayout`, `tests/Berth.Tests/Core/SaveTests.cs::ASecondArrangementWithAsManyMonitorsGetsTheNextName`, `tests/Berth.Tests/Core/SaveTests.cs::ALaterSaveKeepsTheNameAndMovesTheEarlierSaveIntoPrevious`
+- `P15.3`: `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`, `tests/Berth.Tests/Core/RestoreTests.cs::NoLayoutIsRefusedBeforeAutoArrange`, `tests/Berth.Tests/Core/RestoreTests.cs::OnlySavedIconsStillOnTheDesktopAreMovedToTheirSavedPositions`, `tests/Berth.Tests/Core/RestoreTests.cs::CountsComeFromTheDesktopReadBack`
+- `P15.4`: `tests/Berth.Tests/Core/RestoreTests.cs::CountsComeFromTheDesktopReadBack`, `tests/Berth.Tests/Core/RestoreTests.cs::IconsWindowsMovedMakeTheRestoreAFailureWithItsCounts`
+- `P15.5`: `tests/Berth.Tests/Core/UndoTests.cs::ARestoreFollowedByAnUndoReturnsEveryIconWhereItWasAndDeletesTheSnapshot`, `tests/Berth.Tests/Core/UndoTests.cs::IconsWindowsMovedMakeTheUndoAFailureAndKeepTheSnapshot`, `tests/Berth.Tests/Core/UndoTests.cs::InvalidOrForeignSnapshotsRefuseWithNothingToUndoAndDisableCanUndo`
 - `P15.6`: `tests/Berth.Tests/Desktop/SetPositionsTests.cs::SetPositionsBatchesMatchedIconsIgnoringCaseFirstDesktopWinsConvertsToViewAndPreservesSelectionFlags`
-- `P15.7`: `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`
-- `P15.8`: `tests/Berth.Tests/Core/OperationLockTests.cs::ABusyLockReturnsBusyWithoutRunningTheWorkThenRunsItOnceFree`
+- `P15.7`: `tests/Berth.Tests/Desktop/SetPositionsTests.cs::SetPositionsBatchesMatchedIconsIgnoringCaseFirstDesktopWinsConvertsToViewAndPreservesSelectionFlags`, `tests/Berth.Tests/Core/RestoreTests.cs::OnlySavedIconsStillOnTheDesktopAreMovedToTheirSavedPositions`
+- `P15.8`: `tests/Berth.Tests/Core/OperationLockTests.cs::TheAppWaitsFiveSecondsOnALockSharedAcrossSessions`, `tests/Berth.Tests/Core/OperationLockTests.cs::ATimedOutRunIsBusyOnceAndOnlyAfterTheWait`
 - `P16.1`: `tests/Berth.Tests/App/AutoRestoreTests.cs::OffSettingDoesNothingAndLogsNothingWhileRuntimeFlipToOnTakesEffectImmediately`
 - `P16.2`: `tests/Berth.Tests/App/AutoRestoreTests.cs::FiveStaggeredTriggersInBurstProduceExactlyOneRestoreAfterLastDeadline`, `tests/Berth.Tests/App/AutoRestoreTests.cs::TrayAppRestoresOnDisplayChangeAndExplorerRestartHonoursRuntimeSettingOffAndDrainsCleanlyOnExit`
 - `P16.3`: `tests/Berth.Tests/App/AutoRestoreTests.cs::NoLayoutForCurrentArrangementIsSilentCreatesNoLayoutAndLeavesUndoUntouched`
