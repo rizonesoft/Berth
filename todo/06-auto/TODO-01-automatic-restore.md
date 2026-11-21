@@ -37,7 +37,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
-| 1 | §1 | Message window for display change and Explorer restart | D04 T01 §5 | [ ] |
+| 1 | §1 | Message window for display change and Explorer restart | D04 T01 §5 | [x] |
 | 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [ ] |
 | 3 | §3 | Failure balloon | §2, D04 T01 §7 | [ ] |
 | 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [ ] |
@@ -67,6 +67,9 @@ A hidden top-level window that turns three system messages into events.
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SystemEventsTests"` passes, and fails when `WM_DISPLAYCHANGE` no longer raises `DisplayChanged`.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §1 | 62c1d20f4c3fcc4c04f2a476e4b503dec47f0071
+> **Review:** `docs/reviews/d06-t01-s1.json`
 
 ## 2. Settle timer and the automatic restore
 

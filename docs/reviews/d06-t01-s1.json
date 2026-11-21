@@ -1,0 +1,86 @@
+{
+  "ref": "D06 T01 \u00a71",
+  "title": "Message window for display change and Explorer restart",
+  "implementation_sha": "62c1d20f4c3fcc4c04f2a476e4b503dec47f0071",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/06-auto/D06-T01-s1.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *SystemEventsTests",
+    "dotnet test --solution Berth.slnx -c Release --filter-class *TrayIconTests",
+    "dotnet test --solution Berth.slnx -c Release --filter-class *TrayMenuTests"
+  ],
+  "completion": {
+    "report": "docs/reviews/06-auto/D06-T01-s1.md",
+    "verdict": "reconciled",
+    "candidate": "62c1d20f4c3fcc4c04f2a476e4b503dec47f0071",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/06-auto/D06-T01-s1.md",
+    "candidate": "d12467a1eaca67744be05cbe7f4c65694acf5260",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "d12467a1eaca67744be05cbe7f4c65694acf5260",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
