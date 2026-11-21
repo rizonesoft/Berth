@@ -511,6 +511,7 @@ public sealed class TrayAutoRestoreTests
             IsolatedStaChildRunner.AutoRestoreDirectShutdownScenario,
             data.Root,
             instanceName,
+            timeout: TimeSpan.FromSeconds(25),
             reportFile: reportFile);
 
         Assert.True(exitCode == 0, $"Isolated child exited {exitCode}. stdout={stdout} stderr={stderr}");
@@ -519,7 +520,9 @@ public sealed class TrayAutoRestoreTests
             .ToDictionary(parts => parts[0], parts => parts.Length > 1 ? parts[1] : string.Empty, StringComparer.Ordinal);
 
         Assert.Equal(string.Empty, report["workerError"]);
-        Assert.Equal("True", report["restoreCompletedBeforeReturn"]);
+        Assert.Equal("True", report["compositionDisposed"]);
+        Assert.Equal("True", report["restoreCompletedBeforeDispose"]);
+        Assert.Equal("False", report["desktopReadAfterDispose"]);
         Assert.Equal("111,222", report["posAfterReturn"]);
     }
 }

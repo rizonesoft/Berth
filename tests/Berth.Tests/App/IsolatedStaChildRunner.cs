@@ -413,7 +413,7 @@ internal static class IsolatedStaChildRunner
             if (Interlocked.Exchange(ref _gateArmed, 0) == 1)
             {
                 _entered.Set();
-                if (!_release.Wait(TimeSpan.FromSeconds(5)))
+                if (!_release.Wait(TimeSpan.FromSeconds(15)))
                 {
                     throw new TimeoutException("In-flight desktop read gate was never released.");
                 }
@@ -1449,11 +1449,12 @@ internal static class IsolatedStaChildRunner
 
         var gate = OperationLock.ForApp(paths);
         var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
-        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
         var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
 
         SystemEvents? capturedEvents = null;
-        bool restoreCompletedBeforeReturn = false;
+        bool restoreCompletedBeforeDispose = false;
+        bool compositionDisposed = false;
+        bool desktopReadAfterDispose = false;
         string workerError = string.Empty;
 
         int exitCode = TrayApp.RunWithInstance(
@@ -1469,7 +1470,20 @@ internal static class IsolatedStaChildRunner
             clock: clock,
             zone: TimeZoneInfo.Utc,
             taskbarTheme: theme,
-            composition: composition,
+            createOwnedComposition: () =>
+            {
+                var trackingDesktop = new DisposeTrackingDesktopIcons(
+                    desktop,
+                    onDispose: () =>
+                    {
+                        compositionDisposed = true;
+                        IconPosition current = ((IDesktopIcons)desktop).ReadIcons().Single();
+                        restoreCompletedBeforeDispose = (current.X, current.Y) == (111, 222);
+                    },
+                    onUsedAfterDispose: () => desktopReadAfterDispose = true);
+                var ownedService = new LayoutService(trackingDesktop, monitors, store, paths, gate, log, clock);
+                return Composition.ForTest(paths, log, monitors, trackingDesktop, store, gate, ownedService, ownedDesktop: trackingDesktop);
+            },
             onSystemEventsCreated: ev => capturedEvents = ev,
             displayChangeSettle: TimeSpan.FromMilliseconds(40),
             explorerRestartSettle: TimeSpan.FromMilliseconds(40),
@@ -1490,9 +1504,10 @@ internal static class IsolatedStaChildRunner
                         _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
                         desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
 
-                        // Call app.Shutdown(0) directly (NOT via tray Exit!) while the restore is gated, then release 120ms later.
+                        // Call app.Shutdown(0) directly while gated and hold the gate for 5.2s (past the old 5s bounded wait)
+                        // so only an unconditional drain keeps the owned Composition alive until the restore completes.
                         _ = app.Dispatcher.BeginInvoke(() => app.Shutdown(0));
-                        Thread.Sleep(120);
+                        Thread.Sleep(TimeSpan.FromMilliseconds(5200));
                         desktop.ReleaseGate();
                     }
                     catch (Exception ex)
@@ -1505,17 +1520,68 @@ internal static class IsolatedStaChildRunner
             });
 
         IconPosition posAfterReturn = ((IDesktopIcons)desktop).ReadIcons().Single();
-        restoreCompletedBeforeReturn = (posAfterReturn.X, posAfterReturn.Y) == (111, 222);
         File.WriteAllLines(
             reportFile,
             [
-                $"restoreCompletedBeforeReturn={restoreCompletedBeforeReturn}",
+                $"compositionDisposed={compositionDisposed}",
+                $"restoreCompletedBeforeDispose={restoreCompletedBeforeDispose}",
+                $"desktopReadAfterDispose={desktopReadAfterDispose}",
                 $"posAfterReturn={posAfterReturn.X},{posAfterReturn.Y}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);
 
         return exitCode;
+    }
+
+    private sealed class DisposeTrackingDesktopIcons(
+        IDesktopIcons inner,
+        Action onDispose,
+        Action onUsedAfterDispose) : IDesktopIcons, IDisposable
+    {
+        private int _disposed;
+
+        public bool AutoArrange => inner.AutoArrange;
+
+        public IReadOnlyList<IconPosition> ReadIcons()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                onUsedAfterDispose();
+            }
+
+            return inner.ReadIcons();
+        }
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                onUsedAfterDispose();
+            }
+
+            inner.SetPositions(icons);
+        }
+
+        public void SetPositions(IReadOnlyList<IconPosition> icons, Action beforeMove)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                onUsedAfterDispose();
+            }
+
+            inner.SetPositions(icons, beforeMove);
+        }
+
+        public bool TryTurnAutoArrangeOff() => inner.TryTurnAutoArrangeOff();
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                onDispose();
+            }
+        }
     }
 
     private sealed class RecordingMainWindow(Action onBringToFront) : Berth.Window.IMainWindow

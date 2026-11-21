@@ -98,8 +98,9 @@ internal sealed class Composition : IDisposable
         IDesktopIcons desktop,
         LayoutStore store,
         OperationLock gate,
-        LayoutService service) =>
-        new(paths, log, monitors, desktop, ownedDesktop: null, store, gate, service);
+        LayoutService service,
+        IDisposable? ownedDesktop = null) =>
+        new(paths, log, monitors, desktop, ownedDesktop: ownedDesktop, store, gate, service);
 
     public void Dispose()
     {

@@ -68,7 +68,8 @@ internal static class TrayApp
         Action<SystemEvents>? onSystemEventsCreated = null,
         TimeSpan? displayChangeSettle = null,
         TimeSpan? explorerRestartSettle = null,
-        Action<AutoRestore>? onAutoRestoreCreated = null)
+        Action<AutoRestore>? onAutoRestoreCreated = null,
+        Func<Composition>? createOwnedComposition = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -118,7 +119,9 @@ internal static class TrayApp
                 ?? paths
                 ?? BerthPaths.FromEnvironment(getenv ?? Environment.GetEnvironmentVariable);
             using Composition? ownedComposition = composition is null
-                ? Composition.Create(effectivePaths, log, getenv, effectiveClock)
+                ? (createOwnedComposition is not null
+                    ? createOwnedComposition()
+                    : Composition.Create(effectivePaths, log, getenv, effectiveClock))
                 : null;
             Composition effectiveComposition = composition ?? ownedComposition!;
             IMonitors effectiveMonitors = monitors ?? effectiveComposition.Monitors;
