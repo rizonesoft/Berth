@@ -479,6 +479,11 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                 berthApp.ApplyColorTheme(savedTheme);
             }
         });
+
+        if (vm.Settings is not null)
+        {
+            await Task.WhenAll(vm.Settings.LastRestoreTask, vm.Settings.LastStartTask);
+        }
     }
 
     private static void AssertLayoutNameTrimmedWithTooltip(TextBlock tb, string fullName, string label)

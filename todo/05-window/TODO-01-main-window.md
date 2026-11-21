@@ -49,7 +49,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [x] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [x] |
-| 13 | §13 | High contrast and 150% scale | §12 | [ ] |
+| 13 | §13 | High contrast and 150% scale | §12 | [x] |
 | 14 | §14 | UI Automation smoke of the running window | §13 | [ ] |
 
 ## 1. Window view model and desktop polling
@@ -451,16 +451,19 @@ The fidelity conditions of SPEC §1 that the earlier renders did not cover.
 1. Render in high contrast. Done when: no Berth token colour appears in the render.
 2. Render at 150%. Done when: nothing is clipped at the minimum window size.
 
-- [ ] Extend `WindowRenderer` with a `HighContrast` theme that selects the `HighContrast` dictionary and fixed stand-in system colours for the render. Done when: a render of the data state contains none of the light or dark token colours (checked by sampling the marker and badge pixels). Cheaper substitute: a claim that it "should work".
-- [ ] Extend `WindowRenderer` with a `scale` parameter (1.0, 1.5) applied as a layout transform at render time. Done when: the 1.5 render is 1470 by 960 pixels. Cheaper substitute: none needed.
-- [ ] Add a test that lays the window out at the minimum size (760 by 520) at both scales with the longest strings (a 40 character layout name, the two-notice state, the longest SPEC §8 sentence) and fails when any control lies outside its parent's bounds, when any text other than a layout's name is trimmed or clipped, or when a trimmed layout name (in a row or in the header) has no tooltip with the full name (SPEC §3: text wraps, and only a layout's name may trim). Done when: it passes, after fixing whatever it finds: wrapping for sentences, ellipsis plus tooltip for the two name elements. Cheaper substitute: testing only the default size.
-- [ ] Record each layout fix in the commit message, and when a fix changes a measurement that `design/SPEC.md` states, change the SPEC first with a dated line (SPEC §1 "Design first"). Done when: `git log -1` for this section names what was fixed. Cheaper substitute: tuning in code only.
-- [ ] Add render tests writing `data-high-contrast` and `data-150` (SPEC §1). Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
-- [ ] Commit: `window: high contrast and 150% scale`
+- [x] Extend `WindowRenderer` with a `HighContrast` theme that selects the `HighContrast` dictionary and fixed stand-in system colours for the render. Done when: a render of the data state contains none of the light or dark token colours (checked by sampling the marker and badge pixels). Cheaper substitute: a claim that it "should work".
+- [x] Extend `WindowRenderer` with a `scale` parameter (1.0, 1.5) applied as a layout transform at render time. Done when: the 1.5 render is 1470 by 960 pixels. Cheaper substitute: none needed.
+- [x] Add a test that lays the window out at the minimum size (760 by 520) at both scales with the longest strings (a 40 character layout name, the two-notice state, the longest SPEC §8 sentence) and fails when any control lies outside its parent's bounds, when any text other than a layout's name is trimmed or clipped, or when a trimmed layout name (in a row or in the header) has no tooltip with the full name (SPEC §3: text wraps, and only a layout's name may trim). Done when: it passes, after fixing whatever it finds: wrapping for sentences, ellipsis plus tooltip for the two name elements. Cheaper substitute: testing only the default size.
+- [x] Record each layout fix in the commit message, and when a fix changes a measurement that `design/SPEC.md` states, change the SPEC first with a dated line (SPEC §1 "Design first"). Done when: `git log -1` for this section names what was fixed. Cheaper substitute: tuning in code only.
+- [x] Add render tests writing `data-high-contrast` and `data-150` (SPEC §1). Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
+- [x] Commit: `window: high contrast and 150% scale`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*ContrastAndScaleTests"` passes, and fails when a 40 character layout name is clipped at the minimum window size.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §13 | 355f75f3f6195498428e50196d7d2f2757af072c
+> **Review:** `docs/reviews/d05-t01-s13.json`
 
 ## 14. UI Automation smoke of the running window
 

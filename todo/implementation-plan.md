@@ -119,7 +119,7 @@ Sections: 14 | Checklist items: 100
 | [x]    | D05 T01 §10 | Start with Windows registry value         | none                          | 4     |
 | [x]    | D05 T01 §11 | Settings switches and version caption     | windows-host, display-session | 6     |
 | [x]    | D05 T01 §12 | Keyboard order and automation names       | windows-host, display-session | 7     |
-| [ ]    | D05 T01 §13 | High contrast and 150% scale              | windows-host, display-session | 6     |
+| [x]    | D05 T01 §13 | High contrast and 150% scale              | windows-host, display-session | 6     |
 | [ ]    | D05 T01 §14 | UI Automation smoke of the running window | windows-host, display-session | 6     |
 
 ### Phase 6: Automatic restore
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 72/88 verified sections, 1 ready to run now.
+Progress: 73/88 verified sections, 1 ready to run now.
 
-Checklist: 437/521 items completed (includes Commit items).
+Checklist: 443/521 items completed (includes Commit items).
