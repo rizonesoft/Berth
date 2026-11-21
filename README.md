@@ -64,17 +64,17 @@ Run `.\berth.exe` from the folder where you placed it (or using its full path). 
 - **Left-click** the tray icon to open the main window with your saved layouts, the position map, **Save current layout**, **Restore**, **Undo** and the **Restore automatically** and **Start with Windows** switches.
 - **Right-click** the tray icon for the menu: **Save layout**, **Restore layout**, **Restore automatically**, **Open Berth** and **Exit**.
 
-From PowerShell or a script, run the same operations as commands from the folder holding `berth.exe` (or with its full path); each command finishes and exits without starting the tray app:
+From PowerShell or a script, run any of these commands individually from the folder holding `berth.exe` (or with its full path); each command finishes and exits without starting the tray app:
 
 ```powershell
-.\berth.exe --version
-.\berth.exe save
-.\berth.exe restore
-.\berth.exe undo
-.\berth.exe list
+.\berth.exe --version   # print the installed version
+.\berth.exe list        # list saved layouts for each monitor arrangement
+.\berth.exe save        # save the current icon positions (replaces the arrangement's saved layout)
+.\berth.exe restore     # move icons back to the saved layout for this arrangement
+.\berth.exe undo        # revert the last restore's icon positions
 ```
 
-`.\berth.exe restore` exits with code `3` and a one-line reason when it has to refuse, for example while Windows has **Auto arrange icons** turned on. Every command, message and exit code is listed in [`design/SPEC.md`](design/SPEC.md#13-command-line).
+Running `.\berth.exe save` replaces the saved layout for the current monitor arrangement; `undo` reverts the last restore rather than a save, and you can recover the previous save from the main window via **More -> Revert to previous save** and then **Restore**. `.\berth.exe restore` exits with code `3` and a one-line reason when it has to refuse, for example while Windows has **Auto arrange icons** turned on. Every command, message and exit code is listed in [`design/SPEC.md`](design/SPEC.md#13-command-line).
 
 ## What does it not do?
 
@@ -84,7 +84,7 @@ From PowerShell or a script, run the same operations as commands from the folder
 
 ## How do I remove it?
 
-1. Open the Berth main window and turn off **Start with Windows** so Berth removes its `Run` registry value under your user account.
+1. Open the Berth main window and turn off **Start with Windows** so Berth removes its `Run` registry value under your user account. If the switch returns to On with an error, stop and resolve that error before deleting Berth so Windows does not keep a stale sign-in entry.
 2. Right-click the Berth tray icon and choose **Exit** (closing the window only hides Berth to the notification area).
 3. Delete `berth.exe` (and `berth.exe.sha256` if you kept it beside the executable).
 4. Delete `%APPDATA%\Berth` (your saved layouts and settings) and `%LOCALAPPDATA%\Berth` (the undo snapshot and log file). Deleting `%APPDATA%\Berth` permanently removes your saved layouts; keep that folder if you plan to reinstall Berth later.

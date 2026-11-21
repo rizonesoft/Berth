@@ -94,7 +94,7 @@ Publishing is outward-facing and the owner's decision: the run prepares everythi
 
 - [ ] Set the date on the `## 0.1.0` heading of `CHANGELOG.md`, commit, then run `git tag v0.1.0` and `git push origin v0.1.0`. Done when: `gh run list --workflow release.yml --limit 1` shows a run for the tag that completes with success. Cheaper substitute: tagging a commit the sweep did not cover.
 - [ ] Open the draft release, check the notes and that `berth.exe` and `berth.exe.sha256` are attached, download the file on the build machine, and compare `Get-FileHash berth.exe` with the checksum. Done when: the two hashes are equal. Cheaper substitute: publishing unseen.
-- [ ] Publish the release. Done when: `gh release view v0.1.0 --json isDraft --jq .isDraft` prints `false`. Cheaper substitute: none needed.
+- [ ] Publish the release, then update the `README.md` status badge from `pre-release` to `v0.1.0` (and its assertion in `scripts/tests/test_readme.py`). Done when: `gh release view v0.1.0 --json isDraft --jq .isDraft` prints `false` and `python -m unittest scripts/tests/test_readme.py` passes. Cheaper substitute: none needed.
 - [ ] Commit: `release: 0.1.0`
 
 **Test checkpoint:** `gh release view v0.1.0 --json isDraft --jq .isDraft` prints `false`, and fails with "release not found" before the release exists.
