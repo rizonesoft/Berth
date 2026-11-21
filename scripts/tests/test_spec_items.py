@@ -162,7 +162,9 @@ class SpecItemsTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(tg_proc.returncode, 0, tg_proc.stderr)
-        valid_refs = set(re.findall(r"\bD\d{2}\s+T\d{2}\s+§\d+\b", tg_proc.stdout))
+        plan_data = json.loads(tg_proc.stdout)
+        valid_refs = {s["ref"] for s in plan_data["sections"]}
+        ref_topics = {s["ref"]: s["title"] for s in plan_data["sections"]}
         self.assertGreater(len(valid_refs), 50)
 
         # Case-insensitive audit of every Clarified / Corrected / Added / Deviation note in §2..§20.
@@ -210,7 +212,7 @@ class SpecItemsTests(unittest.TestCase):
                     referenced_in_spec.add(ref)
                     checked += 1
                 if re.search(r"\bdeviation\b", line, re.IGNORECASE):
-                    ok, msg = validate_deviation_clause(line, valid_refs)
+                    ok, msg = validate_deviation_clause(line, valid_refs, ref_topics)
                     self.assertTrue(ok, f"Invalid SPEC deviation at offset line {line_no}: {msg}")
         self.assertGreaterEqual(checked, 15, "Expected all dated SPEC notes (including lowercase inline notes) to be audited")
 
@@ -297,7 +299,8 @@ class SpecItemsTests(unittest.TestCase):
                 if l.startswith("-") and not l.startswith("---")
                 for m in dated_tag_re.finditer(l[1:])
             }
-            for ref in sorted(added_refs - removed_refs):
+            target_refs = sorted(added_refs - removed_refs) or sorted(added_refs & removed_refs)
+            for ref in target_refs:
                 if ref in stamped_shas:
                     anc = subprocess.run(
                         ["git", "merge-base", "--is-ancestor", sha, stamped_shas[ref]],
@@ -313,7 +316,46 @@ class SpecItemsTests(unittest.TestCase):
                         f"SPEC commit {sha[:8]} for {ref} landed AFTER stamped commit {stamped_shas[ref][:8]}",
                     )
                     verified_ranges += 1
-        self.assertGreaterEqual(verified_ranges, 10, "Expected SPEC-before-stamp ordering checks across stamped sections")
+        self.assertGreaterEqual(verified_ranges, 20, "Expected SPEC-before-stamp ordering checks across stamped sections")
+
+        # Also verify no unstamped surface or token commit exists outside a stamped section's range:
+        # every commit touching design/tokens.json or src/Berth/Window must be an ancestor of at least one stamped SHA.
+        surface_log = subprocess.run(
+            ["git", "log", "--format=%H", "--", "design/tokens.json", "src/Berth/Window"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        self.assertEqual(surface_log.returncode, 0, surface_log.stderr)
+        surface_commits = [s for s in surface_log.stdout.strip().splitlines() if s]
+        self.assertGreater(len(surface_commits), 0)
+        latest_stamped_sha = max(
+            stamped_shas.values(),
+            key=lambda s: int(
+                subprocess.check_output(
+                    ["git", "show", "-s", "--format=%ct", s],
+                    cwd=str(ROOT),
+                    text=True,
+                    creationflags=CREATE_NO_WINDOW,
+                ).strip()
+            ),
+        )
+        for sha in surface_commits:
+            anc = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", sha, latest_stamped_sha],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
+                check=False,
+            )
+            self.assertEqual(
+                anc.returncode,
+                0,
+                f"Surface or token commit {sha[:8]} landed outside all stamped sections (after {latest_stamped_sha[:8]})",
+            )
 
 
 if __name__ == "__main__":
