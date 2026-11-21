@@ -206,6 +206,32 @@ public sealed class SettingsTests(AppFixture appFixture)
             appFixture.Invoke(() => vm.Detail.SetExternalBusy(false));
             Assert.Equal("Berth could not change the Start with Windows setting: Access is denied.", vm.Status.Sentence);
             Assert.Single(File.ReadAllLines(paths.LogFile), l => l.Contains("FAIL") && l.Contains("Access is denied."));
+
+            // 3. Real window operation completing (SaveAsync -> OperationCompleted) must NOT overwrite a queued §18 failure!
+            var gatedDesktop = new GatedDesktopIcons(desktop);
+            LayoutService gatedService = CreateService(paths, layoutStore, gatedDesktop, monitors, log);
+            var opVm = CreateViewModel(layoutStore, gatedDesktop, monitors, gatedService, settingsStore, runValue, changes, log);
+            await opVm.RefreshAsync();
+            Assert.True(opVm.Settings!.StartWithWindows);
+
+            gatedDesktop.ArmGate();
+            Task<OperationResult?> saveTask = opVm.Detail.SaveAsync();
+            await gatedDesktop.EnteredGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal("Working", opVm.Status.Sentence);
+
+            opVm.Settings.StartWithWindows = false;
+            await opVm.Settings.LastStartTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.True(opVm.Settings.StartWithWindows);
+            Assert.Equal("Working", opVm.Status.Sentence);
+
+            gatedDesktop.ReleaseGate();
+            await saveTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal("Berth could not change the Start with Windows setting: Access is denied.", opVm.Status.Sentence);
+
+            // 4. Denied registry read after a failed disable must NOT overwrite On with Off on the next refresh!
+            fakeRegistry.ThrowOnRead = new UnauthorizedAccessException("Access is denied.");
+            await opVm.RefreshAsync();
+            Assert.True(opVm.Settings.StartWithWindows);
         }
         finally
         {
@@ -259,6 +285,46 @@ public sealed class SettingsTests(AppFixture appFixture)
         desktop.ReleaseGate();
         await stalePoll.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.False(vm.Settings.RestoreAutomatically);
+
+        // 3. Poll started DURING an in-flight write (captures post-entry epoch, reads Off before write persists On)
+        // must be discarded after the write completes!
+        var gatedRegistry = new FakeRunRegistry();
+        gatedRegistry.ArmWriteGate();
+        var gatedRun = new RunValue(@"Software\Berth.Tests\Fake", "Berth", @"C:\Berth\berth.exe", gatedRegistry);
+        var midWriteVm = CreateViewModel(layoutStore, desktop, monitors, service, settingsStore, gatedRun, changes, log);
+        await midWriteVm.RefreshAsync();
+        Assert.False(midWriteVm.Settings!.StartWithWindows);
+
+        midWriteVm.Settings.StartWithWindows = true;
+        await gatedRegistry.EnteredWriteGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Capture epochs WHILE the write is in flight (after entry increment, before persistence)!
+        (long midRestoreEpoch, long midStartEpoch) = midWriteVm.Settings.CaptureEpochs();
+        (_, bool? midReadStart) = midWriteVm.Settings.ReadSources();
+        Assert.False(midReadStart);
+
+        gatedRegistry.ReleaseWriteGate();
+        await midWriteVm.Settings.LastStartTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(midWriteVm.Settings.StartWithWindows);
+
+        // Delivering that mid-write poll observation now must NOT undo the verified On state!
+        midWriteVm.Settings.ApplyRefreshed(null, midRestoreEpoch, midReadStart, midStartEpoch);
+        Assert.True(midWriteVm.Settings.StartWithWindows);
+
+        // 4. Two rapid denied toggles (Off -> On -> Off) must roll back to last confirmed Off, never unconfirmed On!
+        var rapidRegistry = new FakeRunRegistry { ThrowOnWriteOrDelete = new UnauthorizedAccessException("Access is denied.") };
+        rapidRegistry.ArmWriteGate();
+        var rapidRun = new RunValue(@"Software\Berth.Tests\Fake", "Berth", @"C:\Berth\berth.exe", rapidRegistry);
+        var rapidVm = CreateViewModel(layoutStore, desktop, monitors, service, settingsStore, rapidRun, changes, log);
+        await rapidVm.RefreshAsync();
+        Assert.False(rapidVm.Settings!.StartWithWindows);
+
+        rapidVm.Settings.StartWithWindows = true;
+        await rapidRegistry.EnteredWriteGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        rapidVm.Settings.StartWithWindows = false;
+        rapidRegistry.ReleaseWriteGate();
+        await rapidVm.Settings.LastStartTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.False(rapidVm.Settings.StartWithWindows);
     }
 
     [Fact]
@@ -345,6 +411,13 @@ public sealed class SettingsTests(AppFixture appFixture)
                     Assert.True(panel.RestoreAutomaticallySwitch.ActualHeight >= 32d);
                     Assert.True(panel.StartWithWindowsSwitch.ActualHeight >= 32d);
                     Assert.True(panel.VersionCaptionText.ActualHeight > 0d);
+                    Assert.True(panel.RestoreAutomaticallySwitch.Focusable && panel.RestoreAutomaticallySwitch.IsTabStop);
+                    Assert.True(panel.StartWithWindowsSwitch.Focusable && panel.StartWithWindowsSwitch.IsTabStop);
+                    Border hcTrack = (Border)panel.RestoreAutomaticallySwitch.Template.FindName("Track", panel.RestoreAutomaticallySwitch);
+                    Border hcKnob = (Border)panel.RestoreAutomaticallySwitch.Template.FindName("Knob", panel.RestoreAutomaticallySwitch);
+                    Assert.NotNull(hcTrack.BorderBrush);
+                    Assert.NotNull(hcKnob.Background);
+                    Assert.NotNull(panel.VersionCaptionText.Foreground);
                 }
                 finally
                 {
@@ -469,12 +542,35 @@ public sealed class SettingsTests(AppFixture appFixture)
 
     private sealed class FakeRunRegistry : IRunRegistry
     {
+        private TaskCompletionSource? _pendingWriteGate;
+        private TaskCompletionSource? _activeWriteGate;
+
         public string? StoredValue { get; set; }
+
+        public Exception? ThrowOnRead { get; set; }
 
         public Exception? ThrowOnWriteOrDelete { get; set; }
 
+        public TaskCompletionSource EnteredWriteGate { get; private set; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ArmWriteGate()
+        {
+            EnteredWriteGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeWriteGate = tcs;
+            _pendingWriteGate = tcs;
+        }
+
+        public void ReleaseWriteGate() => _activeWriteGate?.TrySetResult();
+
         public bool TryReadValue(string keyPath, string valueName, out string? value, out RegistryValueKind kind)
         {
+            if (ThrowOnRead is not null)
+            {
+                throw ThrowOnRead;
+            }
+
             if (StoredValue is null)
             {
                 value = null;
@@ -489,6 +585,13 @@ public sealed class SettingsTests(AppFixture appFixture)
 
         public void WriteStringValue(string keyPath, string valueName, string value)
         {
+            TaskCompletionSource? gate = Interlocked.Exchange(ref _pendingWriteGate, null);
+            if (gate is not null)
+            {
+                EnteredWriteGate.TrySetResult();
+                gate.Task.GetAwaiter().GetResult();
+            }
+
             if (ThrowOnWriteOrDelete is not null)
             {
                 throw ThrowOnWriteOrDelete;

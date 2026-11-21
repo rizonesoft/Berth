@@ -176,29 +176,32 @@ internal sealed class RunValue
     /// True only when the value exists as <see cref="RegistryValueKind.String"/> (<c>REG_SZ</c>) and, unquoted and
     /// compared ignoring case, equals the running executable's path (SPEC §11).
     /// </summary>
-    public bool IsOn
+    public bool IsOn => TryReadIsOn() ?? false;
+
+    /// <summary>
+    /// Reads the registry value state, returning <see langword="null"/> when registry access fails so callers can
+    /// distinguish an unreadable key from a verified Off state.
+    /// </summary>
+    internal bool? TryReadIsOn()
     {
-        get
+        try
         {
-            try
-            {
-                if (!_registry.TryReadValue(_keyPath, _valueName, out string? raw, out RegistryValueKind kind))
-                {
-                    return false;
-                }
-
-                if (kind != RegistryValueKind.String || string.IsNullOrWhiteSpace(raw))
-                {
-                    return false;
-                }
-
-                string unquoted = Unquote(raw);
-                return string.Equals(unquoted, _executablePath, StringComparison.OrdinalIgnoreCase);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
+            if (!_registry.TryReadValue(_keyPath, _valueName, out string? raw, out RegistryValueKind kind))
             {
                 return false;
             }
+
+            if (kind != RegistryValueKind.String || string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            string unquoted = Unquote(raw);
+            return string.Equals(unquoted, _executablePath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
+        {
+            return null;
         }
     }
 

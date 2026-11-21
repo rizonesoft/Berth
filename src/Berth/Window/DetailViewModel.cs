@@ -48,6 +48,7 @@ internal sealed class DetailViewModel : ObservableObject
     private int _operationInFlight;
     private bool _localBusy;
     private bool _externalBusy;
+    private bool _isCompletingOperation;
     private bool _isBusy;
     private DetailKind _kind;
     private string _title = string.Empty;
@@ -90,6 +91,8 @@ internal sealed class DetailViewModel : ObservableObject
     public event Action<WindowOperationKind, OperationResult>? OperationFinished;
 
     internal event Action<WindowOperationRequest, OperationResult>? OperationCompleted;
+
+    internal bool IsCompletingOperation => _isCompletingOperation;
 
     public DetailKind Kind
     {
@@ -288,11 +291,19 @@ internal sealed class DetailViewModel : ObservableObject
             {
                 Volatile.Write(ref _operationInFlight, 0);
                 _localBusy = false;
-                IsBusy = _externalBusy;
-                if (finalResult is not null)
+                _isCompletingOperation = finalResult is not null;
+                try
                 {
-                    OperationCompleted?.Invoke(request, finalResult);
-                    OperationFinished?.Invoke(request.Kind, finalResult);
+                    IsBusy = _externalBusy;
+                    if (finalResult is not null)
+                    {
+                        OperationCompleted?.Invoke(request, finalResult);
+                        OperationFinished?.Invoke(request.Kind, finalResult);
+                    }
+                }
+                finally
+                {
+                    _isCompletingOperation = false;
                 }
             }).ConfigureAwait(false);
         }

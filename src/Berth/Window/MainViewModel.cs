@@ -106,7 +106,10 @@ internal sealed class MainViewModel : ObservableObject
 
                 Status.SetBusyState(Detail.IsBusy);
                 Notices.RaiseCanExecuteChanged();
-                Settings?.OnBusyStateChanged(Detail.IsBusy);
+                if (!Detail.IsCompletingOperation)
+                {
+                    Settings?.OnBusyStateChanged(Detail.IsBusy);
+                }
             }
         };
         Status.PropertyChanged += (_, e) =>
@@ -122,6 +125,7 @@ internal sealed class MainViewModel : ObservableObject
             if (!Detail.IsBusy)
             {
                 Status.SetResult(result, _lastCanUndo, request);
+                Settings?.OnBusyStateChanged(Detail.IsBusy);
             }
         };
     }
@@ -287,10 +291,10 @@ internal sealed class MainViewModel : ObservableObject
         try
         {
             (long restoreEpoch, long startEpoch) = Settings?.CaptureEpochs() ?? (0L, 0L);
-            (RefreshSnapshot? snapshot, (bool? RestoreAuto, bool StartWithWindows)? settingsSnapshot) =
+            (RefreshSnapshot? snapshot, (bool? RestoreAuto, bool? StartWithWindows)? settingsSnapshot) =
                 await Task.Run(() =>
                 {
-                    (bool? RestoreAuto, bool StartWithWindows)? readSettings = Settings?.ReadSources();
+                    (bool? RestoreAuto, bool? StartWithWindows)? readSettings = Settings?.ReadSources();
                     RefreshSnapshot? snap = CaptureSnapshot(includeCanUndo);
                     return (snap, readSettings);
                 }).ConfigureAwait(false);

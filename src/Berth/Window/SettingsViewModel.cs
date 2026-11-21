@@ -22,6 +22,8 @@ internal sealed class SettingsViewModel : ObservableObject
 
     private bool _restoreAutomatically;
     private bool _startWithWindows;
+    private bool _confirmedRestore;
+    private bool _confirmedStart;
     private bool _suppressWrites;
     private int _restoreWriting;
     private int _startWriting;
@@ -69,9 +71,8 @@ internal sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            bool previous = _restoreAutomatically;
             Set(ref _restoreAutomatically, value);
-            _lastRestoreTask = ApplyRestoreAutomaticallyAsync(value, previous, _lastRestoreTask);
+            _lastRestoreTask = ApplyRestoreAutomaticallyAsync(value, _lastRestoreTask);
         }
     }
 
@@ -91,9 +92,8 @@ internal sealed class SettingsViewModel : ObservableObject
                 return;
             }
 
-            bool previous = _startWithWindows;
             Set(ref _startWithWindows, value);
-            _lastStartTask = ApplyStartWithWindowsAsync(value, previous, _lastStartTask);
+            _lastStartTask = ApplyStartWithWindowsAsync(value, _lastStartTask);
         }
     }
 
@@ -105,7 +105,7 @@ internal sealed class SettingsViewModel : ObservableObject
         (Volatile.Read(ref _restoreEpoch), Volatile.Read(ref _startEpoch));
 
     /// <summary>Reads both sources off the UI thread for polling/refresh.</summary>
-    internal (bool? RestoreAutomatically, bool StartWithWindows) ReadSources()
+    internal (bool? RestoreAutomatically, bool? StartWithWindows) ReadSources()
     {
         bool? restoreAuto = null;
         try
@@ -121,7 +121,7 @@ internal sealed class SettingsViewModel : ObservableObject
             restoreAuto = null;
         }
 
-        bool startWithWindows = _run.IsOn;
+        bool? startWithWindows = _run.TryReadIsOn();
         return (restoreAuto, startWithWindows);
     }
 
@@ -132,7 +132,7 @@ internal sealed class SettingsViewModel : ObservableObject
     internal void ApplyRefreshed(
         bool? restoreAutomatically,
         long restoreEpoch,
-        bool startWithWindows,
+        bool? startWithWindows,
         long startEpoch)
     {
         _suppressWrites = true;
@@ -142,13 +142,16 @@ internal sealed class SettingsViewModel : ObservableObject
                 && Volatile.Read(ref _restoreWriting) == 0
                 && Volatile.Read(ref _restoreEpoch) == restoreEpoch)
             {
+                Volatile.Write(ref _confirmedRestore, restoreAutomatically.Value);
                 Set(ref _restoreAutomatically, restoreAutomatically.Value, nameof(RestoreAutomatically));
             }
 
-            if (Volatile.Read(ref _startWriting) == 0
+            if (startWithWindows.HasValue
+                && Volatile.Read(ref _startWriting) == 0
                 && Volatile.Read(ref _startEpoch) == startEpoch)
             {
-                Set(ref _startWithWindows, startWithWindows, nameof(StartWithWindows));
+                Volatile.Write(ref _confirmedStart, startWithWindows.Value);
+                Set(ref _startWithWindows, startWithWindows.Value, nameof(StartWithWindows));
             }
         }
         finally
@@ -182,14 +185,20 @@ internal sealed class SettingsViewModel : ObservableObject
         });
     }
 
-    private async Task ApplyRestoreAutomaticallyAsync(bool target, bool previous, Task prior)
+    private async Task ApplyRestoreAutomaticallyAsync(bool target, Task prior)
     {
         Interlocked.Increment(ref _restoreEpoch);
         Interlocked.Increment(ref _restoreWriting);
         try
         {
             await prior.ConfigureAwait(false);
-            SettingChange result = await Task.Run(() => _changes.SetRestoreAutomatically(target, previous)).ConfigureAwait(false);
+            bool baseline = Volatile.Read(ref _confirmedRestore);
+            SettingChange result = await Task.Run(() => _changes.SetRestoreAutomatically(target, baseline)).ConfigureAwait(false);
+            if (result.Applied)
+            {
+                Volatile.Write(ref _confirmedRestore, result.Value);
+            }
+
             await _marshalToUiAsync(() =>
             {
                 _suppressWrites = true;
@@ -210,17 +219,19 @@ internal sealed class SettingsViewModel : ObservableObject
         }
         finally
         {
+            Interlocked.Increment(ref _restoreEpoch);
             Interlocked.Decrement(ref _restoreWriting);
         }
     }
 
-    private async Task ApplyStartWithWindowsAsync(bool target, bool previous, Task prior)
+    private async Task ApplyStartWithWindowsAsync(bool target, Task prior)
     {
         Interlocked.Increment(ref _startEpoch);
         Interlocked.Increment(ref _startWriting);
         try
         {
             await prior.ConfigureAwait(false);
+            bool baseline = Volatile.Read(ref _confirmedStart);
             SettingChange result = await Task.Run(() =>
             {
                 Exception? failure = null;
@@ -236,9 +247,14 @@ internal sealed class SettingsViewModel : ObservableObject
                 return _changes.RecordStartWithWindows(target, failure);
             }).ConfigureAwait(false);
 
+            bool finalValue = result.Applied ? result.Value : baseline;
+            if (result.Applied)
+            {
+                Volatile.Write(ref _confirmedStart, result.Value);
+            }
+
             await _marshalToUiAsync(() =>
             {
-                bool finalValue = result.Applied ? result.Value : previous;
                 _suppressWrites = true;
                 try
                 {
@@ -257,6 +273,7 @@ internal sealed class SettingsViewModel : ObservableObject
         }
         finally
         {
+            Interlocked.Increment(ref _startEpoch);
             Interlocked.Decrement(ref _startWriting);
         }
     }
