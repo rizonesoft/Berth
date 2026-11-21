@@ -42,7 +42,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 3 | §3 | Detail header and action buttons | §2 | [x] |
 | 4 | §4 | Position map: monitors and markers | §3, D01 T01 §13 | [x] |
 | 5 | §5 | Marker states, selection and readout | §4 | [x] |
-| 6 | §6 | Status line with Undo and Retry | §3 | [ ] |
+| 6 | §6 | Status line with Undo and Retry | §3 | [x] |
 | 7 | §7 | Notices and the controls they disable | §6 | [ ] |
 | 8 | §8 | Rename dialog | §3 | [ ] |
 | 9 | §9 | Revert to previous save and delete | §8 | [ ] |
@@ -229,19 +229,22 @@ The card under the map: one sentence chosen by the SPEC §8 table, with a time o
 1. Add `StatusViewModel` (pure). Done when: every SPEC §8 row is chosen for its inputs.
 2. Add `StatusLine.xaml` with the actions. Done when: Undo and Retry work.
 
-- [ ] Add `StatusViewModel` in `src/Berth/Window/StatusViewModel.cs` with `Sentence`, `RightText`, `Action` (`None`, `Undo`, `Retry`), fed by `SetBusy()`, `SetResult(OperationResult)`, `SetComparison(...)`, choosing by the order of the SPEC §8 table and wording through `Messages`. Done when: a unit test per table row compares the exact sentence and right side. Cheaper substitute: a second copy of the sentences in the view model.
-- [ ] Keep a just-finished sentence until the next operation, a selection change, or a refresh that finds a different comparison (SPEC §8, last paragraph). Done when: unit tests cover each of the three ends and a refresh with no change that keeps the sentence. Cheaper substitute: a timer that clears it.
-- [ ] Add `src/Berth/Window/StatusLine.xaml`: a 10 px square in `Berth.MarkerInPlace` with radius `Berth.RadiusMarker`, the sentence (`body`), and on the right the time (`caption`, `Berth.TextSecondary`) or the `Undo` or `Retry` button, hosted under the map in `MainWindow.DetailHost`. Done when: a test reads the sentence and the right-side element for a comparison state and a restored state. Cheaper substitute: none needed.
-- [ ] `Undo` runs `LayoutService.Undo()` off the UI thread and shows its result; it is offered only after a restore and while `LayoutService.CanUndo`. Done when: a test restores, clicks `Undo`, and sees the fake desktop back and the sentence `Put 3 icons back where they were before the restore.`. Cheaper substitute: an Undo that stays visible after it has been used.
-- [ ] `Retry` repeats the refused or failed operation, offered for `DesktopUnavailable`, `Busy` and a failed write, and not for `AutoArrange`, `NoLayout`, `NoPreviousSave` or `NothingToUndo` (**Corrected 2026-11-18:** D01 T01 §12 plan review: `NoPreviousSave` included among refusals that do not offer Retry). Done when: unit tests cover which refusals offer it, and a test retries a save after the fake desktop becomes available. Cheaper substitute: Retry on a refusal that retrying cannot fix.
-- [ ] Show results from the tray menu's `OperationFinished` (`D04 T01 §8`) in the same status line when the window is open. Done when: a test raises the event with a `Restored` result and reads the sentence. Cheaper substitute: tray operations that the open window never mentions.
-- [ ] Add render tests writing one PNG per SPEC §8 row in light and dark, named `status-<row>`. Done when: `pwsh scripts/render-window.ps1` writes them. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/StatusViewModelTests.cs` and `StatusLineTests.cs`. Done when: all pass, and the persistence test fails when a refresh with no change clears the sentence. Cheaper substitute: none needed.
-- [ ] Commit: `window: status line with Undo and Retry`
+- [x] Add `StatusViewModel` in `src/Berth/Window/StatusViewModel.cs` with `Sentence`, `RightText`, `Action` (`None`, `Undo`, `Retry`), fed by `SetBusy()`, `SetResult(OperationResult)`, `SetComparison(...)`, choosing by the order of the SPEC §8 table and wording through `Messages`. Done when: a unit test per table row compares the exact sentence and right side. Cheaper substitute: a second copy of the sentences in the view model.
+- [x] Keep a just-finished sentence until the next operation, a selection change, or a refresh that finds a different comparison (SPEC §8, last paragraph). Done when: unit tests cover each of the three ends and a refresh with no change that keeps the sentence. Cheaper substitute: a timer that clears it.
+- [x] Add `src/Berth/Window/StatusLine.xaml`: a 10 px square in `Berth.MarkerInPlace` with radius `Berth.RadiusMarker`, the sentence (`body`), and on the right the time (`caption`, `Berth.TextSecondary`) or the `Undo` or `Retry` button, hosted under the map in `MainWindow.DetailHost`. Done when: a test reads the sentence and the right-side element for a comparison state and a restored state. Cheaper substitute: none needed.
+- [x] `Undo` runs `LayoutService.Undo()` off the UI thread and shows its result; it is offered only after a restore and while `LayoutService.CanUndo`. Done when: a test restores, clicks `Undo`, and sees the fake desktop back and the sentence `Put 3 icons back where they were before the restore.`. Cheaper substitute: an Undo that stays visible after it has been used.
+- [x] `Retry` repeats the refused or failed operation, offered for `DesktopUnavailable`, `Busy` and a failed write, and not for `AutoArrange`, `NoLayout`, `NoPreviousSave` or `NothingToUndo` (**Corrected 2026-11-18:** D01 T01 §12 plan review: `NoPreviousSave` included among refusals that do not offer Retry). Done when: unit tests cover which refusals offer it, and a test retries a save after the fake desktop becomes available. Cheaper substitute: Retry on a refusal that retrying cannot fix.
+- [x] Show results from the tray menu's `OperationFinished` (`D04 T01 §8`) in the same status line when the window is open. Done when: a test raises the event with a `Restored` result and reads the sentence. Cheaper substitute: tray operations that the open window never mentions.
+- [x] Add render tests writing one PNG per SPEC §8 row in light and dark, named `status-<row>`. Done when: `pwsh scripts/render-window.ps1` writes them. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/StatusViewModelTests.cs` and `StatusLineTests.cs`. Done when: all pass, and the persistence test fails when a refresh with no change clears the sentence. Cheaper substitute: none needed.
+- [x] Commit: `window: status line with Undo and Retry`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*StatusViewModelTests"` and `--filter-class "*StatusLineTests"` pass, and fail when a sentence differs from the `design/SPEC.md` §8 table.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §6 | 7cdebeed8640a20bcc7096082ad231164d3d6865
+> **Review:** `docs/reviews/d05-t01-s6.json`
 
 ## 7. Notices and the controls they disable
 
