@@ -44,7 +44,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 5 | §5 | Marker states, selection and readout | §4 | [x] |
 | 6 | §6 | Status line with Undo and Retry | §3 | [x] |
 | 7 | §7 | Notices and the controls they disable | §6 | [x] |
-| 8 | §8 | Rename dialog | §3 | [ ] |
+| 8 | §8 | Rename dialog | §3 | [x] |
 | 9 | §9 | Revert to previous save and delete | §8 | [ ] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [ ] |
@@ -297,17 +297,20 @@ The More menu's Rename (SPEC §10, first bullet).
 1. Add `RenameViewModel` (pure). Done when: each rule gives its SPEC reason.
 2. Add `RenameDialog.xaml` and wire the menu item. Done when: a rename changes the row and the file.
 
-- [ ] Add `RenameViewModel(string current, IEnumerable<string> others)` with `Name`, `Error` (the SPEC §10 reason, or empty) and `CanRename`, validating on every change with `LayoutNames.Validate`. Done when: unit tests compare `Enter a name.`, `A name can be at most 40 characters.` and `Another layout already has this name.`, and `CanRename` for each. Cheaper substitute: validating only on the button click.
-- [ ] Add `src/Berth/Window/RenameDialog.xaml`: title `Rename layout`, one `TextBox` holding the current name with all text selected and the focus, the reason under it, and `Rename` (default) and `Cancel` (cancel) buttons; `Rename` disabled while `CanRename` is `false`. Done when: a test opens it on the app fixture and reads the selected text, the focused element and the button states. Cheaper substitute: an inline text box in the list, which SPEC §10 does not describe.
-- [ ] Wire `Rename` in the More menu: open the dialog owned by the main window, and on `Rename` run `LayoutService.Rename` off the UI thread, show a failure in the status line, and refresh. Done when: a test renames a layout and reads the new name in the row, the header and the layout file. Cheaper substitute: changing the row's text without writing the file.
-- [ ] `Enter` renames when allowed and `Esc` cancels without change. Done when: tests send both keys. Cheaper substitute: none needed.
-- [ ] Add render tests writing `rename-valid`, `rename-empty`, `rename-too-long` and `rename-taken` in light and dark (SPEC §19 "Dialogs"). Done when: `pwsh scripts/render-window.ps1` writes the eight files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/RenameTests.cs`. Done when: all pass, and the taken-name test fails when the comparison is case-sensitive. Cheaper substitute: none needed.
-- [ ] Commit: `window: rename dialog`
+- [x] Add `RenameViewModel(string current, IEnumerable<string> others)` with `Name`, `Error` (the SPEC §10 reason, or empty) and `CanRename`, validating on every change with `LayoutNames.Validate`. Done when: unit tests compare `Enter a name.`, `A name can be at most 40 characters.` and `Another layout already has this name.`, and `CanRename` for each. Cheaper substitute: validating only on the button click.
+- [x] Add `src/Berth/Window/RenameDialog.xaml`: title `Rename layout`, one `TextBox` holding the current name with all text selected and the focus, the reason under it, and `Rename` (default) and `Cancel` (cancel) buttons; `Rename` disabled while `CanRename` is `false`. Done when: a test opens it on the app fixture and reads the selected text, the focused element and the button states. Cheaper substitute: an inline text box in the list, which SPEC §10 does not describe.
+- [x] Wire `Rename` in the More menu: open the dialog owned by the main window, and on `Rename` run `LayoutService.Rename` off the UI thread, show a failure in the status line, and refresh. Done when: a test renames a layout and reads the new name in the row, the header and the layout file. Cheaper substitute: changing the row's text without writing the file.
+- [x] `Enter` renames when allowed and `Esc` cancels without change. Done when: tests send both keys. Cheaper substitute: none needed.
+- [x] Add render tests writing `rename-valid`, `rename-empty`, `rename-too-long` and `rename-taken` in light and dark (SPEC §19 "Dialogs"). Done when: `pwsh scripts/render-window.ps1` writes the eight files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/RenameTests.cs`. Done when: all pass, and the taken-name test fails when the comparison is case-sensitive. Cheaper substitute: none needed.
+- [x] Commit: `window: rename dialog`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RenameTests"` passes, and fails when "Rename" is enabled for a name another layout already has.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §8 | d1c0819b6b2b4dbf183fdf82594e63a86b5acb26
+> **Review:** `docs/reviews/d05-t01-s8.json`
 
 ## 9. Revert to previous save and delete
 

@@ -114,7 +114,7 @@ Sections: 14 | Checklist items: 100
 | [x]    | D05 T01 §5  | Marker states, selection and readout      | windows-host, display-session | 9     |
 | [x]    | D05 T01 §6  | Status line with Undo and Retry           | windows-host, display-session | 9     |
 | [x]    | D05 T01 §7  | Notices and the controls they disable     | windows-host, display-session | 9     |
-| [ ]    | D05 T01 §8  | Rename dialog                             | windows-host, display-session | 7     |
+| [x]    | D05 T01 §8  | Rename dialog                             | windows-host, display-session | 7     |
 | [ ]    | D05 T01 §9  | Revert to previous save and delete        | windows-host, display-session | 7     |
 | [x]    | D05 T01 §10 | Start with Windows registry value         | none                          | 4     |
 | [ ]    | D05 T01 §11 | Settings switches and version caption     | windows-host, display-session | 6     |
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 16
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
 
-Progress: 68/88 verified sections, 2 ready to run now.
+Progress: 69/88 verified sections, 2 ready to run now.
 
-Checklist: 410/521 items completed (includes Commit items).
+Checklist: 417/521 items completed (includes Commit items).
