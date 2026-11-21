@@ -49,21 +49,29 @@ public sealed class BalloonTests
         string longException = new string('E', 400);
         BalloonMessage unexpected = BalloonPolicy.For(
             OperationResult.Failed(FailureKind.Unexpected, path: null, detail: longException))!;
-        Assert.True(unexpected.Text.Length <= BalloonPolicy.MaxBodyLength);
+        Assert.True(unexpected.Text.Length <= 255);
         Assert.EndsWith(". The details are in the log.", unexpected.Text, StringComparison.Ordinal);
         Assert.Contains('\u2026', unexpected.Text);
 
         string longPath = @"C:\Users\Test\" + new string('D', 300) + @"\undo.json";
+        const string colonReason = "Access denied: file is locked";
+
         BalloonMessage writeFailed = BalloonPolicy.For(
-            OperationResult.Failed(FailureKind.WriteFailed, path: longPath, detail: "Access denied"))!;
-        Assert.True(writeFailed.Text.Length <= BalloonPolicy.MaxBodyLength);
-        Assert.EndsWith(": Access denied.", writeFailed.Text, StringComparison.Ordinal);
+            OperationResult.Failed(FailureKind.WriteFailed, path: longPath, detail: colonReason))!;
+        Assert.True(writeFailed.Text.Length <= 255);
+        Assert.EndsWith(": Access denied: file is locked.", writeFailed.Text, StringComparison.Ordinal);
         Assert.Contains('\u2026', writeFailed.Text);
+
+        BalloonMessage readFailed = BalloonPolicy.For(
+            OperationResult.Failed(FailureKind.ReadFailed, path: longPath, detail: colonReason))!;
+        Assert.True(readFailed.Text.Length <= 255);
+        Assert.EndsWith(": Access denied: file is locked.", readFailed.Text, StringComparison.Ordinal);
+        Assert.Contains('\u2026', readFailed.Text);
 
         string longUnreadableFile = new string('U', 300) + ".json";
         BalloonMessage unreadable = BalloonPolicy.For(
             OperationResult.Refused(Refusal.UnreadableLayout, path: longUnreadableFile))!;
-        Assert.True(unreadable.Text.Length <= BalloonPolicy.MaxBodyLength);
+        Assert.True(unreadable.Text.Length <= 255);
         Assert.EndsWith(" could not be read. It was left untouched.", unreadable.Text, StringComparison.Ordinal);
         Assert.Contains('\u2026', unreadable.Text);
     }

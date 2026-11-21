@@ -36,11 +36,11 @@ internal static class BalloonPolicy
             return null;
         }
 
-        string text = FitBody(Messages.Refusal(result));
+        string text = FitBody(result, Messages.Refusal(result));
         return new BalloonMessage(FailureTitle, text);
     }
 
-    internal static string FitBody(string text)
+    internal static string FitBody(OperationResult result, string text)
     {
         if (text.Length <= MaxBodyLength)
         {
@@ -63,16 +63,18 @@ internal static class BalloonPolicy
             return TruncateOnTextElements(head, budget) + suffix;
         }
 
-        // Preserve ": <reason>." on "Berth could not write <path>: <reason>." by shortening <path> first.
-        int reasonSeparator = text.LastIndexOf(": ", StringComparison.Ordinal);
-        if (reasonSeparator > 0 && text.EndsWith('.'))
+        // For read/write failures, shorten ONLY the structured Path field so a Detail containing ": " stays completely intact.
+        if (result.Kind == OperationKind.Failed
+            && result.Failure is FailureKind.WriteFailed or FailureKind.ReadFailed
+            && !string.IsNullOrEmpty(result.Path)
+            && !string.IsNullOrEmpty(result.Detail))
         {
-            string reasonTail = text[reasonSeparator..]; // ": <reason>."
-            if (reasonTail.Length + 24 <= MaxBodyLength)
+            string reasonTail = $": {Messages.SingleLine(result.Detail)}.";
+            if (text.EndsWith(reasonTail, StringComparison.Ordinal) && reasonTail.Length + 24 <= MaxBodyLength)
             {
                 string suffix = Ellipsis + reasonTail;
                 int budget = MaxBodyLength - suffix.Length;
-                string head = text[..reasonSeparator];
+                string head = text[..^reasonTail.Length];
                 return TruncateOnTextElements(head, budget) + suffix;
             }
         }
