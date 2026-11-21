@@ -146,7 +146,9 @@ public sealed partial class SystemEventsTests(AppFixture appFixture)
         Assert.Equal(string.Empty, report["workerError"]);
         Assert.Equal("True", report["savedHandleNonZero"]);
         Assert.Contains("Laptop", report["initialTooltip"], StringComparison.Ordinal);
+        Assert.Contains("MidStartup", report["tooltipAfterStartupReconcile"], StringComparison.Ordinal);
         Assert.Contains("Docked", report["tooltipAfterDisplayChange"], StringComparison.Ordinal);
+        Assert.Contains("Docked", report["tooltipAfterStaleMenuCompletion"], StringComparison.Ordinal);
         Assert.Equal("Dark", report["initialAppTheme"]);
         Assert.Equal("True", report["sendSettingResult"]);
         Assert.Equal("Light", report["appThemeAfterSettingChange"]);

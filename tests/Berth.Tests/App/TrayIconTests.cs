@@ -117,9 +117,9 @@ public sealed class TrayIconTests(AppFixture appFixture)
 
                 IntPtr darkHandle = trayIcon.IconHandle;
 
-                // Flip registry key to light taskbar and drive the production TrayApp UserPreferenceChanged path.
+                // Flip registry key to light taskbar and notify TaskbarTheme directly.
                 testKey.SetDword(1);
-                TrayApp.HandleUserPreferenceChanged(theme, UserPreferenceCategory.General);
+                theme.OnSettingChange("ImmersiveColorSet");
 
                 Assert.NotEqual(darkHandle, trayIcon.IconHandle);
                 Assert.Equal(expectedSize, trayIcon.IconSize);

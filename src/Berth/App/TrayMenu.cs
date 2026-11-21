@@ -20,6 +20,7 @@ internal sealed class TrayMenu : IDisposable
     private readonly SettingsStore _settingsStore;
     private readonly SettingChanges _settingChanges;
     private readonly Action<Action, Action> _marshal;
+    private readonly Func<long> _readTooltipEpoch;
 
     private readonly ContextMenuStrip _strip;
     private readonly ToolStripMenuItem _saveItem;
@@ -47,7 +48,8 @@ internal sealed class TrayMenu : IDisposable
         IDesktopIcons desktop,
         SettingsStore settingsStore,
         Log log,
-        Action<Action, Action> marshal)
+        Action<Action, Action> marshal,
+        Func<long>? readTooltipEpoch = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(store);
@@ -64,6 +66,7 @@ internal sealed class TrayMenu : IDisposable
         _settingsStore = settingsStore;
         _settingChanges = new SettingChanges(settingsStore, log);
         _marshal = marshal;
+        _readTooltipEpoch = readTooltipEpoch ?? (static () => 0L);
 
         _strip = new ContextMenuStrip
         {
@@ -485,7 +488,9 @@ internal sealed class TrayMenu : IDisposable
                 result = OperationResult.Failed(FailureKind.Unexpected, path: null, ex.Message, null, ex);
             }
 
+            long snapshotEpoch = _readTooltipEpoch();
             activeLayout = TrayIcon.FindActiveLayout(_store, _monitors);
+            BeforeOperationCompletionMarshal?.Invoke();
 
             int settled = 0;
 
@@ -529,7 +534,7 @@ internal sealed class TrayMenu : IDisposable
                             return;
                         }
 
-                        CompleteOperationOnUiThread(kind, result, activeLayout);
+                        CompleteOperationOnUiThread(kind, result, activeLayout, snapshotEpoch);
                     },
                     SettleAborted);
             }
@@ -540,7 +545,11 @@ internal sealed class TrayMenu : IDisposable
         });
     }
 
-    private void CompleteOperationOnUiThread(Window.WindowOperationKind kind, OperationResult result, Layout? activeLayout)
+    internal long LastObservedTooltipEpoch { get; private set; }
+
+    internal Action? BeforeOperationCompletionMarshal { get; set; }
+
+    private void CompleteOperationOnUiThread(Window.WindowOperationKind kind, OperationResult result, Layout? activeLayout, long snapshotEpoch)
     {
         Action? drainCallback = null;
         bool becameIdle = false;
@@ -556,6 +565,7 @@ internal sealed class TrayMenu : IDisposable
             if (!disposed)
             {
                 LastObservedActiveLayout = activeLayout;
+                LastObservedTooltipEpoch = snapshotEpoch;
                 notifyResult = true;
             }
         }

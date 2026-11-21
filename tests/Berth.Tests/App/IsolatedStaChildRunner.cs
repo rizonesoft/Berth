@@ -1009,13 +1009,16 @@ internal static class IsolatedStaChildRunner
         var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
         var clock = new FixedChildClock(fixedNow);
         MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        MonitorInfo midStartupMon = new(0, 0, 2048, 1152, 100, true);
         MonitorInfo dockedMon = new(0, 0, 2560, 1440, 100, true);
         var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
         var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
         var store = new LayoutStore(paths);
         string laptopKey = ArrangementKey.From([laptopMon]);
+        string midKey = ArrangementKey.From([midStartupMon]);
         string dockedKey = ArrangementKey.From([dockedMon]);
         store.Save(new Layout(Layout.CurrentSchemaVersion, laptopKey, "Laptop", fixedNow, [laptopMon], [new IconPosition("id-a", "Alpha", 100, 200)], null));
+        store.Save(new Layout(Layout.CurrentSchemaVersion, midKey, "MidStartup", fixedNow, [midStartupMon], [new IconPosition("id-a", "Alpha", 200, 300)], null));
         store.Save(new Layout(Layout.CurrentSchemaVersion, dockedKey, "Docked", fixedNow, [dockedMon], [new IconPosition("id-a", "Alpha", 300, 400)], null));
 
         var gate = OperationLock.ForApp(paths);
@@ -1030,10 +1033,13 @@ internal static class IsolatedStaChildRunner
             () => Volatile.Read(ref fakeTaskbarLight));
 
         TrayIcon? capturedIcon = null;
+        TrayMenu? capturedMenu = null;
         SystemEvents? capturedEvents = null;
         nint savedHandle = 0;
         string initialTooltip = string.Empty;
+        string tooltipAfterStartupReconcile = string.Empty;
         string tooltipAfterDisplayChange = string.Empty;
+        string tooltipAfterStaleMenuCompletion = string.Empty;
         ColorTheme initialAppTheme = ColorTheme.Light;
         ColorTheme appThemeAfterSettingChange = ColorTheme.Dark;
         bool hasLightDictAfterSettingChange = false;
@@ -1065,7 +1071,11 @@ internal static class IsolatedStaChildRunner
                 capturedIcon = icon;
                 initialTooltip = icon.TooltipText;
                 initialIconHandle = icon.IconHandle;
+
+                // Simulate a display change happening AFTER initial tooltip read and BEFORE SystemEvents subscribes.
+                monitors.Monitors = [midStartupMon];
             },
+            onTrayMenuCreated: menu => capturedMenu = menu,
             onSystemEventsCreated: ev =>
             {
                 capturedEvents = ev;
@@ -1073,7 +1083,7 @@ internal static class IsolatedStaChildRunner
             },
             onAppStartup: app =>
             {
-                if (capturedIcon is null || capturedEvents is null)
+                if (capturedIcon is null || capturedMenu is null || capturedEvents is null)
                 {
                     app.Shutdown(2);
                     return;
@@ -1083,9 +1093,40 @@ internal static class IsolatedStaChildRunner
 
                 _ = Task.Run(() =>
                 {
+                    using var menuSnapshotTaken = new ManualResetEventSlim(false);
+                    using var releaseMenuCompletion = new ManualResetEventSlim(false);
+                    using var menuFinished = new ManualResetEventSlim(false);
                     try
                     {
-                        // 1. Switch monitors to Docked and post WM_DISPLAYCHANGE to the captured HWND.
+                        // 1. Wait for startup reconciliation to pick up MidStartup (switched during onTrayIconCreated).
+                        var startupDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                        while (DateTime.UtcNow < startupDeadline)
+                        {
+                            string tip = app.Dispatcher.Invoke(() => capturedIcon.TooltipText);
+                            if (tip.Contains("MidStartup", StringComparison.Ordinal))
+                            {
+                                tooltipAfterStartupReconcile = tip;
+                                break;
+                            }
+
+                            Thread.Sleep(25);
+                        }
+
+                        // 2. Start a menu Save on MidStartup, hold its worker AFTER FindActiveLayout snapshots MidStartup,
+                        //    deliver WM_DISPLAYCHANGE for Docked, then release the stale menu completion and verify Docked wins!
+                        capturedMenu.BeforeOperationCompletionMarshal = () =>
+                        {
+                            menuSnapshotTaken.Set();
+                            _ = releaseMenuCompletion.Wait(TimeSpan.FromSeconds(5));
+                        };
+                        capturedMenu.OperationFinished += _ => menuFinished.Set();
+                        app.Dispatcher.Invoke(() => capturedMenu.SaveItem.PerformClick());
+
+                        if (!menuSnapshotTaken.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Menu worker did not reach snapshot barrier.");
+                        }
+
                         monitors.Monitors = [dockedMon];
                         _ = SystemEventsTests.PostMessageW(savedHandle, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
 
@@ -1102,7 +1143,15 @@ internal static class IsolatedStaChildRunner
                             Thread.Sleep(25);
                         }
 
-                        // 2. Flip fake app + taskbar theme to Light and send WM_SETTINGCHANGE("ImmersiveColorSet")
+                        releaseMenuCompletion.Set();
+                        if (!menuFinished.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Menu completion did not settle on UI thread.");
+                        }
+
+                        tooltipAfterStaleMenuCompletion = app.Dispatcher.Invoke(() => capturedIcon.TooltipText);
+
+                        // 3. Flip fake app + taskbar theme to Light and send WM_SETTINGCHANGE("ImmersiveColorSet")
                         //    synchronously from this worker thread via SendMessageTimeoutW (2-second bound).
                         Volatile.Write(ref fakeAppsLight, true);
                         Volatile.Write(ref fakeTaskbarLight, 1);
@@ -1119,6 +1168,7 @@ internal static class IsolatedStaChildRunner
                     }
                     catch (Exception ex)
                     {
+                        releaseMenuCompletion.Set();
                         workerError = ex.ToString();
                         app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
                     }
@@ -1131,7 +1181,9 @@ internal static class IsolatedStaChildRunner
             [
                 $"savedHandleNonZero={savedHandle != 0}",
                 $"initialTooltip={initialTooltip}",
+                $"tooltipAfterStartupReconcile={tooltipAfterStartupReconcile}",
                 $"tooltipAfterDisplayChange={tooltipAfterDisplayChange}",
+                $"tooltipAfterStaleMenuCompletion={tooltipAfterStaleMenuCompletion}",
                 $"initialAppTheme={initialAppTheme}",
                 $"sendSettingResult={sendSettingResult}",
                 $"appThemeAfterSettingChange={appThemeAfterSettingChange}",

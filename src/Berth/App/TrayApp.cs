@@ -5,7 +5,6 @@ using Berth.Core;
 using Berth.Core.Model;
 using Berth.Desktop;
 using Berth.Window;
-using Microsoft.Win32;
 
 namespace Berth.App;
 
@@ -157,6 +156,8 @@ internal static class TrayApp
                 marshal: action => MarshalToUi(action, onAborted: null));
             activeTrayIcon = trayIcon;
 
+            long tooltipEpoch = 0;
+
             using var trayMenu = new TrayMenu(
                 effectiveComposition.Service,
                 effectiveComposition.Store,
@@ -164,7 +165,26 @@ internal static class TrayApp
                 effectiveComposition.Desktop,
                 settingsStore,
                 effectiveComposition.Log,
-                MarshalToUi);
+                MarshalToUi,
+                readTooltipEpoch: () => Volatile.Read(ref tooltipEpoch));
+
+            void ScheduleTooltipRefresh()
+            {
+                long epoch = Interlocked.Increment(ref tooltipEpoch);
+                _ = Task.Run(() =>
+                {
+                    Layout? active = TrayIcon.FindActiveLayout(effectiveComposition.Store, effectiveMonitors);
+                    MarshalToUi(
+                        () =>
+                        {
+                            if (Volatile.Read(ref tooltipEpoch) == epoch)
+                            {
+                                _ = trayIcon.TrySetTooltip(active, effectiveClock.GetUtcNow(), effectiveZone);
+                            }
+                        },
+                        onAborted: null);
+                });
+            }
 
             Func<IMainWindow> effectiveCreateMainWindow = createMainWindow
                 ?? (() => CreateProductionMainWindow(app, settingsStore, effectiveComposition, effectiveMonitors, effectiveClock, trayMenu));
@@ -191,9 +211,13 @@ internal static class TrayApp
             trayIcon.OpenRequested += OpenMainWindow;
             trayMenu.OpenRequested += OpenMainWindow;
 
-            trayMenu.OperationFinished += _ =>
+            trayMenu.OperationFinished += result =>
             {
-                trayIcon.TrySetTooltip(trayMenu.LastObservedActiveLayout, effectiveClock.GetUtcNow(), effectiveZone);
+                _ = result;
+                if (Volatile.Read(ref tooltipEpoch) == trayMenu.LastObservedTooltipEpoch)
+                {
+                    _ = trayIcon.TrySetTooltip(trayMenu.LastObservedActiveLayout, effectiveClock.GetUtcNow(), effectiveZone);
+                }
             };
 
             trayMenu.ExitRequested += () =>
@@ -217,9 +241,7 @@ internal static class TrayApp
             using var systemEvents = new SystemEvents();
             onSystemEventsCreated?.Invoke(systemEvents);
 
-            void OnDisplayChanged() => MarshalToUi(
-                () => _ = trayIcon.TryRefreshTooltip(effectiveComposition.Store, effectiveMonitors, effectiveClock, effectiveZone),
-                onAborted: null);
+            void OnDisplayChanged() => ScheduleTooltipRefresh();
 
             void OnSettingChanged(string? area) => MarshalToUi(
                 () =>
@@ -244,7 +266,8 @@ internal static class TrayApp
             systemEvents.SettingChanged += OnSettingChanged;
             try
             {
-                // Reconcile immediately after subscribing so any theme flip between initial read and subscribe is never missed.
+                // Reconcile immediately after subscribing so any display or theme change between initial read and subscribe is never missed.
+                ScheduleTooltipRefresh();
                 effectiveTheme.OnSettingChange("ImmersiveColorSet");
 
                 app.Startup += (_, _) =>
@@ -352,14 +375,6 @@ internal static class TrayApp
         }
 
         return window;
-    }
-
-    internal static void HandleUserPreferenceChanged(TaskbarTheme theme, UserPreferenceCategory category)
-    {
-        if (category is UserPreferenceCategory.General or UserPreferenceCategory.Color)
-        {
-            theme.OnSettingChange("ImmersiveColorSet");
-        }
     }
 
     /// <summary>
