@@ -170,10 +170,6 @@ try {
     }
 
     $expected = @('main-window-light.png', 'main-window-dark.png')
-    foreach ($name in $expected) {
-        Test-ValidDocsPng -Path (Join-Path $resolvedStageDir $name)
-    }
-
     New-Item -ItemType Directory -Path $resolvedDestDir -Force | Out-Null
     $lockDir = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)) 'Berth\locks'
     New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
@@ -217,18 +213,26 @@ try {
         $runId = [Guid]::NewGuid().ToString('N').Substring(0, 12)
         $nextPaths = @{}
         $backupPaths = @{}
-        foreach ($name in $expected) {
-            $dst = Join-Path $resolvedDestDir $name
-            $next = "$dst.$runId.next"
-            Copy-Item -LiteralPath (Join-Path $resolvedStageDir $name) -Destination $next -Force
-            $nextPaths[$name] = $next
-            $backupPaths[$name] = "$dst.$runId.prev"
-        }
-
-        # Use File.Replace (Win32 ReplaceFileW) under the machine-wide lock so canonical paths never disappear.
+        # Stage private .next copies under the lock, validate those exact bytes, then replace via File.Replace.
         $replaced = @()
         $createdWithoutPrior = @{}
         try {
+            foreach ($name in $expected) {
+                $stagedFile = Join-Path $resolvedStageDir $name
+                if (-not (Test-Path -LiteralPath $stagedFile -PathType Leaf)) {
+                    throw "Expected docs screenshot '$stagedFile' was not produced by this run."
+                }
+                $dst = Join-Path $resolvedDestDir $name
+                $next = "$dst.$runId.next"
+                Copy-Item -LiteralPath $stagedFile -Destination $next -Force
+                $nextPaths[$name] = $next
+                $backupPaths[$name] = "$dst.$runId.prev"
+            }
+
+            foreach ($name in $expected) {
+                Test-ValidDocsPng -Path $nextPaths[$name]
+            }
+
             foreach ($name in $expected) {
                 $dst = Join-Path $resolvedDestDir $name
                 if (Test-Path -LiteralPath $dst) {
@@ -260,7 +264,7 @@ try {
                 }
             }
             foreach ($name in $expected) {
-                if (Test-Path -LiteralPath $nextPaths[$name]) {
+                if ($nextPaths.ContainsKey($name) -and (Test-Path -LiteralPath $nextPaths[$name])) {
                     Remove-Item -LiteralPath $nextPaths[$name] -Force
                 }
             }
@@ -268,7 +272,7 @@ try {
         }
         finally {
             foreach ($name in $expected) {
-                if (Test-Path -LiteralPath $backupPaths[$name]) {
+                if ($backupPaths.ContainsKey($name) -and (Test-Path -LiteralPath $backupPaths[$name])) {
                     Remove-Item -LiteralPath $backupPaths[$name] -Force
                 }
             }
