@@ -33,7 +33,8 @@ def read_props_version(props_path: Path) -> str:
     tree = ET.parse(props_path)
     root = tree.getroot()
     for elem in root.iter():
-        if elem.tag.endswith("Version") and elem.text and elem.text.strip():
+        local_name = elem.tag.rsplit("}", 1)[-1]
+        if local_name == "Version" and elem.text and elem.text.strip():
             return elem.text.strip()
     raise ValueError(f"no <Version> element found in {props_path}")
 
@@ -130,18 +131,36 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
 
-            edit = run_gh(args.gh, ["release", "edit", args.tag, "--title", title, "--notes-file", str(notes_path)])
+            attached_existing = {asset.get("name", "") for asset in info.get("assets", [])}
+            edit = run_gh(
+                args.gh,
+                ["release", "edit", args.tag, "--draft", "--title", title, "--notes-file", str(notes_path)],
+            )
             if edit.returncode != 0:
                 sys.stderr.write(edit.stderr or "create-draft-release: gh release edit failed\n")
                 return edit.returncode
 
-            upload = run_gh(
-                args.gh,
-                ["release", "upload", args.tag, str(exe_path), str(sha_path), "--clobber"],
-            )
-            if upload.returncode != 0:
-                sys.stderr.write(upload.stderr or "create-draft-release: gh release upload failed\n")
-                return upload.returncode
+            to_upload: list[str] = []
+            if "berth.exe" not in attached_existing:
+                to_upload.append(str(exe_path))
+            if "berth.exe.sha256" not in attached_existing:
+                to_upload.append(str(sha_path))
+
+            if to_upload:
+                # Re-check draft status and upload only missing assets without --clobber so a release published
+                # concurrently can never have its existing public assets deleted.
+                recheck = run_gh(args.gh, ["release", "view", args.tag, "--json", "isDraft"])
+                if recheck.returncode != 0 or not json.loads(recheck.stdout).get("isDraft", False):
+                    print(
+                        f"create-draft-release: release {args.tag!r} is no longer a draft; refusing asset upload",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+                upload = run_gh(args.gh, ["release", "upload", args.tag, *to_upload])
+                if upload.returncode != 0:
+                    sys.stderr.write(upload.stderr or "create-draft-release: gh release upload failed\n")
+                    return upload.returncode
         else:
             create = run_gh(
                 args.gh,

@@ -41,8 +41,21 @@ def extract_section(text: str, version: str) -> str:
         raise KeyError(f"version {clean_version!r} not found in changelog")
 
     body_lines: list[str] = []
+    fence_char: str | None = None
+    fence_len = 0
+    fence_re = re.compile(r"^\s*(`{3,}|~{3,})")
+
     for line in lines[start_idx:]:
-        if any_h2_re.match(line):
+        m = fence_re.match(line)
+        if m:
+            marker = m.group(1)
+            if fence_char is None:
+                fence_char = marker[0]
+                fence_len = len(marker)
+            elif marker[0] == fence_char and len(marker) >= fence_len and line.strip() == marker:
+                fence_char = None
+                fence_len = 0
+        elif fence_char is None and any_h2_re.match(line):
             break
         body_lines.append(line)
 

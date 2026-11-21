@@ -86,6 +86,30 @@ class ChangelogSectionTests(unittest.TestCase):
         self.assertIn("- Prototype.", bracketed.stdout)
         self.assertNotIn("First release feature", bracketed.stdout)
 
+    def test_fenced_h2_inside_section_does_not_truncate_notes(self) -> None:
+        changelog = textwrap.dedent(
+            """\
+            ## 0.1.0
+
+            ### Added
+
+            ```markdown
+            ## Example heading inside fence
+            ```
+
+            - Trailing release bullet.
+
+            ## 0.0.1
+
+            - Older release.
+            """
+        )
+        proc = self._run("0.1.0", changelog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("## Example heading inside fence", proc.stdout)
+        self.assertIn("- Trailing release bullet.", proc.stdout)
+        self.assertNotIn("Older release", proc.stdout)
+
     def test_missing_or_empty_version_exits_nonzero(self) -> None:
         missing = self._run("9.9.9", SAMPLE_CHANGELOG)
         self.assertNotEqual(missing.returncode, 0)
@@ -99,7 +123,10 @@ class ChangelogSectionTests(unittest.TestCase):
 class CreateDraftReleaseTests(unittest.TestCase):
     def _setup_fixture(self, tmp: Path, mode: str) -> tuple[Path, Path, Path, Path, Path]:
         props = tmp / "Directory.Build.props"
-        props.write_text("<Project><PropertyGroup><Version>0.1.0</Version></PropertyGroup></Project>\n", encoding="utf-8")
+        props.write_text(
+            "<Project><PropertyGroup><LangVersion>latest</LangVersion><Version>0.1.0</Version></PropertyGroup></Project>\n",
+            encoding="utf-8",
+        )
         changelog = tmp / "CHANGELOG.md"
         changelog.write_text(SAMPLE_CHANGELOG, encoding="utf-8")
         artifacts = tmp / "artifacts"
@@ -261,8 +288,12 @@ class CreateDraftReleaseTests(unittest.TestCase):
             )
             self.assertEqual(rerun.returncode, 0, rerun.stderr)
             calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
-            self.assertTrue(any(c[:2] == ["release", "edit"] for c in calls))
-            self.assertTrue(any(c[:2] == ["release", "upload"] and "--clobber" in c for c in calls))
+            self.assertTrue(any(c[:2] == ["release", "edit"] and "--draft" in c for c in calls))
+            upload_calls = [c for c in calls if c[:2] == ["release", "upload"]]
+            self.assertEqual(len(upload_calls), 1)
+            self.assertNotIn("--clobber", upload_calls[0])
+            self.assertIn(str(artifacts / "berth.exe.sha256"), upload_calls[0])
+            self.assertNotIn(str(artifacts / "berth.exe"), upload_calls[0])
 
 
 class ReleaseWorkflowStructureTests(unittest.TestCase):
