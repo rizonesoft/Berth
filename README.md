@@ -127,7 +127,7 @@ Berth follows the Windows theme, light or dark, and Windows high contrast. The i
 | [`todo/implementation-plan.md`](todo/implementation-plan.md) | The build plan, generated from the TODO sections |
 | [`AGENTS.md`](AGENTS.md) | The working rules for people and agents |
 
-The plan is built section by section, and each section is reviewed by a different model family before it is marked done. `pwsh scripts/start-run.ps1` starts an unattended run of the plan in Claude Code. A run starts only when its operator starts it, and ends when its window closes.
+The plan is built section by section, and each section is reviewed by a different model family before it is marked done. [`scripts/start-run.ps1`](scripts/start-run.ps1) starts an unattended run of the plan when launched by its operator, and ends when its window closes.
 
 ## How do I contribute?
 

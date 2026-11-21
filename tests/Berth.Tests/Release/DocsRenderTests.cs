@@ -2,8 +2,11 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Berth.Core;
 using Berth.Core.Model;
 using Berth.Desktop;
@@ -11,6 +14,7 @@ using Berth.Tests.App;
 using Berth.Tests.Fakes;
 using Berth.Tests.Render;
 using Berth.Window;
+using DrawingColor = System.Drawing.Color;
 using WpfSize = System.Windows.Size;
 
 namespace Berth.Tests.Release;
@@ -21,7 +25,9 @@ public sealed class DocsRenderTests(AppFixture appFixture)
 {
     private const int OuterWidth = 980;
     private const int OuterHeight = 640;
-    private const int TitleBarHeight = 32;
+    private const uint PwRenderFullContent = 0x00000002;
+    private const int DwmwaExtendedFrameBounds = 9;
+    private const int DwmwaUseImmersiveDarkMode = 20;
 
     private static readonly MonitorInfo MonPrimary = new(0, 0, 2560, 1440, 100, true);
     private static readonly MonitorInfo MonSecondary = new(2560, 0, 1920, 1080, 100, false);
@@ -106,47 +112,180 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         string outputDir = ResolveOutputDirectory(data.Root);
         string lightPath = Path.Combine(outputDir, "main-window-light.png");
         string darkPath = Path.Combine(outputDir, "main-window-dark.png");
-        string clientTempDir = Path.Combine(data.Root, "client-renders");
-        Directory.CreateDirectory(clientTempDir);
-        string lightClientPath = Path.Combine(clientTempDir, "client-light.png");
-        string darkClientPath = Path.Combine(clientTempDir, "client-dark.png");
-
-        int clientWidth = OuterWidth - 2;
-        int clientHeight = OuterHeight - TitleBarHeight - 2;
+        string scratchDir = Path.Combine(data.Root, "client-renders");
+        Directory.CreateDirectory(scratchDir);
+        string iconPath = ResolveRepoFile("assets", "icon", "berth.ico");
 
         appFixture.Invoke(() =>
         {
-            var window = new MainWindow { DataContext = vm };
-            try
-            {
-                window.RootGrid.Measure(new WpfSize(clientWidth, clientHeight));
-                window.RootGrid.Arrange(new Rect(0, 0, clientWidth, clientHeight));
-                window.RootGrid.UpdateLayout();
-
-                WindowRenderer.Render(window.RootGrid, clientWidth, clientHeight, lightClientPath, RenderTheme.Light);
-                WindowRenderer.Render(window.RootGrid, clientWidth, clientHeight, darkClientPath, RenderTheme.Dark);
-            }
-            finally
-            {
-                window.CloseForShutdown();
-            }
+            CaptureFramedWindow(vm, lightPath, Path.Combine(scratchDir, "client-light.png"), iconPath, RenderTheme.Light);
+            CaptureFramedWindow(vm, darkPath, Path.Combine(scratchDir, "client-dark.png"), iconPath, RenderTheme.Dark);
         });
-
-        string iconPath = ResolveRepoFile("assets", "icon", "berth.ico");
-        CompositeFramedScreenshot(lightClientPath, iconPath, lightPath, dark: false);
-        CompositeFramedScreenshot(darkClientPath, iconPath, darkPath, dark: true);
 
         byte[] lightBytes = AssertValid980x640Png(lightPath);
         byte[] darkBytes = AssertValid980x640Png(darkPath);
         Assert.False(lightBytes.AsSpan().SequenceEqual(darkBytes), "Light and dark screenshots must differ.");
     }
 
-    private static void CompositeFramedScreenshot(string clientPngPath, string iconPath, string outputPath, bool dark)
+    private static void CaptureFramedWindow(
+        MainViewModel vm,
+        string outputPath,
+        string clientTempPath,
+        string iconPath,
+        RenderTheme theme)
     {
-        Color titleBg = dark ? Color.FromArgb(0x20, 0x20, 0x20) : Color.FromArgb(0xF3, 0xF3, 0xF3);
-        Color borderColor = dark ? Color.FromArgb(0x3D, 0x3D, 0x3D) : Color.FromArgb(0xD1, 0xD1, 0xD1);
-        Color titleText = dark ? Color.FromArgb(0xFF, 0xFF, 0xFF) : Color.FromArgb(0x1A, 0x1A, 0x1A);
-        Color glyphColor = dark ? Color.FromArgb(0xE0, 0xE0, 0xE0) : Color.FromArgb(0x1A, 0x1A, 0x1A);
+        var app = (Berth.App.BerthApplication)System.Windows.Application.Current;
+#pragma warning disable WPF0001
+        System.Windows.ThemeMode originalMode = app.ThemeMode;
+#pragma warning restore WPF0001
+        Berth.App.ColorTheme originalColor = app.CurrentColorTheme;
+
+        var window = new MainWindow
+        {
+            DataContext = vm,
+            Width = OuterWidth,
+            Height = OuterHeight,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 40,
+            Top = 40,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+        };
+
+        try
+        {
+#pragma warning disable WPF0001
+            app.ThemeMode = theme == RenderTheme.Dark ? System.Windows.ThemeMode.Dark : System.Windows.ThemeMode.Light;
+#pragma warning restore WPF0001
+            app.ApplyColorTheme(theme == RenderTheme.Dark ? Berth.App.ColorTheme.Dark : Berth.App.ColorTheme.Light);
+
+            window.Show();
+            nint hwnd = new WindowInteropHelper(window).Handle;
+            int darkFlag = theme == RenderTheme.Dark ? 1 : 0;
+            _ = DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkFlag, sizeof(int));
+
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
+
+            // Measure the live framed window's actual client and outer dimensions in DIPs.
+            Assert.True(GetWindowRect(hwnd, out RECT winRect), "GetWindowRect failed for MainWindow.");
+            Assert.True(GetClientRect(hwnd, out RECT clientRect), "GetClientRect failed for MainWindow.");
+            DpiScale dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
+            int measuredClientW = Math.Clamp((int)Math.Round(clientRect.Right / dpi.DpiScaleX), 800, OuterWidth - 2);
+            int measuredClientH = Math.Clamp((int)Math.Round(clientRect.Bottom / dpi.DpiScaleY), 500, OuterHeight - 24);
+            int measuredTitleBarH = Math.Clamp(OuterHeight - measuredClientH - 2, 24, 48);
+
+            // Verify live WPF RootGrid actually laid out inside the measured client bounds.
+            Assert.InRange(window.RootGrid.ActualWidth, measuredClientW - 4, measuredClientW + 4);
+            Assert.InRange(window.RootGrid.ActualHeight, measuredClientH - 4, measuredClientH + 4);
+
+            // Try live native DWM PrintWindow first (works on an unlocked interactive desktop).
+            if (TryCaptureLivePrintWindow(hwnd, winRect, clientRect, outputPath))
+            {
+                return;
+            }
+
+            // Locked/headless desktops return a 1-color blank DWM surface from PrintWindow; render the live
+            // MainWindow's RootGrid at its exact measured client dimensions and frame it to 980x640.
+            window.RootGrid.Measure(new WpfSize(measuredClientW, measuredClientH));
+            window.RootGrid.Arrange(new Rect(0, 0, measuredClientW, measuredClientH));
+            window.RootGrid.UpdateLayout();
+            WindowRenderer.Render(window.RootGrid, measuredClientW, measuredClientH, clientTempPath, theme);
+            CompositeMeasuredFrame(clientTempPath, iconPath, outputPath, measuredClientW, measuredClientH, measuredTitleBarH, theme == RenderTheme.Dark);
+        }
+        finally
+        {
+            window.CloseForShutdown();
+#pragma warning disable WPF0001
+            app.ThemeMode = originalMode;
+#pragma warning restore WPF0001
+            app.ApplyColorTheme(originalColor);
+        }
+    }
+
+    private static bool TryCaptureLivePrintWindow(nint hwnd, RECT winRect, RECT clientRect, string outputPath)
+    {
+        int fullW = Math.Max(1, winRect.Right - winRect.Left);
+        int fullH = Math.Max(1, winRect.Bottom - winRect.Top);
+
+        using var fullBitmap = new Bitmap(fullW, fullH, PixelFormat.Format32bppArgb);
+        bool printed;
+        using (Graphics g = Graphics.FromImage(fullBitmap))
+        {
+            nint hdc = g.GetHdc();
+            try
+            {
+                printed = PrintWindow(hwnd, hdc, PwRenderFullContent);
+            }
+            finally
+            {
+                g.ReleaseHdc(hdc);
+            }
+        }
+
+        if (!printed)
+        {
+            return false;
+        }
+
+        Rectangle crop = new(0, 0, fullW, fullH);
+        if (DwmGetWindowAttribute(hwnd, DwmwaExtendedFrameBounds, out RECT frameRect, Marshal.SizeOf<RECT>()) == 0)
+        {
+            int fw = frameRect.Right - frameRect.Left;
+            int fh = frameRect.Bottom - frameRect.Top;
+            if (fw >= clientRect.Right && fh >= clientRect.Bottom)
+            {
+                int cx = Math.Clamp(frameRect.Left - winRect.Left, 0, fullW - 1);
+                int cy = Math.Clamp(frameRect.Top - winRect.Top, 0, fullH - 1);
+                int cw = Math.Clamp(fw, 1, fullW - cx);
+                int ch = Math.Clamp(fh, 1, fullH - cy);
+                crop = new Rectangle(cx, cy, cw, ch);
+            }
+        }
+
+        using var output = new Bitmap(OuterWidth, OuterHeight, PixelFormat.Format32bppArgb);
+        using (Graphics og = Graphics.FromImage(output))
+        {
+            og.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            og.CompositingQuality = CompositingQuality.HighQuality;
+            og.SmoothingMode = SmoothingMode.HighQuality;
+            og.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            og.DrawImage(fullBitmap, new Rectangle(0, 0, OuterWidth, OuterHeight), crop, GraphicsUnit.Pixel);
+        }
+
+        HashSet<int> distinctColors = [];
+        for (int y = 40; y < OuterHeight - 20; y += 20)
+        {
+            for (int x = 20; x < OuterWidth - 20; x += 20)
+            {
+                distinctColors.Add(output.GetPixel(x, y).ToArgb());
+            }
+        }
+
+        if (distinctColors.Count < 8)
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        output.Save(outputPath, ImageFormat.Png);
+        return true;
+    }
+
+    private static void CompositeMeasuredFrame(
+        string clientPngPath,
+        string iconPath,
+        string outputPath,
+        int clientW,
+        int clientH,
+        int titleBarH,
+        bool dark)
+    {
+        DrawingColor titleBg = dark ? DrawingColor.FromArgb(0x20, 0x20, 0x20) : DrawingColor.FromArgb(0xF3, 0xF3, 0xF3);
+        DrawingColor borderColor = dark ? DrawingColor.FromArgb(0x3D, 0x3D, 0x3D) : DrawingColor.FromArgb(0xD1, 0xD1, 0xD1);
+        DrawingColor titleText = dark ? DrawingColor.FromArgb(0xFF, 0xFF, 0xFF) : DrawingColor.FromArgb(0x1A, 0x1A, 0x1A);
+        DrawingColor glyphColor = dark ? DrawingColor.FromArgb(0xE0, 0xE0, 0xE0) : DrawingColor.FromArgb(0x1A, 0x1A, 0x1A);
 
         using var canvas = new Bitmap(OuterWidth, OuterHeight, PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(canvas);
@@ -154,43 +293,43 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         g.Clear(titleBg);
 
+        int leftPad = (OuterWidth - clientW) / 2;
+        int clientTop = OuterHeight - clientH - 1;
         using (var client = new Bitmap(clientPngPath))
         {
-            g.DrawImage(client, new Rectangle(1, 1 + TitleBarHeight, OuterWidth - 2, OuterHeight - TitleBarHeight - 2));
+            g.DrawImage(client, new Rectangle(leftPad, clientTop, clientW, clientH));
         }
 
-        // Standard Windows 11 title bar (32 px): Berth app icon + "Berth" + Minimize / Maximize / Close controls.
+        int iconY = Math.Max(4, (titleBarH - 16) / 2);
         using (var icon = new Icon(iconPath, new System.Drawing.Size(16, 16)))
         {
-            g.DrawIcon(icon, new Rectangle(12, 9, 16, 16));
+            g.DrawIcon(icon, new Rectangle(12, iconY, 16, 16));
         }
 
         using (var font = new Font("Segoe UI", 9.0f, System.Drawing.FontStyle.Regular, GraphicsUnit.Point))
         using (var textBrush = new SolidBrush(titleText))
         {
-            g.DrawString("Berth", font, textBrush, new PointF(36, 9));
+            g.DrawString("Berth", font, textBrush, new PointF(36, iconY));
         }
 
+        int midY = titleBarH / 2;
         using (var glyphPen = new Pen(glyphColor, 1.0f))
         {
-            // Minimize (center x = OuterWidth - 115)
             int minX = OuterWidth - 115;
-            g.DrawLine(glyphPen, minX - 5, 17, minX + 5, 17);
+            g.DrawLine(glyphPen, minX - 5, midY, minX + 5, midY);
 
-            // Maximize (center x = OuterWidth - 69)
             int maxX = OuterWidth - 69;
-            g.DrawRectangle(glyphPen, maxX - 5, 12, 10, 10);
+            g.DrawRectangle(glyphPen, maxX - 5, midY - 5, 10, 10);
 
-            // Close (center x = OuterWidth - 23)
             int closeX = OuterWidth - 23;
-            g.DrawLine(glyphPen, closeX - 5, 12, closeX + 5, 22);
-            g.DrawLine(glyphPen, closeX + 5, 12, closeX - 5, 22);
+            g.DrawLine(glyphPen, closeX - 5, midY - 5, closeX + 5, midY + 5);
+            g.DrawLine(glyphPen, closeX + 5, midY - 5, closeX - 5, midY + 5);
         }
 
         using (var borderPen = new Pen(borderColor, 1.0f))
         {
             g.DrawRectangle(borderPen, 0, 0, OuterWidth - 1, OuterHeight - 1);
-            g.DrawLine(borderPen, 1, TitleBarHeight, OuterWidth - 2, TitleBarHeight);
+            g.DrawLine(borderPen, 1, clientTop - 1, OuterWidth - 2, clientTop - 1);
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
@@ -261,6 +400,33 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         Assert.Equal(OuterHeight, decoder.Frames[0].PixelHeight);
         return bytes;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetClientRect(nint hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PrintWindow(nint hWnd, nint hdcBlt, uint nFlags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(nint hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     private sealed class FixedClock(DateTimeOffset utcNow) : TimeProvider
     {
