@@ -54,6 +54,10 @@ agy = ["astra"]
 policy = "three-pass"
 pass_cap = 33
 blocking = ["P1", "P2"]
+# A P1 or P2 finding reported open in three passes (the completion review and two reconciliations whose repairs
+# did not close it) stops the chain for a redesign. New findings at one severity never trip it: D05 T01 §4 ran
+# seven P2 passes and then passed. Each reconciliation ends with a RECURRING: line (scripts/review_pin.py).
+recurrence_cap = 3
 
 [schedule.plan]
 effort = "medium"
