@@ -274,7 +274,6 @@ internal sealed class TrayIcon : IDisposable
 
     private void ApplyReadd()
     {
-        bool completed = false;
         lock (_sync)
         {
             if (_disposed)
@@ -288,19 +287,15 @@ internal sealed class TrayIcon : IDisposable
             ApplyIconForThemeLocked();
             _notifyIcon.Text = savedTooltip;
             SetNotifyIconVisible(true);
-            completed = true;
         }
 
-        if (completed)
-        {
-            _onReadd?.Invoke();
-        }
+        _onReadd?.Invoke();
     }
 
     private void SetNotifyIconVisible(bool visible)
     {
         _notifyIcon.Visible = visible;
-        _onVisibleSet?.Invoke(visible);
+        _onVisibleSet?.Invoke(_notifyIcon.Visible);
     }
 
     private void ApplyIconForTheme()
