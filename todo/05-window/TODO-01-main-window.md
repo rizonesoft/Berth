@@ -173,6 +173,8 @@ The map panel: the grid, each monitor to scale with its label, and one marker pe
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MapGeometryTests"` and `--filter-class "*PositionMapTests"` pass, and the geometry test fails when a monitor at negative coordinates is drawn outside the panel.
 
+> **Started:** 2026-11-21
+
 ## 5. Marker states, selection and readout
 
 What a marker says about its icon, and the readout and count under the map (SPEC §7, the table and the bullets after it).

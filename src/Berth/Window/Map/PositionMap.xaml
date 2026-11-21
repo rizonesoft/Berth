@@ -1,0 +1,90 @@
+<UserControl x:Class="Berth.Window.Map.PositionMap"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:map="clr-namespace:Berth.Window.Map">
+    <Border Padding="{DynamicResource Berth.Space.DetailSection}">
+        <Border x:Name="MapCard"
+                MinHeight="{DynamicResource Berth.MapMinHeight}"
+                Background="{DynamicResource Berth.MapBackground}"
+                BorderBrush="{DynamicResource Berth.MapBorder}"
+                BorderThickness="{DynamicResource Berth.Space.BorderThin}"
+                CornerRadius="{DynamicResource Berth.RadiusCard}"
+                ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid x:Name="MapViewport" Grid.Row="0" SizeChanged="OnViewportSizeChanged">
+                    <map:MapSurface x:Name="Surface" IsHitTestVisible="False" />
+
+                    <ListBox x:Name="MarkersList"
+                             Background="Transparent"
+                             BorderThickness="{DynamicResource Berth.Space.None}"
+                             Padding="{DynamicResource Berth.Space.None}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             SelectionMode="Single"
+                             AutomationProperties.Name="Icon positions">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas IsItemsHost="True" />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                <Setter Property="Panel.ZIndex" Value="{Binding ZIndex}" />
+                                <Setter Property="Width" Value="{DynamicResource Berth.MarkerTarget}" />
+                                <Setter Property="Height" Value="{DynamicResource Berth.MarkerTarget}" />
+                                <Setter Property="MinWidth" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="Padding" Value="{DynamicResource Berth.Space.None}" />
+                                <Setter Property="Margin" Value="{DynamicResource Berth.Space.None}" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border Background="Transparent">
+                                                <ContentPresenter />
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="{DynamicResource Berth.MarkerTarget}"
+                                      Height="{DynamicResource Berth.MarkerTarget}"
+                                      Background="Transparent">
+                                    <Border x:Name="MarkerVisual"
+                                            Width="{DynamicResource Berth.Marker}"
+                                            Height="{DynamicResource Berth.Marker}"
+                                            CornerRadius="{DynamicResource Berth.RadiusMarker}"
+                                            Background="{DynamicResource Berth.MarkerNeutral}"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+
+                <Grid x:Name="MapFooter" Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl x:Name="ReadoutHost" Grid.Column="0" Focusable="False" />
+                    <ContentControl x:Name="CountHost" Grid.Column="1" Focusable="False" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

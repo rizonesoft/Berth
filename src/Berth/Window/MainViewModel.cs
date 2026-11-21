@@ -29,6 +29,7 @@ internal sealed class MainViewModel : ObservableObject
     private DesktopState _desktopState;
     private LayoutComparison? _comparison;
     private ComparisonKind _comparisonKind;
+    private IReadOnlyList<MonitorInfo> _mapMonitors = [];
     private IReadOnlyList<UnreadableFile> _unreadable = [];
     private string? _storeReadError;
 
@@ -122,6 +123,13 @@ internal sealed class MainViewModel : ObservableObject
     {
         get => _comparisonKind;
         private set => Set(ref _comparisonKind, value);
+    }
+
+    /// <summary>The monitor arrangement the position map should draw for <see cref="Selected"/> (SPEC §7).</summary>
+    public IReadOnlyList<MonitorInfo> MapMonitors
+    {
+        get => _mapMonitors;
+        private set => Set(ref _mapMonitors, value);
     }
 
     internal Task MarshalToUiAsync(Action action) => _marshalToUiAsync(action);
@@ -469,6 +477,7 @@ internal sealed class MainViewModel : ObservableObject
     {
         if (_selected is null)
         {
+            MapMonitors = [];
             ComparisonKind = ComparisonKind.None;
             Comparison = null;
             return;
@@ -478,11 +487,13 @@ internal sealed class MainViewModel : ObservableObject
         {
             if (_desktopState.Unavailable || _desktopState.Monitors.Count == 0)
             {
+                MapMonitors = [];
                 ComparisonKind = ComparisonKind.None;
                 Comparison = null;
             }
             else
             {
+                MapMonitors = _desktopState.Monitors;
                 ComparisonKind = ComparisonKind.Unsaved;
                 Comparison = LayoutComparison.Unsaved(_desktopState.Monitors, _desktopState.Icons);
             }
@@ -491,6 +502,7 @@ internal sealed class MainViewModel : ObservableObject
         }
 
         Layout saved = _selected.Layout!;
+        MapMonitors = saved.Monitors;
         if (_selected.IsActive && !_desktopState.Unavailable)
         {
             ComparisonKind = ComparisonKind.Compared;

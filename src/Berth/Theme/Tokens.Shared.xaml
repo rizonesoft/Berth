@@ -30,6 +30,7 @@
     <CornerRadius x:Key="Berth.RadiusMonitor">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusBadge">10</CornerRadius>
     <Thickness x:Key="Berth.Space.None">0</Thickness>
+    <Thickness x:Key="Berth.Space.BorderThin">1</Thickness>
     <Thickness x:Key="Berth.Space.PaneHeading">16,16,16,8</Thickness>
     <Thickness x:Key="Berth.Space.ListRow">12,8,12,8</Thickness>
     <Thickness x:Key="Berth.Space.BadgePadding">8,2,8,2</Thickness>
