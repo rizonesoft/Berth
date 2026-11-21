@@ -122,9 +122,40 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             CaptureFramedWindow(vm, darkPath, Path.Combine(scratchDir, "client-dark.png"), iconPath, RenderTheme.Dark);
         });
 
-        byte[] lightBytes = AssertValid980x640Png(lightPath);
-        byte[] darkBytes = AssertValid980x640Png(darkPath);
+        byte[] lightBytes = AssertValid980x640Png(lightPath, RenderTheme.Light);
+        byte[] darkBytes = AssertValid980x640Png(darkPath, RenderTheme.Dark);
         Assert.False(lightBytes.AsSpan().SequenceEqual(darkBytes), "Light and dark screenshots must differ.");
+    }
+
+    [Fact]
+    public void BlankMapRegionFailsAcceptanceCheckInBothThemes()
+    {
+        foreach (RenderTheme theme in new[] { RenderTheme.Light, RenderTheme.Dark })
+        {
+            byte bgR = theme == RenderTheme.Light ? (byte)0xF3 : (byte)0x20;
+            byte bgG = theme == RenderTheme.Light ? (byte)0xF3 : (byte)0x20;
+            byte bgB = theme == RenderTheme.Light ? (byte)0xF3 : (byte)0x20;
+            var wb = new WriteableBitmap(OuterWidth, OuterHeight, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            int stride = OuterWidth * 4;
+            byte[] pixels = new byte[stride * OuterHeight];
+            for (int y = 0; y < OuterHeight; y++)
+            {
+                for (int x = 0; x < OuterWidth; x++)
+                {
+                    int idx = (y * stride) + (x * 4);
+                    // Paint a non-blank sidebar on the left (x < 240) while leaving the position map region blank.
+                    bool inSidebar = x < 240;
+                    pixels[idx] = inSidebar ? (byte)0xBD : bgB;
+                    pixels[idx + 1] = inSidebar ? (byte)0x6C : bgG;
+                    pixels[idx + 2] = inSidebar ? (byte)0x0F : bgR;
+                    pixels[idx + 3] = 0xFF;
+                }
+            }
+
+            wb.WritePixels(new Int32Rect(0, 0, OuterWidth, OuterHeight), pixels, stride, 0);
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => AssertPopulatedPositionMap(wb, theme));
+            Assert.Contains("position map", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private static void CaptureFramedWindow(
@@ -425,7 +456,7 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         return outDir;
     }
 
-    private static byte[] AssertValid980x640Png(string path)
+    private static byte[] AssertValid980x640Png(string path, RenderTheme theme)
     {
         Assert.True(File.Exists(path), $"Expected screenshot at {path}");
         byte[] bytes = File.ReadAllBytes(path);
@@ -435,7 +466,52 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         Assert.Single(decoder.Frames);
         Assert.Equal(OuterWidth, decoder.Frames[0].PixelWidth);
         Assert.Equal(OuterHeight, decoder.Frames[0].PixelHeight);
+        AssertPopulatedPositionMap(decoder.Frames[0], theme);
         return bytes;
+    }
+
+    internal static void AssertPopulatedPositionMap(BitmapSource frame, RenderTheme theme)
+    {
+        BitmapSource bgra = frame.Format == System.Windows.Media.PixelFormats.Bgra32
+            ? frame
+            : new FormatConvertedBitmap(frame, System.Windows.Media.PixelFormats.Bgra32, null, 0);
+        int width = bgra.PixelWidth;
+        int height = bgra.PixelHeight;
+        int stride = width * 4;
+        byte[] pixels = new byte[stride * height];
+        bgra.CopyPixels(pixels, stride, 0);
+
+        // Inspect the right-hand position-map pane (excluding sidebar, title bar, header, and footer).
+        const int mapLeft = 290;
+        const int mapRight = 920;
+        const int mapTop = 175;
+        const int mapBottom = 525;
+        var distinctColors = new HashSet<int>();
+        int accentDotPixels = 0;
+
+        for (int y = mapTop; y < mapBottom; y++)
+        {
+            for (int x = mapLeft; x < mapRight; x++)
+            {
+                int idx = (y * stride) + (x * 4);
+                byte b = pixels[idx];
+                byte g = pixels[idx + 1];
+                byte r = pixels[idx + 2];
+                distinctColors.Add((r << 16) | (g << 8) | b);
+                // Harbour Blue (#0F6CBD) in light or Day Blue (#4CA6F0) in dark for populated icon dots.
+                if (b > r + 40 && b > 140)
+                {
+                    accentDotPixels++;
+                }
+            }
+        }
+
+        if (distinctColors.Count < 6 || accentDotPixels < 150)
+        {
+            throw new InvalidOperationException(
+                $"Rendered {theme} screenshot appears to have a blank or unpopulated position map " +
+                $"(distinctColors={distinctColors.Count}, accentDotPixels={accentDotPixels}).");
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
