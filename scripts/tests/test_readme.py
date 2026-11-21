@@ -68,13 +68,23 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     # Nested linked badges: [![alt](img_target)](link_target)
     badge_matches = re.findall(r"\[!\[[^\]]*\]\(([^)\s]+)\)\]\(([^)\s]+)\)", markdown)
     badge_targets = [t for pair in badge_matches for t in pair]
-    # Standard Markdown links/images (with optional title): [text](target "Title") and ![alt](target)
-    md_targets = re.findall(
-        r'!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*\)',
-        markdown,
-    )
-    # Reference-style Markdown link definitions: [label]: target
-    ref_targets = re.findall(r"^\s*\[[^\]]+\]:\s*<?([^\s>]+)>?", markdown, flags=re.MULTILINE)
+    # Standard Markdown links/images (with optional title and angle-bracketed destinations with spaces)
+    md_targets = [
+        a or b
+        for a, b in re.findall(
+            r'!?\[[^\]]*\]\(\s*(?:<([^>\r\n]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*\)',
+            markdown,
+        )
+    ]
+    # Reference-style Markdown link definitions: [label]: target or [label]: <target with spaces>
+    ref_targets = [
+        a or b
+        for a, b in re.findall(
+            r"^\s*\[[^\]]+\]:\s*(?:<([^>\r\n]+)>|(\S+))",
+            markdown,
+            flags=re.MULTILINE,
+        )
+    ]
     # HTML img/a attributes: src="..." and href="..."
     html_targets = re.findall(r'(?:src|href)="([^"]+)"', markdown)
 
@@ -191,6 +201,14 @@ class ReadmeTests(unittest.TestCase):
         titled_broken = '[guide](missing.md "Guide")\n'
         titled_errors = check_readme_links(titled_broken, ROOT)
         self.assertTrue(any("missing.md" in err for err in titled_errors))
+
+        spaced_broken = "[guide](<docs/missing guide.md>)\n"
+        spaced_errors = check_readme_links(spaced_broken, ROOT)
+        self.assertEqual(len(spaced_errors), 1)
+        self.assertIn("docs/missing guide.md", spaced_errors[0])
+
+        spaced_valid = "[guide](<README.md>)\n"
+        self.assertEqual(check_readme_links(spaced_valid, ROOT), [])
 
     def test_truncated_invalid_color_and_oversized_png_fail_decoder_check(self) -> None:
         light_path = ROOT / "docs" / "images" / "main-window-light.png"

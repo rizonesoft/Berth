@@ -216,6 +216,17 @@ class RenderDocsImagesTests(unittest.TestCase):
             for name in IMAGES:
                 self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("new", name)])
 
+    def test_angle_bracket_markdown_link_with_space_in_existing_filename_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spaced = root / "docs" / "existing guide.md"
+            spaced.parent.mkdir(parents=True, exist_ok=True)
+            spaced.write_text("# Guide\n", encoding="utf-8")
+            self.assertEqual(check_readme_links("[guide](<docs/existing guide.md>)\n", root), [])
+            missing = check_readme_links("[guide](<docs/missing guide.md>)\n", root)
+            self.assertEqual(len(missing), 1)
+            self.assertIn("docs/missing guide.md", missing[0])
+
 
 if __name__ == "__main__":
     unittest.main()
