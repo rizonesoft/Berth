@@ -144,9 +144,9 @@ What 0.1.0 contains, and whose work it includes.
 1. Write the 0.1.0 section of `CHANGELOG.md`. Done when: `scripts/changelog-section.py 0.1.0` prints it.
 2. Add `NOTICE.md`. Done when: every package in `Directory.Packages.props` is listed.
 
-- [ ] Move the "Unreleased" entries of `CHANGELOG.md` into a `## 0.1.0` section (no date until the owner tags it; the release workflow's notes come from this section) and add what the plan built: the command line, the tray app, the main window, the automatic restore, in user terms. Done when: `python scripts/changelog-section.py 0.1.0` prints the section. Cheaper substitute: a list of commit subjects.
-- [ ] Add `NOTICE.md` listing each third-party component in the shipped file and in the repository (every `PackageReference` with its licence, the Contributor Covenant in `CODE_OF_CONDUCT.md`, the .NET runtime bundled by the self-contained publish) with where it is used. Done when: a test in `scripts/tests/test_notice.py` reads `Directory.Packages.props` and fails when a package is missing from `NOTICE.md`. Cheaper substitute: a notice written once and never checked.
-- [ ] Link `NOTICE.md` from the README's licence section. Done when: the link resolves under the §3 README check. Cheaper substitute: none needed.
+- [x] Move the "Unreleased" entries of `CHANGELOG.md` into a `## 0.1.0` section (no date until the owner tags it; the release workflow's notes come from this section) and add what the plan built: the command line, the tray app, the main window, the automatic restore, in user terms. Done when: `python scripts/changelog-section.py 0.1.0` prints the section. Cheaper substitute: a list of commit subjects.
+- [x] Add `NOTICE.md` listing each third-party component in the shipped file and in the repository (every `PackageReference` with its licence, the Contributor Covenant in `CODE_OF_CONDUCT.md`, the .NET runtime bundled by the self-contained publish) with where it is used. Done when: a test in `scripts/tests/test_notice.py` reads `Directory.Packages.props` and fails when a package is missing from `NOTICE.md`. Cheaper substitute: a notice written once and never checked.
+- [x] Link `NOTICE.md` from the README's licence section. Done when: the link resolves under the §3 README check. Cheaper substitute: none needed.
 - [ ] Commit: `docs: changelog and third-party notices`
 
 **Test checkpoint:** `python -m unittest discover -s scripts/tests` passes, and `test_notice.py` fails when a package in `Directory.Packages.props` is absent from `NOTICE.md`.

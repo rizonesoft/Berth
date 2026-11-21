@@ -136,4 +136,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). Bugs and ideas go through the [issue fo
 
 ## What is the licence?
 
-Berth is free software under the [GNU General Public License, version 3 or later](LICENSE). The [Code of Conduct](CODE_OF_CONDUCT.md) is the Contributor Covenant, used under CC BY 4.0.
+Berth is free software under the [GNU General Public License, version 3 or later](LICENSE). Third-party components and licences are listed in [NOTICE.md](NOTICE.md). The [Code of Conduct](CODE_OF_CONDUCT.md) is the Contributor Covenant, used under CC BY 4.0.
