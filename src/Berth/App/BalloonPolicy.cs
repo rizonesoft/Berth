@@ -11,7 +11,7 @@ internal sealed record BalloonMessage(string Title, string Text);
 /// Pure policy deciding whether an automatic restore result shows Berth's one notification balloon (SPEC §12, §16, §18).
 /// Success (including missing saved icons) and <see cref="Refusal.NoLayout"/> are silent; every other refusal or failure
 /// shows the warning balloon with the exact §18 or §8 partial sentence, shortened within Windows's 255-character
-/// <c>NOTIFYICONDATA.szInfo</c> limit without dropping the closing guidance.
+/// <c>NOTIFYICONDATA.szInfo</c> limit without dropping the reason or closing guidance.
 /// </summary>
 internal static class BalloonPolicy
 {
@@ -19,6 +19,7 @@ internal static class BalloonPolicy
     public const int MaxBodyLength = 255;
 
     private const string DetailsInLogSuffix = ". The details are in the log.";
+    private const string UnreadableSuffix = " could not be read. It was left untouched.";
     private const char Ellipsis = '\u2026';
 
     public static BalloonMessage? For(OperationResult result)
@@ -52,6 +53,28 @@ internal static class BalloonPolicy
             int budget = MaxBodyLength - suffix.Length;
             string head = text[..^DetailsInLogSuffix.Length];
             return TruncateOnTextElements(head, budget) + suffix;
+        }
+
+        if (text.EndsWith(UnreadableSuffix, StringComparison.Ordinal))
+        {
+            string suffix = Ellipsis + UnreadableSuffix;
+            int budget = MaxBodyLength - suffix.Length;
+            string head = text[..^UnreadableSuffix.Length];
+            return TruncateOnTextElements(head, budget) + suffix;
+        }
+
+        // Preserve ": <reason>." on "Berth could not write <path>: <reason>." by shortening <path> first.
+        int reasonSeparator = text.LastIndexOf(": ", StringComparison.Ordinal);
+        if (reasonSeparator > 0 && text.EndsWith('.'))
+        {
+            string reasonTail = text[reasonSeparator..]; // ": <reason>."
+            if (reasonTail.Length + 24 <= MaxBodyLength)
+            {
+                string suffix = Ellipsis + reasonTail;
+                int budget = MaxBodyLength - suffix.Length;
+                string head = text[..reasonSeparator];
+                return TruncateOnTextElements(head, budget) + suffix;
+            }
         }
 
         return TruncateOnTextElements(text, MaxBodyLength - 1) + Ellipsis;

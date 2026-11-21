@@ -33,7 +33,7 @@ public sealed class BalloonTests
         {
             BalloonMessage? balloon = BalloonPolicy.For(result);
             Assert.NotNull(balloon);
-            Assert.Equal(BalloonPolicy.FailureTitle, balloon.Title);
+            Assert.Equal("Berth could not restore your icons", balloon.Title);
             Assert.Equal(Messages.Refusal(result), balloon.Text);
         }
 
@@ -44,7 +44,7 @@ public sealed class BalloonTests
     }
 
     [Fact]
-    public void PolicyShortensOverlongMessagesWithin255CharactersPreservingClosingGuidance()
+    public void PolicyShortensOverlongMessagesWithin255CharactersPreservingReasonAndClosingGuidance()
     {
         string longException = new string('E', 400);
         BalloonMessage unexpected = BalloonPolicy.For(
@@ -57,13 +57,38 @@ public sealed class BalloonTests
         BalloonMessage writeFailed = BalloonPolicy.For(
             OperationResult.Failed(FailureKind.WriteFailed, path: longPath, detail: "Access denied"))!;
         Assert.True(writeFailed.Text.Length <= BalloonPolicy.MaxBodyLength);
-        Assert.EndsWith("\u2026", writeFailed.Text, StringComparison.Ordinal);
+        Assert.EndsWith(": Access denied.", writeFailed.Text, StringComparison.Ordinal);
+        Assert.Contains('\u2026', writeFailed.Text);
+
+        string longUnreadableFile = new string('U', 300) + ".json";
+        BalloonMessage unreadable = BalloonPolicy.For(
+            OperationResult.Refused(Refusal.UnreadableLayout, path: longUnreadableFile))!;
+        Assert.True(unreadable.Text.Length <= BalloonPolicy.MaxBodyLength);
+        Assert.EndsWith(" could not be read. It was left untouched.", unreadable.Text, StringComparison.Ordinal);
+        Assert.Contains('\u2026', unreadable.Text);
     }
 }
 
 [Collection(DesktopCollectionDefinition.Name)]
 public sealed class TrayBalloonTests(AppFixture appFixture)
 {
+    [Fact]
+    public void ShowBalloonProductionPathPopulatesNotifyIconPropertiesWithoutError()
+    {
+        var theme = new TaskbarTheme(@"Software\Berth.Tests\BalloonProductionTheme", () => 0);
+        const string expectedTitle = "Berth could not restore your icons";
+        const string expectedText = "Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again.";
+
+        appFixture.Invoke(() =>
+        {
+            using var icon = new TrayIcon(theme);
+            icon.ShowBalloon(expectedTitle, expectedText);
+            Assert.Equal(expectedTitle, icon.NotifyIcon.BalloonTipTitle);
+            Assert.Equal(expectedText, icon.NotifyIcon.BalloonTipText);
+            Assert.Equal(ToolTipIcon.Warning, icon.NotifyIcon.BalloonTipIcon);
+        });
+    }
+
     [Fact]
     public void ShowBalloonDropsQueuedCallbackWhenDisposedBeforeUiRuns()
     {
@@ -111,7 +136,7 @@ public sealed class TrayBalloonTests(AppFixture appFixture)
         Assert.Equal("1", report["balloonsAfterRefusal"]);
         Assert.Equal("2", report["balloonsAfterPartial"]);
         Assert.Equal("2", report["balloonsAfterSuccess"]);
-        Assert.Equal(BalloonPolicy.FailureTitle, report["refusalTitle"]);
+        Assert.Equal("Berth could not restore your icons", report["refusalTitle"]);
         Assert.Equal(
             "Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again.",
             report["refusalText"]);

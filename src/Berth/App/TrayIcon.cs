@@ -38,7 +38,13 @@ internal sealed class TrayIcon : IDisposable
         _theme = theme;
         _marshal = marshal;
         _notifyIcon = new NotifyIcon();
-        _showBalloon = showBalloon ?? ((title, text, icon) => _notifyIcon.ShowBalloonTip(0, title, text, icon));
+        _showBalloon = showBalloon ?? ((title, text, icon) =>
+        {
+            _notifyIcon.BalloonTipTitle = title;
+            _notifyIcon.BalloonTipText = text;
+            _notifyIcon.BalloonTipIcon = icon;
+            _notifyIcon.ShowBalloonTip(0);
+        });
 
         // Initialize icon and tooltip BEFORE setting Visible = true so Windows never flashes an empty icon or tooltip.
         ApplyIconForTheme();
