@@ -1,0 +1,86 @@
+{
+  "ref": "D05 T01 \u00a79",
+  "title": "Revert to previous save and delete",
+  "implementation_sha": "d45679ac4205ccadfc0e44e1c600d00f94d3b06d",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/05-window/D05-T01-s9.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "revert-delete-tests(5/5)+render(88 PNGs)+full-suite:pass"
+  ],
+  "completion": {
+    "report": "docs/reviews/05-window/D05-T01-s9.md",
+    "verdict": "filed",
+    "candidate": "d45679ac4205ccadfc0e44e1c600d00f94d3b06d",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D05 T01 \u00a714"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/05-window/D05-T01-s9.md",
+    "candidate": "ec9db7dae9c358253ece389deafd4ab9a474c587",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "ec9db7dae9c358253ece389deafd4ab9a474c587",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

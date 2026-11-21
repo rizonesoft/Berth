@@ -45,7 +45,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 6 | §6 | Status line with Undo and Retry | §3 | [x] |
 | 7 | §7 | Notices and the controls they disable | §6 | [x] |
 | 8 | §8 | Rename dialog | §3 | [x] |
-| 9 | §9 | Revert to previous save and delete | §8 | [ ] |
+| 9 | §9 | Revert to previous save and delete | §8 | [x] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
 | 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [ ] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [ ] |
@@ -329,17 +329,20 @@ The other two More menu items (SPEC §10).
 1. Wire Revert. Done when: the map shows the previous save's positions and nothing moved on the desktop.
 2. Add the delete confirmation. Done when: Delete removes the layout and Cancel does nothing.
 
-- [ ] Wire `Revert to previous save`: run `LayoutService.Revert` off the UI thread, show `Reverted to the save from 12 November.` in the status line, and refresh. Done when: a test saves twice, reverts, and reads the first save's positions in the map, with no `SetPositions` call on the fake. Cheaper substitute: a revert that also moves the icons, which SPEC §10 says it does not.
-- [ ] Add `src/Berth/Window/DeleteDialog.xaml`: title `Delete layout`, the text `Delete the layout "Docked"? Its saved positions are removed. This cannot be undone.` with the layout's name, and `Delete` and `Cancel`, where `Cancel` is both the default and the cancel button. Done when: a test opens it and reads the text with the name and `Cancel` as `IsDefault`. Cheaper substitute: `MessageBox.Show`, which does not follow the Fluent theme.
-- [ ] Wire `Delete`: on `Delete` run `LayoutService.Delete` off the UI thread and refresh; after deleting the active layout the selection is the `This arrangement` row and the icons are where they were. Done when: tests cover deleting the active layout and another arrangement's layout, and the fake desktop is unchanged. Cheaper substitute: leaving the deleted row selected.
-- [ ] `Cancel`, `Esc` and closing the dialog change nothing. Done when: a test cancels each way and the file still exists. Cheaper substitute: none needed.
-- [ ] Add a render test writing `delete-dialog` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes the two files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/RevertDeleteTests.cs`. Done when: all pass, and the default-button test fails when `Delete` is the default. Cheaper substitute: none needed.
-- [ ] Commit: `window: revert to previous save and delete`
+- [x] Wire `Revert to previous save`: run `LayoutService.Revert` off the UI thread, show `Reverted to the save from 12 November.` in the status line, and refresh. Done when: a test saves twice, reverts, and reads the first save's positions in the map, with no `SetPositions` call on the fake. Cheaper substitute: a revert that also moves the icons, which SPEC §10 says it does not.
+- [x] Add `src/Berth/Window/DeleteDialog.xaml`: title `Delete layout`, the text `Delete the layout "Docked"? Its saved positions are removed. This cannot be undone.` with the layout's name, and `Delete` and `Cancel`, where `Cancel` is both the default and the cancel button. Done when: a test opens it and reads the text with the name and `Cancel` as `IsDefault`. Cheaper substitute: `MessageBox.Show`, which does not follow the Fluent theme.
+- [x] Wire `Delete`: on `Delete` run `LayoutService.Delete` off the UI thread and refresh; after deleting the active layout the selection is the `This arrangement` row and the icons are where they were. Done when: tests cover deleting the active layout and another arrangement's layout, and the fake desktop is unchanged. Cheaper substitute: leaving the deleted row selected.
+- [x] `Cancel`, `Esc` and closing the dialog change nothing. Done when: a test cancels each way and the file still exists. Cheaper substitute: none needed.
+- [x] Add a render test writing `delete-dialog` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes the two files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/RevertDeleteTests.cs`. Done when: all pass, and the default-button test fails when `Delete` is the default. Cheaper substitute: none needed.
+- [x] Commit: `window: revert to previous save and delete`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*RevertDeleteTests"` passes, and fails when "Delete" is the dialog's default button.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §9 | d45679ac4205ccadfc0e44e1c600d00f94d3b06d
+> **Review:** `docs/reviews/d05-t01-s9.json`
 
 ## 10. Start with Windows registry value
 
