@@ -6,9 +6,12 @@ namespace Berth.Window;
 /// <summary>Modal Fluent dialog for renaming a saved layout (SPEC §10).</summary>
 internal sealed partial class RenameDialog : System.Windows.Window
 {
-    public RenameDialog(RenameViewModel viewModel)
+    private readonly Func<string, bool>? _tryAdmitRename;
+
+    public RenameDialog(RenameViewModel viewModel, Func<string, bool>? tryAdmitRename = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        _tryAdmitRename = tryAdmitRename;
         InitializeComponent();
         DataContext = viewModel;
         Loaded += OnLoaded;
@@ -38,6 +41,12 @@ internal sealed partial class RenameDialog : System.Windows.Window
     {
         if (!ViewModel.CanRename)
         {
+            return;
+        }
+
+        if (_tryAdmitRename is not null && !_tryAdmitRename(ViewModel.TrimmedName))
+        {
+            ViewModel.IsBusy = true;
             return;
         }
 

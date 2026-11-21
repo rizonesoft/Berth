@@ -63,27 +63,23 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
 
         detail.RowsCollection.CollectionChanged += OnRowsChanged;
         detail.PropertyChanged += OnDetailPropertyChanged;
-        bool? accepted;
         try
         {
-            var dialog = new RenameDialog(renameVm);
+            var dialog = new RenameDialog(
+                renameVm,
+                trimmedName => detail.TryStartRename(capturedKey, trimmedName));
             System.Windows.Window? owner = System.Windows.Window.GetWindow(this);
             if (owner is not null && owner.IsLoaded)
             {
                 dialog.Owner = owner;
             }
 
-            accepted = dialog.ShowDialog();
+            _ = dialog.ShowDialog();
         }
         finally
         {
             detail.RowsCollection.CollectionChanged -= OnRowsChanged;
             detail.PropertyChanged -= OnDetailPropertyChanged;
-        }
-
-        if (accepted == true)
-        {
-            _ = detail.RenameAsync(capturedKey, renameVm.TrimmedName);
         }
     }
 }

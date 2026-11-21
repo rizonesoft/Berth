@@ -133,6 +133,16 @@ public sealed class RenameTests(AppFixture appFixture)
                         Assert.Same(window, dialog.Owner);
                         Assert.Equal("Laptop", dialog.NameBox.Text);
                         Assert.Equal("Laptop", dialog.NameBox.SelectedText);
+                        Assert.True(dialog.NameBox.IsFocused);
+                        Assert.True(dialog.RenameButton.IsDefault);
+                        Assert.True(dialog.CancelButton.IsCancel);
+                        Assert.True(dialog.RenameButton.IsEnabled);
+
+                        // Live busy state while modal is open disables Rename and keeps draft open!
+                        vm.Detail.SetExternalBusy(true);
+                        Assert.False(dialog.RenameButton.IsEnabled);
+                        Assert.Equal(Messages.Refusal(OperationResult.Refused(Refusal.Busy)), dialog.ErrorText.Text);
+                        vm.Detail.SetExternalBusy(false);
                         Assert.True(dialog.RenameButton.IsEnabled);
 
                         // Make name duplicate ("docked"), press Enter -> dialog MUST stay open!
@@ -142,8 +152,8 @@ public sealed class RenameTests(AppFixture appFixture)
                         RaiseKey(dialog, dialog.NameBox, Key.Enter);
                         Assert.True(dialog.IsLoaded);
 
-                        // Press Cancel -> closes cleanly without modifying layout!
-                        InvokeButton(dialog.CancelButton);
+                        // Route Esc through WPF AccessKeyManager (exercises IsCancel directly!) -> closes without change!
+                        AccessKeyManager.ProcessKey(null, "\x1B", false);
                         verifiedModal = true;
                     }
                     catch (Exception ex)
@@ -183,7 +193,8 @@ public sealed class RenameTests(AppFixture appFixture)
                     {
                         dialog.NameBox.Text = $"  {forty}  ";
                         Assert.True(dialog.RenameButton.IsEnabled);
-                        InvokeButton(dialog.RenameButton);
+                        // Route Enter through WPF AccessKeyManager (exercises IsDefault directly!)
+                        AccessKeyManager.ProcessKey(null, "\r", false);
                     }
                     catch (Exception ex)
                     {
@@ -245,15 +256,17 @@ public sealed class RenameTests(AppFixture appFixture)
         var vm = CreateViewModel(store, desktop, monitors, service);
         await vm.RefreshAsync();
 
-        // 1. Late duplicate refusal (another layout already named Docked) -> status shows error with NO Retry!
-        await vm.Detail.RenameAsync(keyA, "DOCKED");
+        // 1. Late duplicate introduced on disk AFTER initial validation -> status shows duplicate with NO Retry!
+        SaveLayout(store, [MonDualA, MonDualB], "LateConflict", FixedNow, new IconPosition("id-1", "One", 100, 100));
+        await vm.Detail.RenameAsync(keyA, "lateconflict");
         Assert.Equal("Another layout already has this name.", vm.Status.Sentence);
         Assert.Equal(StatusAction.None, vm.Status.Action);
         Assert.Equal("Laptop", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
 
-        // 2. Read-back mismatch via AfterWrite seam -> §18 failure + Retry; clearing fault and retrying renames captured key!
+        // 2. Read-back mismatch via AfterWrite seam -> exact §18 failure sentence + Retry; Retry renames captured key!
         corruptNextWrite = true;
         await vm.Detail.RenameAsync(keyA, "Workstation");
+        Assert.StartsWith("Berth could not write ", vm.Status.Sentence);
         Assert.Equal(StatusAction.Retry, vm.Status.Action);
         Assert.NotEqual("Workstation", vm.Detail.Title);
 
@@ -265,12 +278,72 @@ public sealed class RenameTests(AppFixture appFixture)
         Assert.Equal("Workstation", store.LoadAll().Layouts.Single(l => l.Key == keyA).Name);
         Assert.Equal("Workstation", vm.Detail.Title);
 
-        // 3. Target deleted while dialog was open + poll selects fallback -> captured keyA fails cleanly, keyB untouched!
-        File.Delete(paths.LayoutFile(keyA));
-        await vm.RefreshAsync();
-        await vm.Detail.RenameAsync(keyA, "Ghost");
-        Assert.Equal("This monitor arrangement has no saved layout.", vm.Status.Sentence);
-        Assert.Equal("Docked", store.LoadAll().Layouts.Single(l => l.Key == keyB).Name);
+        // 3. Target deleted while modal dialog is open + poll selects fallback -> captured keyA fails cleanly, keyB untouched!
+        MainWindow? window = null;
+        Exception? modalError = null;
+        try
+        {
+            window = appFixture.Invoke(() =>
+            {
+                var w = new MainWindow
+                {
+                    DataContext = vm,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -20000,
+                    Top = -20000,
+                    ShowActivated = false,
+                };
+                w.Show();
+                return w;
+            });
+
+            appFixture.Invoke(() =>
+            {
+                var peer = new MenuItemAutomationPeer(window!.DetailHeaderControl.RenameMenuItem);
+                ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+
+                WpfApplication.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+                {
+                    RenameDialog? dialog = WpfApplication.Current.Windows.OfType<RenameDialog>().SingleOrDefault(d => d.IsVisible);
+                    if (dialog is null)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        // Simulate deletion + fallback selection change while modal is open!
+                        File.Delete(paths.LayoutFile(keyA));
+                        vm.Selected = vm.Rows.Single(r => r.Key == keyB);
+                        dialog.NameBox.Text = "Ghost";
+                        AccessKeyManager.ProcessKey(null, "\r", false);
+                    }
+                    catch (Exception ex)
+                    {
+                        modalError = ex;
+                        dialog.Close();
+                    }
+                });
+
+                window!.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
+            });
+
+            if (modalError is not null)
+            {
+                throw modalError;
+            }
+
+            await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal("This monitor arrangement has no saved layout.", vm.Status.Sentence);
+            Assert.Equal("LateConflict", store.LoadAll().Layouts.Single(l => l.Key == keyB).Name);
+        }
+        finally
+        {
+            if (window is not null)
+            {
+                appFixture.Invoke(() => window.CloseForShutdown());
+            }
+        }
     }
 
     [Fact]
@@ -302,9 +375,20 @@ public sealed class RenameTests(AppFixture appFixture)
                 Assert.True(dialog.RenameButton.ActualHeight >= 32d);
                 Assert.True(dialog.CancelButton.ActualHeight >= 32d);
                 Assert.True(dialog.ErrorText.ActualWidth > 0d && dialog.ErrorText.ActualHeight > 0d);
+                Rect rootBounds = new(0, 0, dialog.DialogRoot.ActualWidth, dialog.DialogRoot.ActualHeight);
+                Rect errorBounds = dialog.ErrorText.TransformToAncestor(dialog.DialogRoot)
+                    .TransformBounds(new Rect(0, 0, dialog.ErrorText.ActualWidth, dialog.ErrorText.ActualHeight));
+                Assert.True(errorBounds.Right <= rootBounds.Width + 0.5d);
+                Assert.True(errorBounds.Bottom <= rootBounds.Height + 0.5d);
+                var errorBrush = Assert.IsType<SolidColorBrush>(dialog.ErrorText.Foreground);
+                Assert.Equal(System.Windows.SystemColors.WindowTextColor, errorBrush.Color);
+                Assert.True(KeyboardNavigation.GetIsTabStop(dialog.NameBox));
+                Assert.True(KeyboardNavigation.GetIsTabStop(dialog.RenameButton));
+                Assert.True(KeyboardNavigation.GetIsTabStop(dialog.CancelButton));
             }
             finally
             {
+                dialog.Close();
                 berthApp.ApplyColorTheme(saved);
             }
         });
@@ -320,6 +404,10 @@ public sealed class RenameTests(AppFixture appFixture)
             var dialog = new RenameDialog(new RenameViewModel(draft, others));
             try
             {
+                // Apply binding evaluation before measuring so Collapsed ErrorText contributes 0 height in valid state.
+                dialog.DialogRoot.Measure(new WpfSize(400, double.PositiveInfinity));
+                dialog.DialogRoot.Arrange(new Rect(0, 0, 400, dialog.DialogRoot.DesiredSize.Height));
+                dialog.DialogRoot.UpdateLayout();
                 dialog.DialogRoot.Measure(new WpfSize(400, double.PositiveInfinity));
                 int height = (int)Math.Ceiling(dialog.DialogRoot.DesiredSize.Height);
                 WindowRenderer.Render(dialog.DialogRoot, 400, height, lightPath, RenderTheme.Light);

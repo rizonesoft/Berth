@@ -252,6 +252,11 @@ internal sealed class DetailViewModel : ObservableObject
             return null;
         }
 
+        return await RunAdmittedOperationAsync(request).ConfigureAwait(false);
+    }
+
+    private async Task<OperationResult?> RunAdmittedOperationAsync(WindowOperationRequest request)
+    {
         OperationResult? result = null;
         try
         {
@@ -345,6 +350,34 @@ internal sealed class DetailViewModel : ObservableObject
             () => _service.Rename(key, newName),
             _ => key));
         return (Task<OperationResult?>)_lastOperationTask;
+    }
+
+    /// <summary>
+    /// Atomically checks admission and starts a Rename operation for <paramref name="key"/>. Returns <c>false</c>
+    /// without starting anything if another window or tray operation currently holds the slot so the Rename dialog can
+    /// stay open with the user's draft intact.
+    /// </summary>
+    internal bool TryStartRename(string key, string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(newName);
+        if (_service is null || _externalBusy || Interlocked.CompareExchange(ref _operationInFlight, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        if (_externalBusy)
+        {
+            Volatile.Write(ref _operationInFlight, 0);
+            return false;
+        }
+
+        var request = new WindowOperationRequest(
+            WindowOperationKind.Rename,
+            () => _service.Rename(key, newName),
+            _ => key);
+        _lastOperationTask = RunAdmittedOperationAsync(request);
+        return true;
     }
 
     internal string? SelectedSavedKey => _main.Selected is { IsUnsaved: false } row ? row.Key : null;
