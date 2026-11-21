@@ -2,7 +2,8 @@
 
 - **Gate command:** `pwsh scripts/check-all.ps1 -Published`
 - **Tested commit:** `e779261fd0068ca30f3f7a629ddb788e0c0614dd`
-- **Gate result:** `passed` (`check-all: 8 step(s) passed`: 251 tooling tests OK with 8 skipped, 33 script tests OK, Release build 0 warnings/0 errors, 995/997 Release tests succeeded with 2 expected skips, published `artifacts/berth.exe` 75.05 MB, Published 1/1, RealDesktop 17/18 with 1 opt-in skip owned by `D99 T01 §4`, Smoke 3/3)
+- **Gate run commit:** `81e93a0f5f28dacc59a81a25747d176295178dbe` (identical `src/`, `tests/`, and `scripts/` tree to `e779261` with updated `docs/acceptance/2026-spec-sweep.md` ledger)
+- **Gate result:** `passed` (`check-all: 8 step(s) passed`, exit 0: 251 tooling tests OK with 8 skipped, 33 script tests OK, Release build 0 warnings/0 errors, 996/998 Release tests succeeded with 2 expected skips, published `artifacts/berth.exe` 75.05 MB sha256 `27bc33a7249b2709ff5483338b6662e5763f7f90e25e438a0489e54dfaad14da`, Published 1/1, RealDesktop 17/18 with 1 opt-in skip owned by `D99 T01 §4`, Smoke 3/3)
 - **SPEC scope:** every bullet, table row, normative prose paragraph, and schema block in `design/SPEC.md` §1 to §20 (`180` items verified by `scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md`).
 
 ## Cross-references for SPEC §1 and §20
@@ -201,7 +202,7 @@
 - `P1.2`: `tests/Berth.Tests/Theme/NoHexColourTests.cs::SourceTreeContainsNoHexColoursOrColorFromRgbCalls`, `scripts/tests/test_design_lint.py::test_auto_strict_for_token_contract_markers`
 - `P1.3`: `tests/Berth.Tests/App/BerthApplicationTests.cs::StartupMergesTokensWithFluentThemeRestylesLiveControlAndPreservesUnrelatedDictionaries`, `tests/Berth.Tests/App/BerthApplicationTests.cs::ProductionControlsUseFluentStylesWithoutLocalTemplateOverrides`
 - `P1.4`: `tests/Berth.Tests/Window/LayoutsPaneTests.cs::RendersAllFiveSpec19LayoutsPaneStatesInLightAndDarkDifferentFromEmptyFrame`, `tests/Berth.Tests/Window/MarkerTests.cs::RendersAllEightSpec19MapStatesInLightAndDark`, `tests/Berth.Tests/Window/StatusLineTests.cs::RendersAllSpec8StatusRowsInLightAndDark`
-- `P1.5`: `tests/Berth.Tests/Window/MarkerTests.cs::TemplatesEachIconStateWithExactFillStrokeRadiiTooltipAutomationAndMovedLine`
+- `P1.5`: `tests/Berth.Tests/Window/MarkerTests.cs::TemplatesEachIconStateWithExactFillStrokeRadiiTooltipAutomationAndMovedLine`, `tests/Berth.Tests/Window/StatusViewModelTests.cs::CoversEverySpec8TableRowWithExactSentenceAndRightSide`
 - `P1.6`: `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::RendersDataHighContrastWithOnlyStandInSystemColoursAndData150At1470x960`, `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::MinimumSize760x520FitsWorstCaseStringsWithoutClippingAcrossAllThemesAndScales`
 - `P1.7`: `scripts/tests/test_spec_items.py::test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs`
 - `P1.8`: `tests/Berth.Tests/Core/MessagesTests.cs::RefusalAndHelpersCoverEveryRowOfSpec18AndSpec10`, `tests/Berth.Tests/Core/FormatsTests.cs::CountsFormatSingularAndPluralAndRejectOutOfRange`
