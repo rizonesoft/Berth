@@ -511,7 +511,7 @@ public sealed class TrayAutoRestoreTests
             IsolatedStaChildRunner.AutoRestoreDirectShutdownScenario,
             data.Root,
             instanceName,
-            timeout: TimeSpan.FromSeconds(25),
+            timeout: TimeSpan.FromSeconds(30),
             reportFile: reportFile);
 
         Assert.True(exitCode == 0, $"Isolated child exited {exitCode}. stdout={stdout} stderr={stderr}");

@@ -413,7 +413,7 @@ internal static class IsolatedStaChildRunner
             if (Interlocked.Exchange(ref _gateArmed, 0) == 1)
             {
                 _entered.Set();
-                if (!_release.Wait(TimeSpan.FromSeconds(15)))
+                if (!_release.Wait(TimeSpan.FromSeconds(20)))
                 {
                     throw new TimeoutException("In-flight desktop read gate was never released.");
                 }
@@ -1496,6 +1496,8 @@ internal static class IsolatedStaChildRunner
                 }
 
                 nint hwnd = capturedEvents.Handle;
+                var appExited = new ManualResetEventSlim(false);
+                app.Exit += (_, _) => appExited.Set();
                 _ = Task.Run(() =>
                 {
                     try
@@ -1504,10 +1506,16 @@ internal static class IsolatedStaChildRunner
                         _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
                         desktop.WaitUntilEntered(TimeSpan.FromSeconds(5));
 
-                        // Call app.Shutdown(0) directly while gated and hold the gate for 5.2s (past the old 5s bounded wait)
-                        // so only an unconditional drain keeps the owned Composition alive until the restore completes.
+                        // Call app.Shutdown(0) directly while gated, synchronize with app.Exit, then hold the gate for
+                        // 10.5s (strictly past both historical 5s waits = 10s) so only an unconditional drain keeps the
+                        // owned Composition alive until the restore completes.
                         _ = app.Dispatcher.BeginInvoke(() => app.Shutdown(0));
-                        Thread.Sleep(TimeSpan.FromMilliseconds(5200));
+                        if (!appExited.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Application.Exit did not fire in time.");
+                        }
+
+                        Thread.Sleep(TimeSpan.FromMilliseconds(10500));
                         desktop.ReleaseGate();
                     }
                     catch (Exception ex)
@@ -1515,6 +1523,10 @@ internal static class IsolatedStaChildRunner
                         desktop.ReleaseGate();
                         workerError = ex.ToString();
                         app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                    finally
+                    {
+                        appExited.Dispose();
                     }
                 });
             });
