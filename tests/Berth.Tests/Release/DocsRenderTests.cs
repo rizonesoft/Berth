@@ -194,7 +194,14 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             // Try live native DWM PrintWindow first (works on an unlocked interactive desktop).
             if (TryCaptureLivePrintWindow(hwnd, winRect, clientRect, outputPath))
             {
+                RecordCaptureMode(outputPath, "PrintWindow");
                 return;
+            }
+
+            if (string.Equals(Environment.GetEnvironmentVariable("BERTH_DOCS_REQUIRE_NATIVE"), "1", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"BERTH_DOCS_REQUIRE_NATIVE=1 was set, but live PrintWindow returned a blank DWM surface for {Path.GetFileName(outputPath)}.");
             }
 
             // Locked/headless desktops return a 1-color blank DWM surface from PrintWindow; render the live
@@ -204,6 +211,7 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             window.RootGrid.UpdateLayout();
             WindowRenderer.Render(window.RootGrid, measuredClientW, measuredClientH, clientTempPath, theme);
             CompositeMeasuredFrame(clientTempPath, iconPath, outputPath, measuredClientW, measuredClientH, measuredClientLeft, measuredClientTop, theme == RenderTheme.Dark);
+            RecordCaptureMode(outputPath, "MeasuredClientComposite");
         }
         finally
         {
@@ -212,6 +220,15 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             app.ThemeMode = originalMode;
 #pragma warning restore WPF0001
             app.ApplyColorTheme(originalColor);
+        }
+    }
+
+    private static void RecordCaptureMode(string outputPath, string mode)
+    {
+        string? dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            File.AppendAllText(Path.Combine(dir, "capture-modes.txt"), $"{Path.GetFileName(outputPath)}={mode}\n");
         }
     }
 

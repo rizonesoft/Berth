@@ -1,4 +1,8 @@
 #Requires -Version 7.0
+[CmdletBinding()]
+param(
+    [switch]$RequireNative
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -10,9 +14,16 @@ $stageDir = Join-Path $scratchBase ("berth-docs-images-" + [Guid]::NewGuid().ToS
 
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 $previousDir = $env:BERTH_DOCS_IMAGE_DIR
+$previousNative = $env:BERTH_DOCS_REQUIRE_NATIVE
 Push-Location $repoRoot
 try {
     $env:BERTH_DOCS_IMAGE_DIR = $stageDir
+    if ($RequireNative) {
+        $env:BERTH_DOCS_REQUIRE_NATIVE = '1'
+    }
+    elseif (Test-Path Env:BERTH_DOCS_REQUIRE_NATIVE) {
+        Remove-Item Env:BERTH_DOCS_REQUIRE_NATIVE
+    }
     dotnet test --solution $solution -c Release --filter-trait Category=Docs | Out-Host
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
@@ -68,6 +79,11 @@ try {
         }
     }
 
+    $modesFile = Join-Path $stageDir 'capture-modes.txt'
+    if (Test-Path -LiteralPath $modesFile) {
+        Get-Content -LiteralPath $modesFile | ForEach-Object { Write-Output "capture: $_" }
+    }
+
     foreach ($name in $expected) {
         Write-Output (Join-Path $destDir $name)
     }
@@ -81,6 +97,14 @@ finally {
     }
     else {
         $env:BERTH_DOCS_IMAGE_DIR = $previousDir
+    }
+    if ($null -eq $previousNative) {
+        if (Test-Path Env:BERTH_DOCS_REQUIRE_NATIVE) {
+            Remove-Item Env:BERTH_DOCS_REQUIRE_NATIVE
+        }
+    }
+    else {
+        $env:BERTH_DOCS_REQUIRE_NATIVE = $previousNative
     }
 
     if (Test-Path -LiteralPath $stageDir) {

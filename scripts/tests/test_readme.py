@@ -127,12 +127,22 @@ class ReadmeTests(unittest.TestCase):
             self.assertIn(required_heading, text)
 
         for required_phrase in (
+            "[Install](#how-do-i-install-it)",
+            "[Use](#how-do-i-use-it)",
+            "[Remove](#how-do-i-remove-it)",
+            "sample data",
+            "PowerShell 7",
+            ".NET 11 SDK",
+            "Checksum mismatch",
             "design/mockups/main-window-light.png",
             "design/mockups/main-window-dark.png",
             "Get-FileHash",
             "%APPDATA%\\Berth",
             "%LOCALAPPDATA%\\Berth",
             "Windows 11 version 24H2 or later",
+            "`x64` only",
+            "saving still works",
+            "restoring is disabled",
             "Turn it off",
             "save layouts automatically",
             "more than one layout per monitor arrangement",

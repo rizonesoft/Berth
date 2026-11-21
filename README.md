@@ -44,7 +44,7 @@ Windows forgets where your desktop icons were. Change the resolution, dock or un
 
 Berth is a single `berth.exe` file with no installer.
 
-- **Before the first tagged GitHub release (build from source):** clone the repository on Windows 11 x64 with .NET 11 installed and run `pwsh scripts/publish.ps1`. Copy `artifacts\berth.exe` (and `artifacts\berth.exe.sha256`) to any folder you like.
+- **Before the first tagged GitHub release (build from source):** clone the repository on Windows 11 x64 with PowerShell 7 and the .NET 11 SDK installed, then run `pwsh scripts/publish.ps1`. Copy `artifacts\berth.exe` (and `artifacts\berth.exe.sha256`) to any folder you like.
 - **Once a GitHub release is published:** download both `berth.exe` and `berth.exe.sha256` from the same release on the [Releases page](https://github.com/rizonesoft/Berth/releases) into one folder.
 
 Before running a downloaded binary, verify that its SHA-256 digest matches the `.sha256` file from the same release and stop immediately if they do not match:
