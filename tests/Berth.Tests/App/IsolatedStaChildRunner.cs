@@ -2287,6 +2287,7 @@ internal static class IsolatedStaChildRunner
         TrayMenu? capturedMenu = null;
 
         int windowsAfterTrayOnlyRestore = -1;
+        bool trayMenuSaveDisabledDuringTrayOnlyRestore = false;
         bool midOpenSawBusy = false;
         bool midOpenRestoreDisabled = false;
         string midOpenRecoveredSentence = string.Empty;
@@ -2328,8 +2329,22 @@ internal static class IsolatedStaChildRunner
                 {
                     try
                     {
-                        // 1. Tray-only startup: automatic restore finishes without creating or activating a window.
+                        // 1. Tray-only startup: automatic restore blocks tray menu Save while running and finishes without creating a window.
+                        desktop.ArmGate();
                         _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!desktop.WaitUntilEntered(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Tray-only AutoRestore did not enter gate.");
+                        }
+
+                        app.Dispatcher.Invoke(() => capturedMenu.RefreshState());
+                        capturedMenu.LastRefreshTask.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            trayMenuSaveDisabledDuringTrayOnlyRestore = !capturedMenu.SaveItem.Enabled;
+                        });
+
+                        desktop.ReleaseGate();
                         if (!finishedGate.Wait(TimeSpan.FromSeconds(5)))
                         {
                             throw new TimeoutException("Tray-only AutoRestore did not finish.");
@@ -2409,6 +2424,7 @@ internal static class IsolatedStaChildRunner
             reportFile,
             [
                 $"windowsAfterTrayOnlyRestore={windowsAfterTrayOnlyRestore}",
+                $"trayMenuSaveDisabledDuringTrayOnlyRestore={trayMenuSaveDisabledDuringTrayOnlyRestore}",
                 $"midOpenSawBusy={midOpenSawBusy}",
                 $"midOpenRestoreDisabled={midOpenRestoreDisabled}",
                 $"midOpenRecoveredSentence={midOpenRecoveredSentence}",

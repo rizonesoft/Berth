@@ -83,6 +83,7 @@ public sealed class AutoRestoreWindowTests(AppFixture appFixture)
 
         Assert.Equal(string.Empty, report["workerError"]);
         Assert.Equal("0", report["windowsAfterTrayOnlyRestore"]);
+        Assert.Equal("True", report["trayMenuSaveDisabledDuringTrayOnlyRestore"]);
         Assert.Equal("True", report["midOpenSawBusy"]);
         Assert.Equal("True", report["midOpenRestoreDisabled"]);
         Assert.Equal("Restored 3 icons.", report["midOpenRecoveredSentence"]);
@@ -224,25 +225,40 @@ public sealed class AutoRestoreWindowTests(AppFixture appFixture)
         var vm = CreateViewModel(store, blockingDesktop, monitors, service);
         await vm.RefreshAsync();
 
-        // Start a blocked refresh so OnExternalOperationFinishedAsync waits on it.
+        // 1. User selection change alone during a blocked refresh suppresses the delayed automatic restore's selection and status (SPEC §8).
         blockingDesktop.ArmReadGate();
         Task blockedPoll = vm.RefreshAsync();
         Assert.True(blockingDesktop.EnteredReadGate.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
-        // Queue a delayed automatic restore for B while user selects A and runs a newer operation.
-        OperationResult delayedB = OperationResult.Restored("Docked", 1, 1, 0, 0, "automatic, display change", keyB);
-        Task delayedCompletion = vm.OnExternalOperationFinishedAsync(WindowOperationKind.Restore, delayedB);
+        OperationResult delayedA = OperationResult.Restored("Laptop", 1, 1, 0, 0, "automatic, display change", keyA);
+        Task delayedSelectionTest = vm.OnExternalOperationFinishedAsync(WindowOperationKind.Restore, delayedA);
 
-        // User selects A explicitly and starts a newer Save result.
+        // Switch to a DIFFERENT row (Docked) without starting any newer operation!
+        LayoutRow rowB = vm.Rows.First(r => r.Key == keyB);
+        appFixture.Invoke(() => vm.Selected = rowB);
+
+        blockingDesktop.ReleaseReadGate();
+        await Task.WhenAll(blockedPoll, delayedSelectionTest);
+
+        Assert.Equal("Docked", vm.Selected?.Name);
+        Assert.DoesNotContain("Restored", vm.Status.Sentence, StringComparison.Ordinal);
+        Assert.Equal(StatusAction.None, vm.Status.Action);
+
+        // 2. Newer operation supersedes a delayed completion even when selection stays the same.
         LayoutRow rowA = vm.Rows.First(r => r.Key == keyA);
         appFixture.Invoke(() => vm.Selected = rowA);
+        blockingDesktop.ArmReadGate();
+        Task blockedPoll2 = vm.RefreshAsync();
+        Assert.True(blockingDesktop.EnteredReadGate.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        OperationResult delayedB = OperationResult.Restored("Docked", 1, 1, 0, 0, "automatic, display change", keyB);
+        Task delayedCompletion = vm.OnExternalOperationFinishedAsync(WindowOperationKind.Restore, delayedB);
         OperationResult newerSave = OperationResult.Saved("Laptop", 1, true, keyA);
         Task newerCompletion = vm.OnExternalOperationFinishedAsync(WindowOperationKind.Save, newerSave);
 
         blockingDesktop.ReleaseReadGate();
-        await Task.WhenAll(blockedPoll, delayedCompletion, newerCompletion);
+        await Task.WhenAll(blockedPoll2, delayedCompletion, newerCompletion);
 
-        // Newer selection (Laptop) and newer status (Saved) must win over delayed B completion.
         Assert.Equal("Laptop", vm.Selected?.Name);
         Assert.Equal("Saved 1 icon. The previous save is kept.", vm.Status.Sentence);
 

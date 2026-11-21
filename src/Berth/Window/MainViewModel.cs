@@ -551,6 +551,7 @@ internal sealed class MainViewModel : ObservableObject
         {
             if (Detail.IsBusy
                 || Volatile.Read(ref _operationEpoch) != epoch
+                || Volatile.Read(ref _selectionEpoch) != selectionEpoch
                 || (shouldPublish is not null && !shouldPublish()))
             {
                 return;

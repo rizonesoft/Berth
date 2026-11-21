@@ -283,6 +283,7 @@ internal static class TrayApp
                 effectiveDisplaySettle,
                 effectiveClock);
             activeAutoRestore = autoRestore;
+            trayMenu.SetExternalBusyProvider(() => autoRestore.IsRestoring);
             autoRestore.Finished += (result, _, silent) =>
             {
                 ScheduleTooltipRefresh();
@@ -455,8 +456,6 @@ internal static class TrayApp
             }
         }
 
-        SyncExternalBusy();
-
         if (trayMenu is not null)
         {
             trayMenu.SetExternalBusyProvider(() => viewModel.Detail.IsLocalBusy || (autoRestore?.IsRestoring ?? false));
@@ -467,7 +466,7 @@ internal static class TrayApp
             trayMenu.OperationCompleted += OnTrayCompleted;
             window.Closed += (_, _) =>
             {
-                trayMenu.SetExternalBusyProvider(null);
+                trayMenu.SetExternalBusyProvider(autoRestore is not null ? () => autoRestore.IsRestoring : null);
                 trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
                 trayMenu.OperationCompleted -= OnTrayCompleted;
             };
@@ -522,6 +521,9 @@ internal static class TrayApp
         {
             window.Closed += (_, _) => windowClosed = true;
         }
+
+        // Sync AFTER subscribing so an automatic or tray restore finishing between initial read and subscribe cannot leave Working stuck.
+        SyncExternalBusy();
 
         return window;
     }
