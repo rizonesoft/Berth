@@ -240,6 +240,52 @@ class RenderDocsImagesTests(unittest.TestCase):
             for name in IMAGES:
                 self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("old", name)])
 
+    def test_stage_mutated_to_blank_while_waiting_for_lock_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "docs" / "images"
+            stage_holder = root / "stage-holder"
+            stage_waiter = root / "stage-waiter"
+            signal = root / "holder-paused.flag"
+            _write_pair(dest, "seed")
+            _write_pair(stage_holder, "run-a")
+            _write_pair(stage_waiter, "run-b")
+
+            holder = _start_publish(stage_holder, dest, pause_signal=signal)
+            waiter: subprocess.Popen[str] | None = None
+            try:
+                deadline = time.monotonic() + 15.0
+                while not signal.exists() and time.monotonic() < deadline:
+                    rc = holder.poll()
+                    if rc is not None:
+                        err = holder.stderr.read() if holder.stderr else ""
+                        self.fail(f"lock holder exited early ({rc}): {err}")
+                    time.sleep(0.05)
+                self.assertTrue(signal.exists(), "lock holder did not reach pause point")
+
+                # Start waiter while holder owns the destination lock and stage_waiter holds valid PNGs.
+                waiter = _start_publish(stage_waiter, dest)
+                time.sleep(0.5)
+                self.assertIsNone(waiter.poll(), "waiter should still be blocked waiting for the lock")
+
+                # Mutate stage_waiter's dark image to a blank-map PNG while waiter is waiting on the lock.
+                (stage_waiter / IMAGES[1]).write_bytes(_make_png(980, 640, (32, 32, 32), populate_map=False))
+                expected_light = (dest / IMAGES[0]).read_bytes()
+                expected_dark = (dest / IMAGES[1]).read_bytes()
+
+                # Release the lock by terminating holder; waiter must reject the mutated blank PNG and preserve dest.
+                _kill_process_tree(holder)
+                rc_w, out_w, err_w = _communicate_with_teardown(waiter, timeout=20.0)
+                self.assertNotEqual(rc_w, 0, f"mutated blank PNG should have been rejected: {out_w}\n{err_w}")
+                self.assertEqual((dest / IMAGES[0]).read_bytes(), expected_light)
+                self.assertEqual((dest / IMAGES[1]).read_bytes(), expected_dark)
+                leftovers = [p.name for p in dest.iterdir() if p.name not in IMAGES]
+                self.assertEqual(leftovers, [], f"leftover temp files after rejected publish: {leftovers}")
+            finally:
+                _kill_process_tree(holder)
+                if waiter is not None:
+                    _kill_process_tree(waiter)
+
     def test_relative_dest_dir_from_outside_checkout_resolves_against_caller_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
