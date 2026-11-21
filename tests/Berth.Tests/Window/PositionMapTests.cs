@@ -124,7 +124,7 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 Assert.Equal(19d, containers[0].ActualWidth, precision: 2);
                 Assert.Equal(19d, containers[0].ActualHeight, precision: 2);
 
-                Border? markerVisual = FindDescendant<Border>(containers[0], "MarkerVisual");
+                FrameworkElement? markerVisual = FindDescendant<FrameworkElement>(containers[0], "MarkerVisual");
                 Assert.NotNull(markerVisual);
                 Assert.Equal(11d, markerVisual.ActualWidth, precision: 2);
                 Assert.Equal(11d, markerVisual.ActualHeight, precision: 2);
@@ -424,7 +424,7 @@ public sealed class PositionMapTests(AppFixture appFixture)
     private static WpfPoint MeasureFirstMarkerCenterInViewport(PositionMap map)
     {
         WpfListBoxItem container = RealizeItems(map.MarkersList)[0];
-        Border visual = Assert.IsType<Border>(FindDescendant<Border>(container, "MarkerVisual"));
+        FrameworkElement visual = Assert.IsType<FrameworkElement>(FindDescendant<FrameworkElement>(container, "MarkerVisual"), exactMatch: false);
         return visual.TranslatePoint(new WpfPoint(visual.ActualWidth / 2d, visual.ActualHeight / 2d), map.MapViewport);
     }
 

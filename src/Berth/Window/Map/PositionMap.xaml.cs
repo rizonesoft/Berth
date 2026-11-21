@@ -1,14 +1,18 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using Berth.Core;
 using Berth.Core.Model;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfPoint = System.Windows.Point;
 
 namespace Berth.Window.Map;
 
 /// <summary>
-/// Position map control (SPEC §7): draws monitors to scale with labels on <see cref="MapSurface"/> and plots each
-/// <see cref="ComparedIcon"/> as a <see cref="System.Windows.Controls.ListBoxItem"/> positioned on a <see cref="System.Windows.Controls.Canvas"/>.
+/// Position map control (SPEC §7): draws monitors to scale with labels and connector/drop lines on
+/// <see cref="MapSurface"/>, plots each <see cref="ComparedIcon"/> as a <see cref="ListBoxItem"/> on a
+/// <see cref="Canvas"/>, and maintains the bottom-left readout and bottom-right count.
 /// </summary>
 internal sealed partial class PositionMap : System.Windows.Controls.UserControl
 {
@@ -16,6 +20,8 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     private IReadOnlyList<MonitorInfo> _orderedMonitors = [];
     private MainViewModel? _viewModel;
     private MapGeometry _geometry = MapGeometry.Empty;
+    private string? _lastLayoutKey;
+    private bool _isRebuildingItems;
 
     public PositionMap()
     {
@@ -48,6 +54,7 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.Comparison)
+            or nameof(MainViewModel.ComparisonKind)
             or nameof(MainViewModel.MapMonitors)
             or nameof(MainViewModel.Selected)
             or "")
@@ -61,22 +68,64 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         RebuildLayout();
     }
 
+    private void OnFooterSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RebuildLayout();
+    }
+
+    private void OnMarkersSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isRebuildingItems)
+        {
+            return;
+        }
+
+        UpdateFooterAndSurfaceOverlays();
+    }
+
     private void RebuildItemsAndLayout()
     {
-        _items.Clear();
+        string? newLayoutKey = _viewModel?.Selected?.Key;
+        string? previouslySelectedIconId = (MarkersList.SelectedItem as MapMarkerItem)?.Icon.Saved.Id;
+        bool sameLayout = _lastLayoutKey is not null
+            && newLayoutKey is not null
+            && string.Equals(_lastLayoutKey, newLayoutKey, StringComparison.Ordinal);
 
-        LayoutComparison? comparison = _viewModel?.Comparison;
-        IReadOnlyList<MonitorInfo> monitors = _viewModel?.MapMonitors ?? [];
-        _orderedMonitors = monitors.Count > 0 ? MonitorNumbering.Order(monitors) : [];
-
-        if (comparison is not null && _orderedMonitors.Count > 0)
+        _isRebuildingItems = true;
+        try
         {
-            for (int i = 0; i < comparison.Icons.Count; i++)
+            _items.Clear();
+
+            LayoutComparison? comparison = _viewModel?.Comparison;
+            IReadOnlyList<MonitorInfo> monitors = _viewModel?.MapMonitors ?? [];
+            _orderedMonitors = monitors.Count > 0 ? MonitorNumbering.Order(monitors) : [];
+
+            MapMarkerItem? restoredSelection = null;
+            if (comparison is not null && _orderedMonitors.Count > 0)
             {
-                ComparedIcon icon = comparison.Icons[i];
-                ClampedDesktopPoint clamped = MapGeometry.ClampOrdered(icon.Saved.X, icon.Saved.Y, _orderedMonitors);
-                _items.Add(new MapMarkerItem(icon, zIndex: i, clamped));
+                for (int i = 0; i < comparison.Icons.Count; i++)
+                {
+                    ComparedIcon icon = comparison.Icons[i];
+                    ClampedDesktopPoint clamped = MapGeometry.ClampOrdered(icon.Saved.X, icon.Saved.Y, _orderedMonitors);
+                    var marker = new MapMarkerItem(icon, zIndex: i, clamped);
+                    _items.Add(marker);
+
+                    if (sameLayout
+                        && restoredSelection is null
+                        && previouslySelectedIconId is not null
+                        && string.Equals(icon.Saved.Id, previouslySelectedIconId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        restoredSelection = marker;
+                    }
+                }
             }
+
+            _lastLayoutKey = newLayoutKey;
+            MarkersList.SelectedItem = restoredSelection;
+        }
+        finally
+        {
+            _isRebuildingItems = false;
         }
 
         RebuildLayout();
@@ -88,21 +137,91 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         double height = MapViewport.ActualHeight;
         double padding = ResolveDouble("Berth.MapPadding", 24d);
         double targetSize = ResolveDouble("Berth.MarkerTarget", 19d);
+        double markerSize = ResolveDouble("Berth.Marker", 11d);
+        double strokeThickness = ResolveDouble("Berth.MonitorStrokeThickness", 1.5d);
+        double borderInset = (markerSize / 2d) + strokeThickness + 2d;
         double labelHeight = Surface.MeasureLabelReserve();
 
         _geometry = MapGeometry.Fit(_orderedMonitors, width, height, padding, labelHeight);
-        Surface.Update(_orderedMonitors, _geometry, padding);
 
-        if (!_geometry.HasGeometry || _orderedMonitors.Count == 0)
+        if (_geometry.HasGeometry && _orderedMonitors.Count > 0)
         {
-            return;
+            foreach (MapMarkerItem item in _items)
+            {
+                MapPoint pt = _geometry.ToPanel(item.Clamped.X, item.Clamped.Y);
+                double cx = pt.X;
+                double cy = pt.Y;
+
+                // Keep markers cleanly inside their monitor rectangle so top-row, edge, and clamped off-screen icons
+                // never kiss or protrude past the monitor border.
+                if (item.Icon.MonitorNumber >= 1 && item.Icon.MonitorNumber <= _orderedMonitors.Count)
+                {
+                    MapRect monRect = _geometry.MonitorRect(_orderedMonitors[item.Icon.MonitorNumber - 1]);
+                    if (monRect.Width > borderInset * 2d)
+                    {
+                        cx = Math.Clamp(cx, monRect.X + borderInset, monRect.X + monRect.Width - borderInset);
+                    }
+
+                    if (monRect.Height > borderInset * 2d)
+                    {
+                        cy = Math.Clamp(cy, monRect.Y + borderInset, monRect.Y + monRect.Height - borderInset);
+                    }
+                }
+
+                item.UpdatePosition(cx, cy, targetSize);
+            }
         }
 
-        foreach (MapMarkerItem item in _items)
+        UpdateFooterAndSurfaceOverlays();
+    }
+
+    private void UpdateFooterAndSurfaceOverlays()
+    {
+        MapMarkerItem? selected = MarkersList.SelectedItem as MapMarkerItem;
+        ReadoutLines readout = IconReadout.For(selected?.Icon);
+
+        ReadoutPrimaryText.Text = readout.Primary;
+        if (readout.HasSelection)
         {
-            MapPoint pt = _geometry.ToPanel(item.Clamped.X, item.Clamped.Y);
-            item.UpdatePosition(pt.X, pt.Y, targetSize);
+            ReadoutPrimaryText.Style = TryFindResource("Berth.Type.MonoStrong") as Style ?? ReadoutPrimaryText.Style;
+            ReadoutPrimaryText.ClearValue(TextBlock.ForegroundProperty);
+            ReadoutSecondaryText.Text = readout.Secondary;
+            ReadoutSecondaryText.Visibility = Visibility.Visible;
         }
+        else
+        {
+            ReadoutPrimaryText.Style = TryFindResource("Berth.Type.Mono") as Style ?? ReadoutPrimaryText.Style;
+            ReadoutPrimaryText.SetResourceReference(TextBlock.ForegroundProperty, "Berth.TextSecondary");
+            ReadoutSecondaryText.Text = " ";
+            ReadoutSecondaryText.Visibility = Visibility.Hidden;
+        }
+
+        CountTextBlock.Text = IconReadout.CountText(_viewModel?.Comparison, _viewModel?.ComparisonKind ?? ComparisonKind.None);
+
+        double padding = ResolveDouble("Berth.MapPadding", 24d);
+        var movedLines = new List<(WpfPoint From, WpfPoint To)>();
+        if (_geometry.HasGeometry)
+        {
+            foreach (MapMarkerItem item in _items)
+            {
+                if (item.State == IconState.Moved && item.Icon.Current is { } current)
+                {
+                    // SPEC §7: moved line goes from the saved marker to where the icon is now (unclamped, clipped by card).
+                    MapPoint livePt = _geometry.ToPanel(current.X, current.Y);
+                    movedLines.Add((new WpfPoint(item.CenterX, item.CenterY), new WpfPoint(livePt.X, livePt.Y)));
+                }
+            }
+        }
+
+        (WpfPoint From, WpfPoint To)? dropLine = null;
+        if (selected is not null && _geometry.HasGeometry && MapViewport.ActualHeight > 0d)
+        {
+            double ringHalf = ResolveDouble("Berth.MarkerSelectedRing", 23d) / 2d;
+            double startY = Math.Min(MapViewport.ActualHeight, selected.CenterY + ringHalf);
+            dropLine = (new WpfPoint(selected.CenterX, startY), new WpfPoint(selected.CenterX, MapViewport.ActualHeight));
+        }
+
+        Surface.Update(_orderedMonitors, _geometry, padding, movedLines, dropLine);
     }
 
     private double ResolveDouble(string key, double fallback) =>

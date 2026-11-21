@@ -17,9 +17,12 @@ internal sealed class MapMarkerItem : ObservableObject
         ZIndex = zIndex;
         Clamped = clamped;
         OffScreen = icon.OffScreen || clamped.OffScreen;
+        AutomationName = IconReadout.AutomationName(icon);
     }
 
     public ComparedIcon Icon { get; }
+
+    public IconState State => Icon.State;
 
     public int ZIndex { get; }
 
@@ -28,6 +31,8 @@ internal sealed class MapMarkerItem : ObservableObject
     public bool OffScreen { get; }
 
     public string DisplayName => Icon.Saved.Name;
+
+    public string AutomationName { get; }
 
     public double Left
     {

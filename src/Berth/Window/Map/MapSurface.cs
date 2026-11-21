@@ -46,11 +46,27 @@ internal sealed class MapSurface : FrameworkElement
         typeof(MapSurface),
         new FrameworkPropertyMetadata(WpfBrushes.Gray, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty MovedLineBrushProperty = DependencyProperty.Register(
+        nameof(MovedLineBrush),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty SelectedLineBrushProperty = DependencyProperty.Register(
+        nameof(SelectedLineBrush),
+        typeof(WpfBrush),
+        typeof(MapSurface),
+        new FrameworkPropertyMetadata(WpfBrushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
+
     private IReadOnlyList<MonitorInfo> _orderedMonitors = [];
     private MapGeometry _geometry = MapGeometry.Empty;
     private double _padding = 24d;
+    private IReadOnlyList<(WpfPoint From, WpfPoint To)> _movedLines = [];
+    private (WpfPoint From, WpfPoint To)? _selectionDropLine;
     private readonly List<RenderedMonitorLabel> _renderedLabels = [];
     private readonly List<Rect> _renderedMonitorRects = [];
+    private readonly List<(WpfPoint From, WpfPoint To)> _renderedMovedLines = [];
+    private (WpfPoint From, WpfPoint To)? _renderedSelectionDropLine;
 
     public WpfBrush GridBrush
     {
@@ -76,15 +92,38 @@ internal sealed class MapSurface : FrameworkElement
         set => SetValue(LabelBrushProperty, value);
     }
 
+    public WpfBrush MovedLineBrush
+    {
+        get => (WpfBrush)GetValue(MovedLineBrushProperty);
+        set => SetValue(MovedLineBrushProperty, value);
+    }
+
+    public WpfBrush SelectedLineBrush
+    {
+        get => (WpfBrush)GetValue(SelectedLineBrushProperty);
+        set => SetValue(SelectedLineBrushProperty, value);
+    }
+
     public IReadOnlyList<RenderedMonitorLabel> RenderedLabels => _renderedLabels;
 
     public IReadOnlyList<Rect> RenderedMonitorRects => _renderedMonitorRects;
 
-    public void Update(IReadOnlyList<MonitorInfo> orderedMonitors, MapGeometry geometry, double padding)
+    public IReadOnlyList<(WpfPoint From, WpfPoint To)> RenderedMovedLines => _renderedMovedLines;
+
+    public (WpfPoint From, WpfPoint To)? RenderedSelectionDropLine => _renderedSelectionDropLine;
+
+    public void Update(
+        IReadOnlyList<MonitorInfo> orderedMonitors,
+        MapGeometry geometry,
+        double padding,
+        IReadOnlyList<(WpfPoint From, WpfPoint To)>? movedLines = null,
+        (WpfPoint From, WpfPoint To)? selectionDropLine = null)
     {
         _orderedMonitors = orderedMonitors;
         _geometry = geometry;
         _padding = padding;
+        _movedLines = movedLines ?? [];
+        _selectionDropLine = selectionDropLine;
         InvalidateVisual();
     }
 
@@ -112,6 +151,8 @@ internal sealed class MapSurface : FrameworkElement
 
         _renderedLabels.Clear();
         _renderedMonitorRects.Clear();
+        _renderedMovedLines.Clear();
+        _renderedSelectionDropLine = null;
 
         double width = ActualWidth;
         double height = ActualHeight;
@@ -216,6 +257,40 @@ internal sealed class MapSurface : FrameworkElement
             placedBounds.Add(candidate);
             dc.DrawText(formatted, new WpfPoint(candidate.X, candidate.Y));
             _renderedLabels.Add(new RenderedMonitorLabel(i + 1, text, candidate));
+        }
+
+        // Pass 3: draw 1 px moved-icon connector lines from saved marker center to current desktop position (SPEC §7).
+        if (_movedLines.Count > 0)
+        {
+            WpfBrush movedBrush = MovedLineBrush ?? ResolveBrush("Berth.MarkerMoved", WpfBrushes.Transparent);
+            var movedPen = new WpfPen(movedBrush, gridStroke);
+            if (movedPen.CanFreeze)
+            {
+                movedPen.Freeze();
+            }
+
+            foreach ((WpfPoint from, WpfPoint to) in _movedLines)
+            {
+                dc.DrawLine(movedPen, from, to);
+                _renderedMovedLines.Add((from, to));
+            }
+        }
+
+        // Pass 4: draw 1 px dashed drop-line from the selected marker down to the readout top (SPEC §7).
+        if (_selectionDropLine is { } drop)
+        {
+            WpfBrush selectedBrush = SelectedLineBrush ?? ResolveBrush("Berth.MarkerSelected", WpfBrushes.Transparent);
+            var dropPen = new WpfPen(selectedBrush, gridStroke)
+            {
+                DashStyle = DashStyles.Dash,
+            };
+            if (dropPen.CanFreeze)
+            {
+                dropPen.Freeze();
+            }
+
+            dc.DrawLine(dropPen, drop.From, drop.To);
+            _renderedSelectionDropLine = drop;
         }
     }
 

@@ -39,7 +39,23 @@ try {
         'header-busy-light.png',
         'header-busy-dark.png',
         'map-monitors-light.png',
-        'map-monitors-dark.png'
+        'map-monitors-dark.png',
+        'map-in-place-light.png',
+        'map-in-place-dark.png',
+        'map-moved-light.png',
+        'map-moved-dark.png',
+        'map-missing-light.png',
+        'map-missing-dark.png',
+        'map-selected-light.png',
+        'map-selected-dark.png',
+        'map-none-selected-light.png',
+        'map-none-selected-dark.png',
+        'map-neutral-light.png',
+        'map-neutral-dark.png',
+        'map-off-screen-light.png',
+        'map-off-screen-dark.png',
+        'map-unreachable-light.png',
+        'map-unreachable-dark.png'
     )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name

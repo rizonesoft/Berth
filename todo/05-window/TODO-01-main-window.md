@@ -207,6 +207,8 @@ What a marker says about its icon, and the readout and count under the map (SPEC
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*MarkerTests"` and `--filter-class "*IconReadoutTests"` pass, and the readout test fails when "moved" is missing from a moved icon's readout.
 
+> **Started:** 2026-11-21
+
 ## 6. Status line with Undo and Retry
 
 The card under the map: one sentence chosen by the SPEC §8 table, with a time or an action on the right.
