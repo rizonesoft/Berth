@@ -109,14 +109,16 @@ The README stops describing a plan and describes the program (`README.md`).
 1. Capture real screenshots. Done when: `docs/images/` holds the window in light and dark with sample data.
 2. Rewrite the status, usage and install sections. Done when: nothing in the README says "not built".
 
-- [ ] Add a render test (trait `Docs`) that renders the full main window in the data state with the sample data of the mockups (three layouts, 42 icons on two monitors) in light and dark, and a script step that copies them to `docs/images/main-window-light.png` and `main-window-dark.png`. Done when: both files exist, are 980 by 640, and are committed. Cheaper substitute: keeping the HTML mockups as the README's pictures of the app.
-- [ ] Replace the README's two mockup images and the "Design mockup" caption with the two screenshots, and move the mockups' mention to the "What does it look like?" section as the design reference. Done when: the README's first image is `docs/images/main-window-light.png`. Cheaper substitute: none needed.
-- [ ] Rewrite "What works today?" as a table of what the release does, and "How will I use it?" as "How do I use it?", adding "How do I install it?": download `berth.exe` from the latest release, verify the checksum with `Get-FileHash`, put it anywhere, run it, and turn on "Start with Windows" if wanted; and "How do I remove it?": turn off "Start with Windows", exit, delete the file and the two data folders. Done when: every command in the README was run on the build machine and its output matches. Cheaper substitute: instructions nobody ran.
-- [ ] State the limits honestly in a "What does it not do?" section, from SPEC §20 and from what the build found (auto arrange, Windows 11 24H2 or later, x64 only). Done when: each SPEC §20 item appears. Cheaper substitute: leaving a reader to find the limits by trial.
-- [ ] Update the status badge from `in development` to `pre-release` and the navigation links to the new headings. Done when: every anchor in the navigation row resolves to a heading. Cheaper substitute: dead links.
+- [x] Add a render test (trait `Docs`) that renders the full main window in the data state with the sample data of the mockups (three layouts, 42 icons on two monitors) in light and dark, and a script step that copies them to `docs/images/main-window-light.png` and `main-window-dark.png`. Done when: both files exist, are 980 by 640, and are committed. Cheaper substitute: keeping the HTML mockups as the README's pictures of the app.
+- [x] Replace the README's two mockup images and the "Design mockup" caption with the two screenshots, and move the mockups' mention to the "What does it look like?" section as the design reference. Done when: the README's first image is `docs/images/main-window-light.png`. Cheaper substitute: none needed.
+- [x] Rewrite "What works today?" as a table of what the release does, and "How will I use it?" as "How do I use it?", adding "How do I install it?": download `berth.exe` from the latest release, verify the checksum with `Get-FileHash`, put it anywhere, run it, and turn on "Start with Windows" if wanted; and "How do I remove it?": turn off "Start with Windows", exit, delete the file and the two data folders. Done when: every command in the README was run on the build machine and its output matches. Cheaper substitute: instructions nobody ran.
+- [x] State the limits honestly in a "What does it not do?" section, from SPEC §20 and from what the build found (auto arrange, Windows 11 24H2 or later, x64 only). Done when: each SPEC §20 item appears. Cheaper substitute: leaving a reader to find the limits by trial.
+- [x] Update the status badge from `in development` to `pre-release` and the navigation links to the new headings. Done when: every anchor in the navigation row resolves to a heading. Cheaper substitute: dead links.
 - [ ] Commit: `docs: README for the built app with real screenshots`
 
 **Test checkpoint:** A script check in `scripts/tests/test_readme.py` passes: every relative link and image in `README.md` exists on disk and every in-page anchor matches a heading; it fails when an image path is misspelled.
+
+> **Started:** 2026-11-21
 
 ## 4. Changelog and third-party notices
 
