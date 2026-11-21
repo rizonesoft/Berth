@@ -2,7 +2,7 @@
 schema_version: 1
 id: packaging
 domain: 07-release
-status: active
+status: done
 title: "TODO-01 -- Packaging and release"
 depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-restore"]
 ---
@@ -41,7 +41,7 @@ depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-rest
 | 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [x] |
 | 3 | §3 | README for the built app with real screenshots | §1 | [x] |
 | 4 | §4 | Changelog and third-party notices | §3 | [x] |
-| 5 | §5 | Acceptance sweep against the SPEC | §2, §4 | [ ] |
+| 5 | §5 | Acceptance sweep against the SPEC | §2, §4 | [x] |
 
 ## 1. Single-file self-contained publish
 
@@ -180,6 +180,9 @@ The plan's acceptance bar, checked line by line: every control, state and comman
 > **Started:** 2026-11-21T16:10Z
 
 **Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its earlier review chains are kept as `docs/reviews/07-release/D07-T01-s5-chain1.md` and `docs/reviews/07-release/D07-T01-s5-chain2.md`.
+
+> **Verified:** 2026-11-21 | §5 | 270b5ec9739c1d2b2080a834448f27263a1f04e1
+> **Review:** `docs/reviews/d07-t01-s5.json`
 
 ## Verification
 

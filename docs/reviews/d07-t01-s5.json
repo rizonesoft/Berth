@@ -1,0 +1,84 @@
+{
+  "ref": "D07 T01 \u00a75",
+  "title": "Acceptance sweep against the SPEC",
+  "implementation_sha": "270b5ec9739c1d2b2080a834448f27263a1f04e1",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/07-release/D07-T01-s5.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "python scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md; python -m unittest scripts/tests/test_spec_items.py; pwsh scripts/check-all.ps1 -Published"
+  ],
+  "completion": {
+    "report": "docs/reviews/07-release/D07-T01-s5.md",
+    "verdict": "reconciled",
+    "candidate": "270b5ec9739c1d2b2080a834448f27263a1f04e1",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/07-release/D07-T01-s5.md",
+    "candidate": "18bf2dedce18ccecd032e8e726e7b6c8e6c65dd5",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "18bf2dedce18ccecd032e8e726e7b6c8e6c65dd5",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}
