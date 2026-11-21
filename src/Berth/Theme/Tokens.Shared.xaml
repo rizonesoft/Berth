@@ -62,7 +62,6 @@
     <Thickness x:Key="Berth.Space.StatusFooter">28,0,28,24</Thickness>
     <Thickness x:Key="Berth.Space.StatusSquareOffset">0,11,0,0</Thickness>
     <Thickness x:Key="Berth.Space.StatusSentence">8,6,0,6</Thickness>
-    <Thickness x:Key="Berth.Space.StatusActionPullRight">0,0,-8,0</Thickness>
     <Thickness x:Key="Berth.Space.NoticesContainer">28,0,28,8</Thickness>
     <Thickness x:Key="Berth.Space.ItemGapBottom">0,0,0,8</Thickness>
     <Thickness x:Key="Berth.Space.NoticeGlyphOffset">0,8,0,0</Thickness>

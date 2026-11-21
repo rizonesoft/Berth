@@ -91,6 +91,7 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
         string scale150Path = IoPath.Combine(outputDir, "data-150.png");
 
         Rect badgeBounds = default;
+        Rect selectedRowBounds = default;
         Rect inPlaceMarkerBounds = default;
         Rect selectedMarkerBounds = default;
         Rect moreButtonBounds150 = default;
@@ -111,6 +112,8 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                 Border activeBadge = FindVisualChildren<Border>(window.LayoutsPaneControl)
                     .Single(b => b.Name == "ActiveBadge");
                 badgeBounds = TransformBounds(activeBadge, window.RootGrid);
+                var selectedRowItem = (ListBoxItem)window.LayoutsPaneControl.LayoutsList.ItemContainerGenerator.ContainerFromIndex(0);
+                selectedRowBounds = TransformBounds(selectedRowItem, window.RootGrid);
 
                 var selectedItem = (ListBoxItem)window.PositionMapControl.MarkersList.ItemContainerGenerator.ContainerFromIndex(0);
                 var inPlaceItem = (ListBoxItem)window.PositionMapControl.MarkersList.ItemContainerGenerator.ContainerFromIndex(1);
@@ -119,8 +122,13 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
 
                 WindowRenderer.Render(window.RootGrid, 980, 640, highContrastPath, RenderTheme.HighContrast, scale: 1.0);
 
+                // Verify WindowRenderer preserved unset local LayoutTransform & Foreground on RootGrid!
+                Assert.Equal(DependencyProperty.UnsetValue, window.RootGrid.ReadLocalValue(FrameworkElement.LayoutTransformProperty));
+                Assert.Equal(DependencyProperty.UnsetValue, window.RootGrid.ReadLocalValue(System.Windows.Documents.TextElement.ForegroundProperty));
+
                 // Render 150% scale -> 1470x960 PNG while keeping 980x640 logical layout!
                 WindowRenderer.Render(window.RootGrid, 980, 640, scale150Path, RenderTheme.Light, scale: 1.5);
+                Assert.Equal(DependencyProperty.UnsetValue, window.RootGrid.ReadLocalValue(FrameworkElement.LayoutTransformProperty));
                 window.RootGrid.Measure(new WpfSize(980, 640));
                 window.RootGrid.Arrange(new Rect(0, 0, 980, 640));
                 window.RootGrid.UpdateLayout();
@@ -139,10 +147,20 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
         Assert.Equal(980, hcW);
         Assert.Equal(640, hcH);
 
+        // Shrink badgeBounds by 3 px so near-black lettering is sampled strictly inside the yellow badge fill!
+        Rect badgeInterior = new(
+            badgeBounds.Left + 3d,
+            badgeBounds.Top + 3d,
+            Math.Max(1d, badgeBounds.Width - 6d),
+            Math.Max(1d, badgeBounds.Height - 6d));
         AssertRegionHasColourAndNoForbiddenTokens(
-            hcPixels, hcW, badgeBounds,
+            hcPixels, hcW, badgeInterior,
             expectedColours: [WindowRenderer.HighContrastWindowTextColor, WindowRenderer.HighContrastWindowColor],
-            label: "ActiveBadge");
+            label: "ActiveBadgeInterior");
+        AssertRegionHasColourAndNoForbiddenTokens(
+            hcPixels, hcW, selectedRowBounds,
+            expectedColours: [WindowRenderer.HighContrastHighlightColor],
+            label: "SelectedLayoutRow");
         AssertRegionHasColourAndNoForbiddenTokens(
             hcPixels, hcW, inPlaceMarkerBounds,
             expectedColours: [WindowRenderer.HighContrastWindowTextColor],
@@ -162,6 +180,25 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
         (byte rDiv, byte gDiv, byte bDiv) = GetPixel(sPixels, sW, 375, 100);
         (byte rBg, byte gBg, byte bBg) = GetPixel(sPixels, sW, 360, 100);
         Assert.NotEqual((rBg, gBg, bBg), (rDiv, gDiv, bDiv));
+
+        // Sample the scaled far-right MoreButton region (1.5x coordinates) proving it actually rendered at the far right!
+        int moreX = Math.Clamp((int)Math.Round((moreButtonBounds150.Left + (moreButtonBounds150.Width / 2d)) * 1.5d), 0, sW - 1);
+        int moreY = Math.Clamp((int)Math.Round((moreButtonBounds150.Top + (moreButtonBounds150.Height / 2d)) * 1.5d), 0, sH - 1);
+        bool foundMoreNonBg = false;
+        (byte pageR, byte pageG, byte pageB) = GetPixel(sPixels, sW, sW - 5, 5);
+        for (int dy = -12; dy <= 12 && !foundMoreNonBg; dy++)
+        {
+            for (int dx = -12; dx <= 12 && !foundMoreNonBg; dx++)
+            {
+                (byte pr, byte pg, byte pb) = GetPixel(sPixels, sW, Math.Clamp(moreX + dx, 0, sW - 1), Math.Clamp(moreY + dy, 0, sH - 1));
+                if (pr != pageR || pg != pageG || pb != pageB)
+                {
+                    foundMoreNonBg = true;
+                }
+            }
+        }
+
+        Assert.True(foundMoreNonBg, $"Expected scaled MoreButton pixels near ({moreX},{moreY}) in 1470x960 PNG.");
     }
 
     [Fact]
@@ -231,9 +268,9 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                             berthApp.ApplyColorTheme(theme == RenderTheme.Light ? ColorTheme.Light : ColorTheme.Dark);
                         }
 
-                        // Set the longest SPEC §8 status sentence + Undo button!
+                        // Set the FULL longest SPEC §8 status sentence (both notPlaced > 0 and missing > 0) + Undo button!
                         vm.Status.SetResult(
-                            OperationResult.Restored(FortyCharLayoutName, total: 26, inPlace: 24, notPlaced: 0, missing: 2),
+                            OperationResult.Restored(FortyCharLayoutName, total: 26, inPlace: 22, notPlaced: 2, missing: 2),
                             canUndo: true);
 
                         int pxW = (int)Math.Round(760 * scale);
@@ -248,25 +285,30 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                         Assert.Equal(760d, window.RootGrid.ActualWidth, precision: 1);
                         Assert.Equal(520d, window.RootGrid.ActualHeight, precision: 1);
 
-                        // 1. Verify BOTH notices, BOTH 40-char name elements, and the full status sentence + Undo are visible!
+                        // 1. Verify BOTH notices, BOTH 40-char name elements, and the COMPLETE SPEC §8 sentence + Undo are visible!
                         WpfButton[] noticeButtons = [.. FindVisualChildren<WpfButton>(window.NoticesControl).Where(b => b.Visibility == Visibility.Visible)];
                         Assert.Equal(2, noticeButtons.Length);
                         Assert.Equal(Visibility.Visible, window.StatusLineControl.ActionButton.Visibility);
                         Assert.Equal("Undo", window.StatusLineControl.ActionButton.Content);
-                        Assert.Contains("Restored 24 of 26 icons", window.StatusLineControl.SentenceText.Text);
+                        Assert.Equal(
+                            "Restored 22 of 26 icons. 2 did not stay where they were saved. 2 are no longer on the desktop.",
+                            window.StatusLineControl.SentenceText.Text);
 
                         TextBlock rowName = FindVisualChildren<TextBlock>(window.LayoutsPaneControl.LayoutsList)
                             .Single(tb => tb.Name == "RowNameText");
                         TextBlock headerTitle = window.DetailHeaderControl.TitleText;
 
-                        // 2. Verify BOTH layout-name elements trim cleanly with CharacterEllipsis + full 40-char ToolTip!
+                        // 2. Verify BOTH layout-name elements actually overflow horizontally AND trim cleanly with CharacterEllipsis + ToolTip!
                         AssertLayoutNameTrimmedWithTooltip(rowName, FortyCharLayoutName, $"RowNameText ({theme} {scale}x)");
                         AssertLayoutNameTrimmedWithTooltip(headerTitle, FortyCharLayoutName, $"TitleText ({theme} {scale}x)");
 
-                        // 3. Verify EVERY visible interactive control fits inside its parent's bounds and inside RootGrid!
+                        // 3. Verify EVERY visible control (including LayoutsList, PositionMap, buttons, switches, notices) fits inside its parent and RootGrid!
                         Rect rootRect = new(0, 0, window.RootGrid.ActualWidth + 1d, window.RootGrid.ActualHeight + 1d);
                         FrameworkElement[] controls =
                         [
+                            window.LayoutsPaneControl.LayoutsList,
+                            window.PositionMapControl,
+                            window.StatusLineControl.StatusCard,
                             window.DetailHeaderControl.RestoreButton,
                             window.DetailHeaderControl.SaveButton,
                             window.DetailHeaderControl.MoreButton,
@@ -310,6 +352,12 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                             Assert.True(
                                 ft.Height <= tb.ActualHeight + 2.5d,
                                 $"TextBlock '{tb.Name}' (\"{tb.Text}\") clipped vertically at {theme} {scale}x: needed {ft.Height:F1}, got {tb.ActualHeight:F1}");
+
+                            // Also verify no ancestor clips the TextBlock's arranged bounds!
+                            Rect tbInRoot = TransformBounds(tb, window.RootGrid);
+                            Assert.True(
+                                rootRect.Contains(tbInRoot),
+                                $"TextBlock '{tb.Name}' overflows RootGrid at {theme} {scale}x: {tbInRoot}");
                         }
                     }
                     finally
@@ -402,16 +450,28 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                 Assert.Equal(WindowRenderer.HighContrastWindowTextColor, Assert.IsType<SolidColorBrush>(offTrack.BorderBrush).Color);
                 Assert.Equal(WindowRenderer.HighContrastWindowTextColor, Assert.IsType<SolidColorBrush>(offKnob.Background).Color);
 
-                // Focus BOTH switches in High Contrast 150% and verify unclipped focus ring with effective clip geometry check!
+                // Focus BOTH switches in High Contrast 150%, verify non-zero 2px/1px borders, unclipped geometry, AND rendered pixel change!
                 foreach (ToggleButton sw in new[] { panel.RestoreAutomaticallySwitch, panel.StartWithWindowsSwitch })
                 {
+                    window.DetailHeaderControl.MoreButton.Focus();
+                    window.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
+                    byte[] unfocusedPixels = RenderElementPixels(panel);
+
                     sw.Focus();
                     window.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
                     Border outer = (Border)sw.Template.FindName("FocusRingOuter", sw);
+                    Border inner = (Border)sw.Template.FindName("FocusRingInner", sw);
                     Assert.Equal(Visibility.Visible, outer.Visibility);
+                    Assert.Equal(Visibility.Visible, inner.Visibility);
+                    Assert.Equal(2d, outer.BorderThickness.Left);
+                    Assert.Equal(1d, inner.BorderThickness.Left);
                     WpfColor ringColour = Assert.IsType<SolidColorBrush>(outer.BorderBrush).Color;
                     Assert.Equal(WindowRenderer.HighContrastHighlightColor, ringColour);
                     Assert.NotEqual(WindowRenderer.HighContrastWindowColor, ringColour);
+
+                    byte[] focusedPixels = RenderElementPixels(panel);
+                    int changedHighlightPixels = CountChangedPixelsMatching(unfocusedPixels, focusedPixels, WindowRenderer.HighContrastHighlightColor);
+                    Assert.True(changedHighlightPixels >= 40, $"Expected >= 40 highlight focus pixels around {sw.Name}, got {changedHighlightPixels}");
 
                     // Walk EVERY ancestor including SettingsPanel itself up to RootGrid checking effective clip geometry!
                     var ringRect = new Rect(0d, 0d, outer.ActualWidth, outer.ActualHeight);
@@ -439,6 +499,15 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
                         cursor = VisualTreeHelper.GetParent(cursor);
                     }
                 }
+
+                // Flip switches to the opposite states (Off/On) and verify track/knob colours swap cleanly!
+                panel.RestoreAutomaticallySwitch.IsChecked = false;
+                panel.StartWithWindowsSwitch.IsChecked = true;
+                window.RootGrid.UpdateLayout();
+                Assert.Equal(WindowRenderer.HighContrastWindowColor, Assert.IsType<SolidColorBrush>(onTrack.Background).Color);
+                Assert.Equal(WindowRenderer.HighContrastWindowTextColor, Assert.IsType<SolidColorBrush>(onKnob.Background).Color);
+                Assert.Equal(WindowRenderer.HighContrastHighlightColor, Assert.IsType<SolidColorBrush>(offTrack.Background).Color);
+                Assert.Equal(WindowRenderer.HighContrastHighlightTextColor, Assert.IsType<SolidColorBrush>(offKnob.Background).Color);
             }
             finally
             {
@@ -461,8 +530,46 @@ public sealed class ContrastAndScaleTests(AppFixture appFixture)
 
         FormattedText unconstrained = MeasureText(tb, double.PositiveInfinity);
         Assert.True(
+            unconstrained.Width > tb.ActualWidth,
+            $"{label} did not actually overflow horizontally (needed {unconstrained.Width:F1} <= ActualWidth {tb.ActualWidth:F1}).");
+        Assert.True(
             unconstrained.Height <= tb.ActualHeight + 2.5d,
             $"{label} clipped vertically: line height {unconstrained.Height:F1} > ActualHeight {tb.ActualHeight:F1}");
+    }
+
+    private static byte[] RenderElementPixels(FrameworkElement element)
+    {
+        int w = Math.Max(1, (int)Math.Ceiling(element.ActualWidth * 1.5d));
+        int h = Math.Max(1, (int)Math.Ceiling(element.ActualHeight * 1.5d));
+        var dv = new DrawingVisual();
+        using (DrawingContext dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(new VisualBrush(element), null, new Rect(0, 0, w, h));
+        }
+
+        var rtb = new RenderTargetBitmap(w, h, 96d, 96d, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        byte[] pixels = new byte[w * h * 4];
+        rtb.CopyPixels(pixels, w * 4, 0);
+        return pixels;
+    }
+
+    private static int CountChangedPixelsMatching(byte[] before, byte[] after, WpfColor expected)
+    {
+        int count = 0;
+        int len = Math.Min(before.Length, after.Length);
+        for (int i = 0; i + 3 < len; i += 4)
+        {
+            if (before[i] != after[i] || before[i + 1] != after[i + 1] || before[i + 2] != after[i + 2])
+            {
+                if (after[i + 2] == expected.R && after[i + 1] == expected.G && after[i] == expected.B)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     private static FormattedText MeasureText(TextBlock tb, double maxWidth)

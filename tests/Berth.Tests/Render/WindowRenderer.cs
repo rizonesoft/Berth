@@ -52,10 +52,12 @@ internal static class WindowRenderer
         ThemeMode originalThemeMode = berthApp?.ThemeMode ?? ThemeMode.None;
 #pragma warning restore WPF0001
         ColorTheme originalColorTheme = berthApp?.CurrentColorTheme ?? ColorTheme.Dark;
-        Transform originalLayoutTransform = root.LayoutTransform;
+        object originalLayoutTransform = root.ReadLocalValue(FrameworkElement.LayoutTransformProperty);
         object originalForeground = root.ReadLocalValue(System.Windows.Documents.TextElement.ForegroundProperty);
         ResourceDictionary? highContrastOverlay = null;
         bool switchedTheme = false;
+        bool changedTransform = false;
+        bool changedForeground = false;
 
         try
         {
@@ -73,6 +75,7 @@ internal static class WindowRenderer
                     var hcText = new SolidColorBrush(HighContrastWindowTextColor);
                     hcText.Freeze();
                     System.Windows.Documents.TextElement.SetForeground(root, hcText);
+                    changedForeground = true;
                 }
                 else
                 {
@@ -93,6 +96,7 @@ internal static class WindowRenderer
             if (Math.Abs(scale - 1.0) > 1e-6)
             {
                 root.LayoutTransform = new ScaleTransform(scale, scale);
+                changedTransform = true;
             }
 
             var targetSize = new WpfSize(pixelWidth, pixelHeight);
@@ -124,28 +128,49 @@ internal static class WindowRenderer
         }
         finally
         {
-            root.LayoutTransform = originalLayoutTransform;
-            if (originalForeground == DependencyProperty.UnsetValue)
+            try
             {
-                root.ClearValue(System.Windows.Documents.TextElement.ForegroundProperty);
-            }
-            else
-            {
-                root.SetValue(System.Windows.Documents.TextElement.ForegroundProperty, originalForeground);
-            }
+                if (changedTransform)
+                {
+                    RestoreLocalValue(root, FrameworkElement.LayoutTransformProperty, originalLayoutTransform);
+                }
 
-            if (highContrastOverlay is not null && berthApp is not null)
-            {
-                berthApp.Resources.MergedDictionaries.Remove(highContrastOverlay);
+                if (changedForeground)
+                {
+                    RestoreLocalValue(root, System.Windows.Documents.TextElement.ForegroundProperty, originalForeground);
+                }
             }
-
-            if (switchedTheme && berthApp is not null)
+            finally
             {
+                if (highContrastOverlay is not null && berthApp is not null)
+                {
+                    berthApp.Resources.MergedDictionaries.Remove(highContrastOverlay);
+                }
+
+                if (switchedTheme && berthApp is not null)
+                {
 #pragma warning disable WPF0001
-                berthApp.ThemeMode = originalThemeMode;
+                    berthApp.ThemeMode = originalThemeMode;
 #pragma warning restore WPF0001
-                berthApp.ApplyColorTheme(originalColorTheme);
+                    berthApp.ApplyColorTheme(originalColorTheme);
+                }
             }
+        }
+    }
+
+    private static void RestoreLocalValue(DependencyObject target, DependencyProperty property, object originalValue)
+    {
+        if (originalValue == DependencyProperty.UnsetValue)
+        {
+            target.ClearValue(property);
+        }
+        else if (originalValue is System.Windows.Data.BindingExpressionBase binding)
+        {
+            System.Windows.Data.BindingOperations.SetBinding(target, property, binding.ParentBindingBase);
+        }
+        else
+        {
+            target.SetValue(property, originalValue);
         }
     }
 
@@ -196,6 +221,15 @@ internal static class WindowRenderer
             ["ButtonBorderBrush"] = windowTextBrush,
             ["AccentFillColorDefaultBrush"] = highlightBrush,
             ["AccentFillColorSecondaryBrush"] = highlightBrush,
+            ["AccentFillColorTertiaryBrush"] = highlightBrush,
+            ["AccentFillColorSelectedTextBackgroundBrush"] = highlightBrush,
+            ["SystemAccentColorBrush"] = highlightBrush,
+            ["SystemAccentColorLight1Brush"] = highlightBrush,
+            ["SystemAccentColorLight2Brush"] = highlightBrush,
+            ["SystemAccentColorLight3Brush"] = highlightBrush,
+            ["SystemAccentColorDark1Brush"] = highlightBrush,
+            ["SystemAccentColorDark2Brush"] = highlightBrush,
+            ["SystemAccentColorDark3Brush"] = highlightBrush,
             ["AccentButtonBackground"] = highlightBrush,
             ["AccentButtonForeground"] = highlightTextBrush,
             ["AccentButtonBorderBrush"] = highlightBrush,
@@ -204,7 +238,18 @@ internal static class WindowRenderer
             ["SubtleFillColorSecondaryBrush"] = highlightBrush,
             ["SubtleFillColorTertiaryBrush"] = highlightBrush,
             ["ListViewItemBackgroundSelected"] = highlightBrush,
+            ["ListViewItemBackgroundSelectedPointerOver"] = highlightBrush,
+            ["ListViewItemForegroundSelected"] = highlightTextBrush,
+            ["ListBoxItemForeground"] = windowTextBrush,
+            ["ListBoxItemSelectedBackgroundThemeBrush"] = highlightBrush,
+            ["ListBoxItemSelectedBackgroundPointerOverThemeBrush"] = highlightBrush,
+            ["ListBoxItemSelectedBackgroundPressedThemeBrush"] = highlightBrush,
+            ["ListBoxItemSelectedForegroundThemeBrush"] = highlightTextBrush,
+            ["ListBoxItemBackgroundSelected"] = highlightBrush,
+            ["ListBoxItemBackgroundSelectedPointerOver"] = highlightBrush,
             ["ListBoxItemSelectedBackground"] = highlightBrush,
+            ["ListBoxItemForegroundSelected"] = highlightTextBrush,
+            ["ListBoxItemSelectedForeground"] = highlightTextBrush,
             ["FocusStrokeColorOuterBrush"] = highlightBrush,
             ["FocusStrokeColorInnerBrush"] = windowBrush,
             ["ToggleSwitchFillOff"] = windowBrush,
