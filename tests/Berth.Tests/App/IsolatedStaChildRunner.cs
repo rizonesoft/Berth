@@ -2113,15 +2113,18 @@ internal static class IsolatedStaChildRunner
                         });
 
                         // 2. Invoke Undo via UI Automation InvokePattern (flush Input priority so ButtonAutomationPeer click executes).
-                        app.Dispatcher.Invoke(() =>
+                        if (undoVisible)
                         {
-                            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(win.StatusLineControl.ActionButton);
-                            var provider = (System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(
-                                System.Windows.Automation.Peers.PatternInterface.Invoke);
-                            provider.Invoke();
-                            win.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
-                        });
-                        vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+                            app.Dispatcher.Invoke(() =>
+                            {
+                                var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(win.StatusLineControl.ActionButton);
+                                var provider = (System.Windows.Automation.Provider.IInvokeProvider)peer.GetPattern(
+                                    System.Windows.Automation.Peers.PatternInterface.Invoke);
+                                provider.Invoke();
+                                win.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
+                            });
+                            vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+                        }
 
                         IReadOnlyList<IconPosition> afterUndo = ((IDesktopIcons)desktop).ReadIcons();
                         undoPositions = string.Join(",", afterUndo.Select(i => $"{i.X}:{i.Y}"));
