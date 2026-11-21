@@ -1,7 +1,7 @@
 # Berth 2026 SPEC Acceptance Sweep
 
 - **Gate command:** `pwsh scripts/check-all.ps1 -Published`
-- **Tested commit:** `e779261fd0068ca30f3f7a629ddb788e0c0614dd`
+- **Tested commit:** `b112e42ed07eee8828161bf57a5bf4ca463a63e4`
 - **Gate run commit:** `81e93a0f5f28dacc59a81a25747d176295178dbe` (identical `src/`, `tests/`, and `scripts/` tree to `e779261` with updated `docs/acceptance/2026-spec-sweep.md` ledger)
 - **Gate result:** `passed` (`check-all: 8 step(s) passed`, exit 0: 251 tooling tests OK with 8 skipped, 33 script tests OK, Release build 0 warnings/0 errors, 996/998 Release tests succeeded with 2 expected skips, published `artifacts/berth.exe` 75.05 MB sha256 `27bc33a7249b2709ff5483338b6662e5763f7f90e25e438a0489e54dfaad14da`, Published 1/1, RealDesktop 17/18 with 1 opt-in skip owned by `D99 T01 §4`, Smoke 3/3)
 - **SPEC scope:** every bullet, table row, normative prose paragraph, and schema block in `design/SPEC.md` §1 to §20 (`180` items verified by `scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md`).
