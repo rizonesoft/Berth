@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using Berth.Core;
 using Berth.Core.Model;
+using Berth.Desktop;
 using Berth.Tests.App;
 using Berth.Tests.Fakes;
 using Berth.Tests.Render;
@@ -62,6 +63,10 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         var desktop = new FakeDesktopIcons([.. liveIcons]);
         var clock = new FixedClock(FixedNow);
         var log = new Log(paths, clock);
+        var settingsStore = new SettingsStore(paths);
+        _ = settingsStore.Update(s => s with { RestoreAutomatically = true });
+        var runValue = new RunValue(@"Software\Berth.Tests\DocsRender");
+        var settingChanges = new SettingChanges(settingsStore, log);
         var service = new LayoutService(desktop, monitors, store, paths, new OperationLock(paths, TimeSpan.FromSeconds(5)), log, clock);
         var vm = new MainViewModel(
             store,
@@ -74,7 +79,11 @@ public sealed class DocsRenderTests(AppFixture appFixture)
                 return Task.CompletedTask;
             },
             service: service,
-            timeZone: TimeZoneInfo.Utc);
+            timeZone: TimeZoneInfo.Utc,
+            log: log,
+            settingsStore: settingsStore,
+            runValue: runValue,
+            settingChanges: settingChanges);
 
         await vm.RefreshAsync();
 
@@ -83,8 +92,10 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         Assert.Equal(39, vm.Comparison?.InPlace);
         Assert.Equal(2, vm.Comparison?.Moved);
         Assert.Equal(1, vm.Comparison?.Missing);
+        Assert.NotNull(vm.Settings);
+        Assert.True(vm.Settings!.RestoreAutomatically);
 
-        string outputDir = ResolveOutputDirectory();
+        string outputDir = ResolveOutputDirectory(data.Root);
         string lightPath = Path.Combine(outputDir, "main-window-light.png");
         string darkPath = Path.Combine(outputDir, "main-window-dark.png");
 
@@ -132,7 +143,7 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         return [.. icons];
     }
 
-    private static string ResolveOutputDirectory()
+    private static string ResolveOutputDirectory(string fallbackTempDir)
     {
         string? envDir = Environment.GetEnvironmentVariable("BERTH_DOCS_IMAGE_DIR");
         if (!string.IsNullOrWhiteSpace(envDir))
@@ -141,20 +152,10 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             return envDir;
         }
 
-        string? dir = AppContext.BaseDirectory;
-        while (!string.IsNullOrEmpty(dir))
-        {
-            if (File.Exists(Path.Combine(dir, "Berth.slnx")))
-            {
-                string outDir = Path.Combine(dir, "docs", "images");
-                Directory.CreateDirectory(outDir);
-                return outDir;
-            }
-
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        throw new DirectoryNotFoundException("Could not locate Berth.slnx above " + AppContext.BaseDirectory);
+        // Default to the test's own temporary folder so running dotnet test never overwrites tracked docs/images/.
+        string outDir = Path.Combine(fallbackTempDir, "docs-images");
+        Directory.CreateDirectory(outDir);
+        return outDir;
     }
 
     private static byte[] AssertValid980x640Png(string path)

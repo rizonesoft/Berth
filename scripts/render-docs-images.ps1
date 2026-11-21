@@ -5,7 +5,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solution = Join-Path $repoRoot 'Berth.slnx'
 $destDir = Join-Path $repoRoot 'docs\images'
-$stageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("berth-docs-images-" + [Guid]::NewGuid().ToString('N'))
+$scratchBase = if (Test-Path -LiteralPath 'R:\') { 'R:\scratch' } else { [System.IO.Path]::GetTempPath() }
+$stageDir = Join-Path $scratchBase ("berth-docs-images-" + [Guid]::NewGuid().ToString('N'))
 
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 $previousDir = $env:BERTH_DOCS_IMAGE_DIR
@@ -26,11 +27,49 @@ try {
     }
 
     New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+    $nextPaths = @{}
+    $backupPaths = @{}
     foreach ($name in $expected) {
         $src = Join-Path $stageDir $name
         $dst = Join-Path $destDir $name
-        Copy-Item -LiteralPath $src -Destination $dst -Force
-        Write-Output $dst
+        $next = "$dst.next"
+        $backup = "$dst.prev"
+        Copy-Item -LiteralPath $src -Destination $next -Force
+        $nextPaths[$name] = $next
+        if (Test-Path -LiteralPath $dst) {
+            Copy-Item -LiteralPath $dst -Destination $backup -Force
+            $backupPaths[$name] = $backup
+        }
+    }
+
+    try {
+        foreach ($name in $expected) {
+            $dst = Join-Path $destDir $name
+            Move-Item -LiteralPath $nextPaths[$name] -Destination $dst -Force
+        }
+    }
+    catch {
+        foreach ($name in $expected) {
+            $dst = Join-Path $destDir $name
+            if ($backupPaths.ContainsKey($name) -and (Test-Path -LiteralPath $backupPaths[$name])) {
+                Move-Item -LiteralPath $backupPaths[$name] -Destination $dst -Force -ErrorAction SilentlyContinue
+            }
+            if ($nextPaths.ContainsKey($name)) {
+                Remove-Item -LiteralPath $nextPaths[$name] -Force -ErrorAction SilentlyContinue
+            }
+        }
+        throw
+    }
+    finally {
+        foreach ($name in $expected) {
+            if ($backupPaths.ContainsKey($name)) {
+                Remove-Item -LiteralPath $backupPaths[$name] -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    foreach ($name in $expected) {
+        Write-Output (Join-Path $destDir $name)
     }
 }
 finally {

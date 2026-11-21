@@ -35,16 +35,20 @@ def collect_headings(markdown: str) -> set[str]:
 
 
 def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
-    """Return a list of broken relative file/image paths or unresolved in-page anchors."""
+    """Return a list of broken relative file/image paths or unresolved anchors (including linked badges and .md fragments)."""
     errors: list[str] = []
     headings = collect_headings(markdown)
+    heading_cache: dict[Path, set[str]] = {}
 
-    # Markdown links/images: [text](target) and ![alt](target)
+    # Nested linked badges: [![alt](img_target)](link_target)
+    badge_matches = re.findall(r"\[!\[[^\]]*\]\(([^)\s]+)\)\]\(([^)\s]+)\)", markdown)
+    badge_targets = [t for pair in badge_matches for t in pair]
+    # Standard Markdown links/images: [text](target) and ![alt](target)
     md_targets = re.findall(r"!?\[[^\]]*\]\(([^)\s]+)\)", markdown)
     # HTML img/a attributes: src="..." and href="..."
     html_targets = re.findall(r'(?:src|href)="([^"]+)"', markdown)
 
-    for target in [*md_targets, *html_targets]:
+    for target in [*badge_targets, *md_targets, *html_targets]:
         if target.startswith(("http://", "https://", "mailto:")):
             continue
         if target.startswith("#"):
@@ -52,12 +56,18 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
             if anchor not in headings:
                 errors.append(f"unresolved in-page anchor: {target}")
             continue
-        path_part = target.split("#", 1)[0]
+        path_part, _, fragment = target.partition("#")
         if not path_part:
             continue
         resolved = (base_dir / path_part).resolve()
         if not resolved.exists():
             errors.append(f"missing relative path: {target}")
+            continue
+        if fragment and resolved.suffix.lower() == ".md":
+            if resolved not in heading_cache:
+                heading_cache[resolved] = collect_headings(resolved.read_text(encoding="utf-8"))
+            if fragment not in heading_cache[resolved]:
+                errors.append(f"unresolved markdown fragment: {target}")
 
     return errors
 
@@ -79,6 +89,15 @@ class ReadmeTests(unittest.TestCase):
         broken = '<img src="docs/images/main-window-lght.png" alt="broken">\n'
         errors = check_readme_links(broken, ROOT)
         self.assertTrue(any("main-window-lght.png" in err for err in errors))
+
+    def test_broken_linked_badge_and_missing_md_fragment_fail_check(self) -> None:
+        broken_badge = "[![License](https://img.shields.io/example)](LICENCE-MISSING)\n"
+        badge_errors = check_readme_links(broken_badge, ROOT)
+        self.assertTrue(any("LICENCE-MISSING" in err for err in badge_errors))
+
+        broken_frag = "[CLI](design/SPEC.md#missing-heading)\n"
+        frag_errors = check_readme_links(broken_frag, ROOT)
+        self.assertTrue(any("design/SPEC.md#missing-heading" in err for err in frag_errors))
 
     def test_readme_screenshots_badge_sections_and_limits(self) -> None:
         text = README.read_text(encoding="utf-8")
