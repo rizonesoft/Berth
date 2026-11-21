@@ -152,23 +152,82 @@ class SpecItemsTests(unittest.TestCase):
 
     def test_spec_policy_dated_clarifications_and_deviations_have_dates_and_todo_refs(self) -> None:
         spec_text = SPEC_PATH.read_text(encoding="utf-8")
-        # Every Clarified / Corrected / Added / Deviation note in §2..§20 must carry an ISO date and a DNN TNN §N ref.
-        dated_note_re = re.compile(r"\b(?:Clarified|Corrected|Added|Deviation)\s+\d{4}-\d{2}-\d{2}\b[^.\n]*\bD\d{2}\s+T\d{2}\s+§\d+\b")
+        # Load the actual TODO section refs from todo-graph.py so every cited DNN TNN §N is proven to resolve.
+        tg_proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "todo-graph.py"), "query", "plan"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        self.assertEqual(tg_proc.returncode, 0, tg_proc.stderr)
+        valid_refs = set(re.findall(r"\bD\d{2}\s+T\d{2}\s+§\d+\b", tg_proc.stdout))
+        self.assertGreater(len(valid_refs), 50)
+
+        # Every Clarified / Corrected / Added / Deviation note in §2..§20 must carry an ISO date,
+        # a resolvable DNN TNN §N reference, and a non-empty rationale (either before or after the dated tag).
+        dated_tag_re = re.compile(
+            r"(?:(?:Clarified|Corrected|Added|Deviation)\s+\d{4}-\d{2}-\d{2}\s*\((D\d{2}\s+T\d{2}\s+§\d+)\)"
+            r"|\((?:clarified|corrected|added|deviation)\s+\d{4}-\d{2}-\d{2},\s*(D\d{2}\s+T\d{2}\s+§\d+)\))"
+        )
         bare_note_re = re.compile(r"\b(?:Clarified|Corrected|Added|Deviation)\b")
+
+        def check_policy_line(line: str) -> str | None:
+            m = dated_tag_re.search(line)
+            if m is None:
+                return None
+            ref = m.group(1) or m.group(2)
+            # Strip the dated tag itself and punctuation; require >= 15 chars of rationale text on the line.
+            rest = dated_tag_re.sub("", line).strip(" -.:;()")
+            if len(rest) < 15:
+                return None
+            return ref
+
         body = spec_text.split("## 2. Brand and tokens", 1)[1]
         checked = 0
         for line_no, line in enumerate(body.splitlines(), start=1):
             if bare_note_re.search(line):
-                self.assertRegex(
-                    line,
-                    dated_note_re,
-                    f"SPEC note at offset line {line_no} is missing ISO date or DNN TNN §N reference: {line}",
+                ref = check_policy_line(line)
+                self.assertIsNotNone(
+                    ref,
+                    f"SPEC note at offset line {line_no} is missing ISO date, resolvable DNN TNN §N, or reason: {line}",
                 )
+                assert ref is not None
+                self.assertIn(ref, valid_refs, f"SPEC note cites nonexistent TODO ref {ref}: {line}")
                 checked += 1
         self.assertGreaterEqual(checked, 10, "Expected dated SPEC clarification/correction notes to be audited")
 
-        # Negative case: an undated deviation note fails the policy pattern.
-        self.assertIsNone(dated_note_re.search("Deviation: skipped without date or owner."))
+        # Negative cases: undated note, missing reason, and nonexistent TODO ref all fail.
+        self.assertIsNone(check_policy_line("Deviation: skipped without date or owner."))
+        self.assertIsNone(check_policy_line("Deviation 2026-11-21 (D07 T01 §5):"))
+        fake_ref = check_policy_line("Deviation 2026-11-21 (D99 T99 §99): reason for missing section.")
+        self.assertIsNotNone(fake_ref)
+        assert fake_ref is not None
+        self.assertNotIn(fake_ref, valid_refs)
+
+        # §1.1 Design first: design/SPEC.md was committed before any source file under src/.
+        spec_first = subprocess.run(
+            ["git", "log", "--reverse", "--format=%at", "--", "design/SPEC.md"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        src_first = subprocess.run(
+            ["git", "log", "--reverse", "--format=%at", "--", "src/"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        self.assertEqual(spec_first.returncode, 0, spec_first.stderr)
+        self.assertEqual(src_first.returncode, 0, src_first.stderr)
+        spec_ts = int(spec_first.stdout.strip().splitlines()[0])
+        src_ts = int(src_first.stdout.strip().splitlines()[0])
+        self.assertLessEqual(spec_ts, src_ts, "design/SPEC.md must precede src/ in repository history")
 
 
 if __name__ == "__main__":
