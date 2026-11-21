@@ -100,6 +100,10 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         {
             detail.RowsCollection.CollectionChanged -= OnRowsChanged;
             detail.PropertyChanged -= OnDetailPropertyChanged;
+            if (MoreButton.IsVisible && MoreButton.IsEnabled)
+            {
+                MoreButton.Focus();
+            }
         }
     }
 
@@ -150,6 +154,10 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         finally
         {
             detail.PropertyChanged -= OnDetailPropertyChanged;
+            if (MoreButton.IsVisible && MoreButton.IsEnabled)
+            {
+                MoreButton.Focus();
+            }
         }
     }
 }

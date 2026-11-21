@@ -102,8 +102,49 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                     ]);
             });
 
-            // 2. Clear notices (Auto-arrange off + corrupt file deleted) + Undo status action -> Restore is enabled!
-            desktop.SetAutoArrange(false);
+            // 1b. Activate focused "Turn it off" notice when refused (KeepsAutoArrange = true) -> notice remains and Tab continues!
+            desktop.KeepsAutoArrange = true;
+            appFixture.Invoke(() =>
+            {
+                WpfButton turnOffBtn = FindVisualChildren<WpfButton>(window!.NoticesControl)
+                    .Single(b => string.Equals(AutomationProperties.GetName(b), "Turn it off", StringComparison.Ordinal));
+                turnOffBtn.Focus();
+                PumpUi(window!);
+                SendKey(turnOffBtn, Key.Enter, sendKeyUp: true);
+            });
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            while (vm.Detail.IsBusy)
+            {
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                Assert.Contains(vm.Notices.Items, i => i.ButtonText == "Turn it off");
+                var current = Keyboard.FocusedElement as UIElement;
+                Assert.NotNull(current);
+                Assert.True(current!.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+            });
+
+            // 1c. Activate focused "Turn it off" notice when it succeeds -> notice disappears and focus continues cleanly!
+            desktop.KeepsAutoArrange = false;
+            appFixture.Invoke(() =>
+            {
+                WpfButton turnOffBtn = FindVisualChildren<WpfButton>(window!.NoticesControl)
+                    .Single(b => string.Equals(AutomationProperties.GetName(b), "Turn it off", StringComparison.Ordinal));
+                turnOffBtn.Focus();
+                PumpUi(window!);
+                SendKey(turnOffBtn, Key.Enter, sendKeyUp: true);
+            });
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                Assert.DoesNotContain(vm.Notices.Items, i => i.ButtonText == "Turn it off");
+            });
+
+            // 2. Clear remaining corrupt file + Undo status action -> Restore is enabled!
             File.Delete(IoPath.Combine(paths.LayoutsFolder, "corrupt.json"));
             await vm.RefreshAsync();
 
@@ -178,6 +219,22 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                         "Start with Windows",
                         "Save current layout",
                         "Notes.txt, x 300, y 200, monitor 1",
+                    ]);
+            });
+
+            // 5. Desktop unavailable (empty map + Retry notice, Restore & Save disabled)!
+            desktop.Unavailable = true;
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                AssertFullTabCycle(
+                    window!,
+                    [
+                        "This arrangement",
+                        "Restore automatically",
+                        "Start with Windows",
+                        "Retry",
                     ]);
             });
         }
@@ -583,6 +640,46 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 // Next arrow continues from marker 1 -> marker 2!
                 SendKey(restoredContainer, Key.Down);
                 Assert.Equal(2, markers.SelectedIndex);
+            });
+
+            // 3b. Remove the first icon so the focused surviving marker ("C.txt") shifts index (2 -> 1):
+            // it must keep both selection and keyboard focus!
+            var shiftedLayout = active with
+            {
+                Icons =
+                [
+                    new IconPosition("id-2", "B.txt", 200, 100),
+                    new IconPosition("id-3", "C.txt", 300, 100),
+                ],
+            };
+            layoutStore.Save(shiftedLayout);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                WpfListBox markers = window!.PositionMapControl.MarkersList;
+                Assert.Equal(1, markers.SelectedIndex);
+                var survivingContainer = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(1);
+                Assert.NotNull(survivingContainer);
+                Assert.True(survivingContainer.IsKeyboardFocused);
+                Assert.Equal("C.txt, x 300, y 100, monitor 1, in place", UIElementAutomationPeer.CreatePeerForElement(survivingContainer)!.GetName());
+            });
+
+            // 3c. Remove the focused marker ("C.txt") so only "B.txt" remains -> focus moves cleanly to surviving "B.txt"!
+            var prunedLayout = active with
+            {
+                Icons = [new IconPosition("id-2", "B.txt", 200, 100)],
+            };
+            layoutStore.Save(prunedLayout);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                WpfListBox markers = window!.PositionMapControl.MarkersList;
+                Assert.Equal(0, markers.SelectedIndex);
+                var fallbackContainer = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(0);
+                Assert.NotNull(fallbackContainer);
+                Assert.True(fallbackContainer.IsKeyboardFocused);
 
                 // Refresh while switch owns focus -> switch keeps focus!
                 ToggleButton restoreSwitch = window.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch;
@@ -643,11 +740,16 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 MainWindow w = ShowOffScreen(vm);
                 SettingsPanel panel = w.LayoutsPaneControl.SettingsPanelControl;
 
-                // Focus Restore automatically switch -> uses native Fluent FocusVisualStyle, Tab moves without toggling!
+                // Focus Restore automatically switch -> uses native Fluent FocusVisualStyle with opaque theme focus brushes!
                 panel.RestoreAutomaticallySwitch.Focus();
                 PumpUi(w);
                 Assert.NotNull(panel.RestoreAutomaticallySwitch.FocusVisualStyle);
+                Assert.NotNull(panel.StartWithWindowsSwitch.FocusVisualStyle);
                 Assert.True(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
+                var outerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorOuterBrush"));
+                var innerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorInnerBrush"));
+                Assert.True(outerFocusBrush.Color.A > 0);
+                Assert.True(innerFocusBrush.Color.A > 0);
 
                 // Tab moves to Start with Windows without toggling Restore automatically!
                 panel.RestoreAutomaticallySwitch.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
@@ -707,7 +809,15 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.Equal(Visibility.Visible, selectionRing.Visibility);
                 Assert.Equal(Visibility.Visible, markerFocusOuter.Visibility);
                 Assert.Equal(Visibility.Visible, markerFocusInner.Visibility);
-                Assert.True(markerFocusOuter.Width > selectionRing.Width);
+                Assert.Equal(23d, selectionRing.Width);
+                Assert.Equal(29d, markerFocusOuter.Width);
+                Assert.Equal(29d, markerFocusOuter.Height);
+                Assert.Equal(2d, markerFocusOuter.StrokeThickness);
+                Assert.True(Assert.IsType<SolidColorBrush>(markerFocusOuter.Stroke).Color.A > 0);
+                Assert.Equal(27d, markerFocusInner.Width);
+                Assert.Equal(27d, markerFocusInner.Height);
+                Assert.Equal(1d, markerFocusInner.StrokeThickness);
+                Assert.True(Assert.IsType<SolidColorBrush>(markerFocusInner.Stroke).Color.A > 0);
 
                 // Move focus away -> SelectionRing stays Visible, FocusRingOuter/Inner hide!
                 window.DetailHeaderControl.MoreButton.Focus();

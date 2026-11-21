@@ -21,6 +21,9 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     private MainViewModel? _viewModel;
     private MapGeometry _geometry = MapGeometry.Empty;
     private string? _lastLayoutKey;
+    private string? _lastSelectedIconId;
+    private int _lastSelectedIndex = -1;
+    private bool _pendingFocusAfterTransientNull;
     private bool _isRebuildingItems;
 
     public PositionMap()
@@ -119,10 +122,44 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     private void RebuildItemsAndLayout()
     {
         string? newLayoutKey = _viewModel?.Selected?.Key;
-        string? previouslySelectedIconId = (MarkersList.SelectedItem as MapMarkerItem)?.Icon.Saved.Id;
-        bool hadKeyboardFocus = MarkersList.IsKeyboardFocusWithin;
+        LayoutComparison? comparison = _viewModel?.Comparison;
+        string? currentSelectedIconId = (MarkersList.SelectedItem as MapMarkerItem)?.Icon.Saved.Id;
+        int currentSelectedIndex = MarkersList.SelectedIndex;
+        bool hadKeyboardFocus = MarkersList.IsKeyboardFocusWithin || _pendingFocusAfterTransientNull;
+
+        if (newLayoutKey is null || comparison is null)
+        {
+            if (currentSelectedIconId is not null)
+            {
+                _lastSelectedIconId = currentSelectedIconId;
+                _lastSelectedIndex = currentSelectedIndex;
+            }
+
+            if (MarkersList.IsKeyboardFocusWithin)
+            {
+                _pendingFocusAfterTransientNull = true;
+            }
+
+            _isRebuildingItems = true;
+            try
+            {
+                _items.Clear();
+                _orderedMonitors = [];
+                MarkersList.SelectedItem = null;
+            }
+            finally
+            {
+                _isRebuildingItems = false;
+            }
+
+            RebuildLayout();
+            return;
+        }
+
+        _pendingFocusAfterTransientNull = false;
+        string? previouslySelectedIconId = currentSelectedIconId ?? _lastSelectedIconId;
+        int previousSelectedIndex = currentSelectedIndex >= 0 ? currentSelectedIndex : _lastSelectedIndex;
         bool sameLayout = _lastLayoutKey is not null
-            && newLayoutKey is not null
             && string.Equals(_lastLayoutKey, newLayoutKey, StringComparison.Ordinal);
 
         MapMarkerItem? restoredSelection = null;
@@ -131,7 +168,6 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         {
             _items.Clear();
 
-            LayoutComparison? comparison = _viewModel?.Comparison;
             IReadOnlyList<MonitorInfo> monitors = _viewModel?.MapMonitors ?? [];
             _orderedMonitors = monitors.Count > 0 ? MonitorNumbering.Order(monitors) : [];
 
@@ -154,7 +190,17 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
                 }
             }
 
+            if (restoredSelection is null && hadKeyboardFocus && sameLayout && _items.Count > 0)
+            {
+                int fallbackIndex = previousSelectedIndex >= 0
+                    ? Math.Min(previousSelectedIndex, _items.Count - 1)
+                    : 0;
+                restoredSelection = _items[fallbackIndex];
+            }
+
             _lastLayoutKey = newLayoutKey;
+            _lastSelectedIconId = restoredSelection?.Icon.Saved.Id;
+            _lastSelectedIndex = restoredSelection is not null ? _items.IndexOf(restoredSelection) : -1;
             MarkersList.SelectedItem = restoredSelection;
         }
         finally
@@ -164,26 +210,41 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
 
         RebuildLayout();
 
-        if (hadKeyboardFocus && restoredSelection is not null)
+        if (hadKeyboardFocus)
         {
-            MarkersList.UpdateLayout();
-            if (MarkersList.ItemContainerGenerator.ContainerFromItem(restoredSelection) is ListBoxItem container)
+            if (restoredSelection is not null)
             {
-                container.Focus();
-            }
-            else
-            {
-                MapMarkerItem target = restoredSelection;
-                _ = Dispatcher.BeginInvoke(
-                    System.Windows.Threading.DispatcherPriority.Loaded,
-                    new Action(() =>
-                    {
-                        if (ReferenceEquals(MarkersList.SelectedItem, target)
-                            && MarkersList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem deferred)
+                MarkersList.UpdateLayout();
+                if (MarkersList.ItemContainerGenerator.ContainerFromItem(restoredSelection) is ListBoxItem container)
+                {
+                    container.Focus();
+                }
+                else
+                {
+                    MapMarkerItem target = restoredSelection;
+                    _ = Dispatcher.BeginInvoke(
+                        System.Windows.Threading.DispatcherPriority.Loaded,
+                        new Action(() =>
                         {
-                            deferred.Focus();
-                        }
-                    }));
+                            // Never steal focus back if the user has already moved keyboard focus outside the map.
+                            if (System.Windows.Input.Keyboard.FocusedElement is not null
+                                && !MarkersList.IsKeyboardFocusWithin)
+                            {
+                                return;
+                            }
+
+                            if (ReferenceEquals(MarkersList.SelectedItem, target)
+                                && MarkersList.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem deferred)
+                            {
+                                deferred.Focus();
+                            }
+                        }));
+                }
+            }
+            else if (_items.Count == 0)
+            {
+                // Focused marker disappeared and map is now empty: move focus cleanly so it is never stranded.
+                _ = MarkersList.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
             }
         }
     }
