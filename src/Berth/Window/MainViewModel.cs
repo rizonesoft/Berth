@@ -189,18 +189,6 @@ internal sealed class MainViewModel : ObservableObject
 
     internal Task MarshalToUiAsync(Action action) => _marshalToUiAsync(action);
 
-    internal Layout? FindSavedLayoutSafe(string key)
-    {
-        try
-        {
-            return _store.Find(key);
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
-
     /// <summary>
     /// Reads monitors, desktop icons, auto-arrange state, and saved layouts off the UI thread, then applies rows,
     /// selection, and comparison on the UI thread. Overlapping calls return immediately without starting a second read.

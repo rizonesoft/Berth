@@ -3,12 +3,15 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using Berth.Core.Model;
 
 namespace Berth.Window;
 
 /// <summary>Right-pane layout header with title, monitors line, action buttons, and More menu (SPEC §6).</summary>
 internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
 {
+    private Layout? _menuTargetLayout;
+
     public DetailHeader()
     {
         InitializeComponent();
@@ -31,6 +34,7 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
             return;
         }
 
+        _menuTargetLayout = (DataContext as DetailViewModel)?.SelectedSavedLayout;
         menu.DataContext = DataContext;
         RevertMenuItem.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
         menu.PlacementTarget = MoreButton;
@@ -38,14 +42,22 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         menu.IsOpen = true;
     }
 
+    private Layout? ConsumeMenuTarget(DetailViewModel detail)
+    {
+        Layout? target = _menuTargetLayout ?? detail.SelectedSavedLayout;
+        _menuTargetLayout = null;
+        return target;
+    }
+
     private void OnRenameMenuItemClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        if (DataContext is not DetailViewModel detail || ConsumeMenuTarget(detail) is not { } target)
         {
             return;
         }
 
-        var renameVm = new RenameViewModel(detail.Title, detail.GetOtherSavedNames(capturedKey))
+        string capturedKey = target.Key;
+        var renameVm = new RenameViewModel(target.Name, detail.GetOtherSavedNames(capturedKey))
         {
             IsBusy = detail.IsBusy,
         };
@@ -85,23 +97,22 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
 
     private void OnRevertMenuItemClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        if (DataContext is not DetailViewModel detail || ConsumeMenuTarget(detail) is not { } target)
         {
             return;
         }
 
-        _ = detail.RevertAsync(capturedKey);
+        _ = detail.RevertAsync(target.Key, target);
     }
 
     private void OnDeleteMenuItemClick(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not DetailViewModel detail || detail.SelectedSavedKey is not { } capturedKey)
+        if (DataContext is not DetailViewModel detail || ConsumeMenuTarget(detail) is not { } target)
         {
             return;
         }
 
-        string capturedName = detail.Title;
-        var deleteVm = new DeleteDialogViewModel(capturedName)
+        var deleteVm = new DeleteDialogViewModel(target.Name)
         {
             IsBusy = detail.IsBusy,
         };
@@ -119,7 +130,7 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         {
             var dialog = new DeleteDialog(
                 deleteVm,
-                () => detail.TryStartDelete(capturedKey, capturedName));
+                () => detail.TryStartDelete(target.Key, target));
             System.Windows.Window? owner = System.Windows.Window.GetWindow(this);
             if (owner is not null && owner.IsLoaded)
             {

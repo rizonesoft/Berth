@@ -207,9 +207,9 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
         Assert.Equal("Reverted to the save from 12 November.", vm.Status.Sentence);
         Assert.Equal(Nov12, store.Find(key)!.SavedAt);
 
-        // 2. Delete read-back sees a replacement layout saved under same key -> Retry MUST refuse (NoLayout) and keep "BrandNew"!
+        // 2. Delete read-back sees a same-second replacement layout (different icons, SAME SavedAt!) -> Retry MUST refuse and keep "BrandNew"!
         recreateReplacementOnce = true;
-        Assert.True(vm.Detail.TryStartDelete(key, "Laptop"));
+        Assert.True(vm.Detail.TryStartDelete(key, store.Find(key)));
         await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal(StatusAction.Retry, vm.Status.Action);
 
@@ -217,6 +217,17 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
         await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal("This monitor arrangement has no saved layout.", vm.Status.Sentence);
         Assert.Equal("BrandNew", store.Find(key)!.Name);
+
+        // 3. Delete Retry on an unreadable file MUST report unreadable (never fake Deleted success)!
+        Layout brandNew = store.Find(key)!;
+        recreateReplacementOnce = true;
+        Assert.True(vm.Detail.TryStartDelete(key, brandNew));
+        await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        File.WriteAllText(paths.LayoutFile(key), "{ unreadable");
+        vm.Status.ActionCommand.Execute(null);
+        await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Contains("could not be read. It was left untouched.", vm.Status.Sentence);
+        Assert.True(File.Exists(paths.LayoutFile(key)));
     }
 
     [Fact]
@@ -256,6 +267,7 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
             void OpenDeleteModalAndRun(Action<DeleteDialog> interact)
             {
                 modalError = null;
+                bool dialogRan = false;
                 appFixture.Invoke(() =>
                 {
                     var peer = new MenuItemAutomationPeer(window!.DetailHeaderControl.DeleteMenuItem);
@@ -271,6 +283,7 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
 
                         try
                         {
+                            dialogRan = true;
                             interact(dialog);
                         }
                         catch (Exception ex)
@@ -287,6 +300,8 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
                 {
                     throw modalError;
                 }
+
+                Assert.True(dialogRan, "Expected DeleteDialog to open and run interaction.");
             }
 
             // 1. Inspect copy, Cancel=IsDefault+IsCancel, Delete!=IsDefault, live busy state, then click Cancel!
@@ -436,6 +451,48 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
             Assert.Equal("This arrangement", vm.Selected.Name);
             Assert.Equal("This monitor arrangement has no saved layout yet.", vm.Status.Sentence);
             Assert.Empty(desktop.Calls);
+
+            // 3. Open More menu on "Studio", remove "Studio" on disk and refresh so selection falls back, then invoke Revert -> targets "Studio" (NoLayout), not fallback!
+            SaveLayout(store, [MonSingle], "LaptopFresh", Nov18, new IconPosition("id-1", "One", 100, 100));
+            store.Save(new Layout(
+                Layout.CurrentSchemaVersion,
+                keyActive,
+                "LaptopFresh",
+                Nov18,
+                [MonSingle],
+                [new IconPosition("id-1", "One", 500, 500)],
+                new PreviousSave(Nov12, [new IconPosition("id-1", "One", 100, 100)])));
+            store.Save(new Layout(
+                Layout.CurrentSchemaVersion,
+                keyOtherB,
+                "Studio",
+                Nov18,
+                [MonTriple],
+                [new IconPosition("id-1", "One", 300, 300)],
+                new PreviousSave(Nov12, [new IconPosition("id-1", "One", 50, 50)])));
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                vm.Selected = vm.Rows.Single(r => r.Key == keyOtherB);
+                InvokeButton(window!.DetailHeaderControl.MoreButton);
+            });
+
+            // Delete Studio and refresh while More menu is open (selection falls back to LaptopFresh).
+            File.Delete(paths.LayoutFile(keyOtherB));
+            await vm.RefreshAsync();
+            Assert.Equal(keyActive, vm.Selected!.Key);
+
+            appFixture.Invoke(() =>
+            {
+                var peer = new MenuItemAutomationPeer(window!.DetailHeaderControl.RevertMenuItem);
+                ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Input);
+            });
+            await vm.Detail.LastOperationTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // Must report NoLayout for captured Studio key and leave LaptopFresh at Nov18 untouched!
+            Assert.Equal("This monitor arrangement has no saved layout.", vm.Status.Sentence);
+            Assert.Equal(Nov18, store.Find(keyActive)!.SavedAt);
         }
         finally
         {
@@ -489,6 +546,8 @@ public sealed class RevertDeleteTests(AppFixture appFixture)
                 Assert.True(hcDialog.CancelButton.ActualHeight >= 32d);
                 Rect msgBounds = hcDialog.MessageText.TransformToAncestor(hcDialog.DialogRoot)
                     .TransformBounds(new Rect(0, 0, hcDialog.MessageText.ActualWidth, hcDialog.MessageText.ActualHeight));
+                // 40-char confirmation sentence fits at 150% scale without clipping inside DialogRoot!
+                Assert.True(hcDialog.MessageText.ActualHeight >= hcDialog.MessageText.DesiredSize.Height - 0.5d);
                 Assert.True(msgBounds.Right <= hcDialog.DialogRoot.ActualWidth + 0.5d);
                 Assert.True(msgBounds.Bottom <= hcDialog.DialogRoot.ActualHeight + 0.5d);
             }

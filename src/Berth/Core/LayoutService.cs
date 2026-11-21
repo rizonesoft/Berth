@@ -74,13 +74,15 @@ internal sealed class LayoutService(
     /// Swaps the saved layout of <paramref name="key"/> with its <c>previous</c> save (SPEC §10) and reads the file
     /// back before reporting; moves no icons and leaves <c>undo.json</c> untouched.
     /// </summary>
-    public OperationResult Revert(string key) => Logged(() => RevertLocked(key));
+    public OperationResult Revert(string key, Layout? expectedOriginal = null, bool allowAlreadyReverted = false) =>
+        Logged(() => RevertLocked(key, expectedOriginal, allowAlreadyReverted));
 
     /// <summary>
     /// Deletes the saved layout of <paramref name="key"/> (SPEC §10) and reads the folder back before reporting; moves
     /// no icons and leaves <c>undo.json</c> untouched.
     /// </summary>
-    public OperationResult Delete(string key) => Logged(() => DeleteLocked(key));
+    public OperationResult Delete(string key, Layout? expectedOriginal = null, bool allowAlreadyDeleted = false) =>
+        Logged(() => DeleteLocked(key, expectedOriginal, allowAlreadyDeleted));
 
     /// <summary>Lets a test act between an operation's read of the layouts and its write. Production leaves it null.</summary>
     internal Action? BeforeWrite { get; init; }
@@ -521,7 +523,7 @@ internal sealed class LayoutService(
         return SaveAndVerify(key, renamed, snapshot, () => OperationResult.Renamed(trimmed));
     }
 
-    private OperationResult RevertLocked(string key)
+    private OperationResult RevertLocked(string key, Layout? expectedOriginal, bool allowAlreadyReverted)
     {
         ArgumentNullException.ThrowIfNull(key);
         if (!BerthPaths.IsKey(key))
@@ -537,6 +539,26 @@ internal sealed class LayoutService(
         if (snapshot!.Layout is not { } current)
         {
             return OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (expectedOriginal is { Previous: { } origPrev })
+        {
+            Layout intendedReverted = expectedOriginal with
+            {
+                SavedAt = origPrev.SavedAt,
+                Icons = origPrev.Icons,
+                Previous = new PreviousSave(expectedOriginal.SavedAt, expectedOriginal.Icons),
+            };
+
+            if (allowAlreadyReverted && current.Equals(intendedReverted))
+            {
+                return OperationResult.Reverted(current.Name, current.SavedAt);
+            }
+
+            if (allowAlreadyReverted && !current.Equals(expectedOriginal))
+            {
+                return OperationResult.Refused(Refusal.NoPreviousSave);
+            }
         }
 
         if (current.Previous is not { } previous)
@@ -553,7 +575,7 @@ internal sealed class LayoutService(
         return SaveAndVerify(key, reverted, snapshot, () => OperationResult.Reverted(current.Name, previous.SavedAt));
     }
 
-    private OperationResult DeleteLocked(string key)
+    private OperationResult DeleteLocked(string key, Layout? expectedOriginal, bool allowAlreadyDeleted)
     {
         ArgumentNullException.ThrowIfNull(key);
         if (!BerthPaths.IsKey(key))
@@ -567,6 +589,13 @@ internal sealed class LayoutService(
         }
 
         if (snapshot!.Layout is not { } current)
+        {
+            return allowAlreadyDeleted && expectedOriginal is not null
+                ? OperationResult.Deleted(expectedOriginal.Name)
+                : OperationResult.Refused(Refusal.NoLayout);
+        }
+
+        if (expectedOriginal is not null && !current.Equals(expectedOriginal))
         {
             return OperationResult.Refused(Refusal.NoLayout);
         }

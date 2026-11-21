@@ -380,7 +380,7 @@ internal sealed class DetailViewModel : ObservableObject
         return true;
     }
 
-    public Task<OperationResult?> RevertAsync(string key)
+    public Task<OperationResult?> RevertAsync(string key, Layout? expectedOriginal = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         if (_service is null)
@@ -388,24 +388,15 @@ internal sealed class DetailViewModel : ObservableObject
             return Task.FromResult<OperationResult?>(null);
         }
 
-        DateTimeOffset? targetPreviousSavedAt = _main.FindSavedLayoutSafe(key)?.Previous?.SavedAt;
+        Layout? capturedOriginal = expectedOriginal ?? (_main.Selected is { IsUnsaved: false, Key: var k } && k == key ? _main.Selected.Layout : null);
         bool isRetry = false;
         _lastOperationTask = RunOperationAsync(new WindowOperationRequest(
             WindowOperationKind.Revert,
             () =>
             {
-                if (isRetry && targetPreviousSavedAt is { } intended)
-                {
-                    // Guard against retrying a swap that already reached disk before a read-back failure.
-                    Layout? current = _main.FindSavedLayoutSafe(key);
-                    if (current is not null && current.SavedAt == intended)
-                    {
-                        return OperationResult.Reverted(current.Name, current.SavedAt);
-                    }
-                }
-
+                bool allowAlreadyReverted = isRetry;
                 isRetry = true;
-                return _service.Revert(key);
+                return _service.Revert(key, capturedOriginal, allowAlreadyReverted);
             },
             _ => key));
         return (Task<OperationResult?>)_lastOperationTask;
@@ -414,12 +405,12 @@ internal sealed class DetailViewModel : ObservableObject
     /// <summary>
     /// Atomically checks admission and starts a Delete operation for <paramref name="key"/>. Returns <c>false</c>
     /// without starting anything if another operation currently holds the slot so the Delete dialog stays open.
-    /// Retries verify the layout identity so a retry never deletes a replacement layout saved under the same key.
+    /// Passes <paramref name="expectedOriginal"/> into <see cref="LayoutService.Delete"/> so the service verifies exact
+    /// layout identity under its operation lock on both initial confirmation and Retry.
     /// </summary>
-    internal bool TryStartDelete(string key, string layoutName)
+    internal bool TryStartDelete(string key, Layout? expectedOriginal = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentNullException.ThrowIfNull(layoutName);
         if (_service is null || _externalBusy || Interlocked.CompareExchange(ref _operationInFlight, 1, 0) != 0)
         {
             return false;
@@ -431,32 +422,21 @@ internal sealed class DetailViewModel : ObservableObject
             return false;
         }
 
-        DateTimeOffset? originalSavedAt = _main.FindSavedLayoutSafe(key)?.SavedAt;
+        Layout? capturedOriginal = expectedOriginal ?? (_main.Selected is { IsUnsaved: false, Key: var k } && k == key ? _main.Selected.Layout : null);
         bool isRetry = false;
         var request = new WindowOperationRequest(
             WindowOperationKind.Delete,
             () =>
             {
-                if (isRetry)
-                {
-                    Layout? current = _main.FindSavedLayoutSafe(key);
-                    if (current is null)
-                    {
-                        return OperationResult.Deleted(layoutName);
-                    }
-
-                    if (originalSavedAt is { } expected && current.SavedAt != expected)
-                    {
-                        return OperationResult.Refused(Refusal.NoLayout);
-                    }
-                }
-
+                bool allowAlreadyDeleted = isRetry;
                 isRetry = true;
-                return _service.Delete(key);
+                return _service.Delete(key, capturedOriginal, allowAlreadyDeleted);
             });
         _lastOperationTask = RunAdmittedOperationAsync(request);
         return true;
     }
+
+    internal Layout? SelectedSavedLayout => _main.Selected is { IsUnsaved: false } row ? row.Layout : null;
 
     internal string? SelectedSavedKey => _main.Selected is { IsUnsaved: false } row ? row.Key : null;
 
