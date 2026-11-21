@@ -48,8 +48,8 @@ def _strip_html_comments(text: str) -> str:
     return re.sub(r"<!--[\s\S]*?-->", _replace, text)
 
 
-def extract_spec_items(spec_text: str, min_section: int = 2, max_section: int = 19) -> list[SpecItem]:
-    """Extract every bullet, table data row, normative paragraph, and code schema block in §2..§19."""
+def extract_spec_items(spec_text: str, min_section: int = 1, max_section: int = 20) -> list[SpecItem]:
+    """Extract every bullet, table data row, normative paragraph, and code schema block in §1..§20."""
     items: list[SpecItem] = []
     current_section: int | None = None
     section_counts: dict[int, int] = {}

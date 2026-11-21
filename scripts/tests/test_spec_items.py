@@ -35,7 +35,7 @@ class SpecItemsTests(unittest.TestCase):
         kinds = {item.kind for item in items}
         self.assertEqual(kinds, {"bullet", "table-row", "prose", "schema"})
         sections = {item.section for item in items}
-        self.assertEqual(sections, set(range(2, 20)))
+        self.assertEqual(sections, set(range(1, 21)))
 
     def test_committed_sweep_passes_check_cli(self) -> None:
         proc = subprocess.run(
@@ -78,6 +78,12 @@ class SpecItemsTests(unittest.TestCase):
         self.assertNotEqual(modified_spec, spec_text)
         errors = spec_items.check_sweep(modified_spec, sweep_text, ROOT)
         self.assertTrue(any("changed since sweep was written" in e for e in errors), f"Unexpected errors: {errors}")
+
+        # Modifying §1 fidelity tolerance or §20 exclusions must also fail.
+        mod_s1 = spec_text.replace("within 2 px at 100% scale", "within 4 px at 100% scale", 1)
+        self.assertTrue(any("§1.6" in e for e in spec_items.check_sweep(mod_s1, sweep_text, ROOT)))
+        mod_s20 = spec_text.replace("and telemetry or any network use.", "telemetry, network use, and themes.", 1)
+        self.assertTrue(any("§20.1" in e for e in spec_items.check_sweep(mod_s20, sweep_text, ROOT)))
 
     def test_rejects_commented_table_tbd_proof_wrong_owner_duplicate_and_missing_test(self) -> None:
         spec_text = SPEC_PATH.read_text(encoding="utf-8")

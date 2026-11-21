@@ -3,17 +3,25 @@
 - **Gate command:** `pwsh scripts/check-all.ps1 -Published`
 - **Tested commit:** `c88280f98d22b65b95ab86e14857b3fda2ba1513`
 - **Gate result:** `passed` (`check-all: 8 step(s) passed`: 250 tooling tests OK with 8 skipped, 33 script tests OK, Release build 0 warnings/0 errors, 995/997 Release tests succeeded with 2 expected skips, published `artifacts/berth.exe` 75.05 MB, Published 1/1, RealDesktop 17/18 with 1 opt-in skip owned by `D99 T01 §4`, Smoke 3/3)
-- **SPEC scope:** every bullet, table row, normative prose paragraph, and schema block in `design/SPEC.md` §2 to §19 (`171` items verified by `scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md`).
+- **SPEC scope:** every bullet, table row, normative prose paragraph, and schema block in `design/SPEC.md` §1 to §20 (`180` items verified by `scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md`).
 
 ## Cross-references for SPEC §1 and §20
 
 - **SPEC §1 (Policy: tokens only, Fluent controls, fidelity, copy):** enforced by `tests/Berth.Tests/Theme/NoHexColourTests.cs`, `scripts/tests/test_design_lint.py`, `scripts/tests/test_build_tokens.py`, `tests/Berth.Tests/Window/ContrastAndScaleTests.cs`, and `tests/Berth.Tests/Release/DocsRenderTests.cs`.
 - **SPEC §20 (Out of scope):** documented honestly in `README.md` (`## What does it not do?`) and verified by `scripts/tests/test_readme.py` plus architecture boundary rules in `tests/Berth.Tests/Architecture/LayerRuleTests.cs`.
 
-## SPEC §2 to §19 item-by-item sweep
+## SPEC §1 to §20 item-by-item sweep
 
 | Ref | Requirement | Proof | Status |
 | --- | --- | --- | --- |
+| §1.1 [2c6b3312] | Design first: spec leads code | `P1.1` | yes |
+| §1.2 [ace61f9c] | Tokens only: zero hex literals | `P1.2` | yes |
+| §1.3 [4ab8d6c2] | Fluent controls stay Fluent | `P1.3` | yes |
+| §1.4 [230024a5] | Every §19 state is drawn | `P1.4` | yes |
+| §1.5 [9cbd37bb] | Never colour alone (word + shape) | `P1.5` | yes |
+| §1.6 [4f9751d1] | Fidelity light/dark/HC 100%/150% | `P1.6` | yes |
+| §1.7 [94ef95b7] | Dated deviation policy | `P1.7` | yes |
+| §1.8 [2d59d7a5] | Copy rules & explicit icon counts | `P1.8` | yes |
 | §2.1 [077d3810] | Brand assets in assets/ | `P2.1` | yes |
 | §2.2 [1b86aa3a] | App icon & dark/light tray icons | `P2.2` | yes |
 | §2.3 [7f0942c7] | tokens.json & generated Theme XAML | `P2.3` | yes |
@@ -185,9 +193,18 @@
 | §19.5 [1c02cd79] | Notices none/single/stacked | `P19.5` | yes |
 | §19.6 [3b3d0892] | Dialogs Rename errors & Delete | `P19.6` | yes |
 | §19.7 [7d0ed768] | Tray dark/light, menu, checkmark | `P19.7` | yes |
+| §20.1 [b96f508d] | Out-of-scope exclusions enforced | `P20.1` | yes |
 
 ## Proof catalog
 
+- `P1.1`: `scripts/tests/test_spec_items.py::test_modifying_existing_spec_row_without_updating_sweep_fails`
+- `P1.2`: `tests/Berth.Tests/Theme/NoHexColourTests.cs::SourceTreeContainsNoHexColoursOrColorFromRgbCalls`, `scripts/tests/test_design_lint.py::test_auto_strict_for_token_contract_markers`
+- `P1.3`: `tests/Berth.Tests/App/BerthApplicationTests.cs::StartupMergesTokensWithFluentThemeRestylesLiveControlAndPreservesUnrelatedDictionaries`
+- `P1.4`: `tests/Berth.Tests/Window/LayoutsPaneTests.cs::RendersAllFiveSpec19LayoutsPaneStatesInLightAndDarkDifferentFromEmptyFrame`, `tests/Berth.Tests/Window/MarkerTests.cs::RendersAllEightSpec19MapStatesInLightAndDark`, `tests/Berth.Tests/Window/StatusLineTests.cs::RendersAllSpec8StatusRowsInLightAndDark`
+- `P1.5`: `tests/Berth.Tests/Window/MarkerTests.cs::TemplatesEachIconStateWithExactFillStrokeRadiiTooltipAutomationAndMovedLine`
+- `P1.6`: `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::RendersDataHighContrastWithOnlyStandInSystemColoursAndData150At1470x960`, `tests/Berth.Tests/Window/ContrastAndScaleTests.cs::MinimumSize760x520FitsWorstCaseStringsWithoutClippingAcrossAllThemesAndScales`
+- `P1.7`: `scripts/tests/test_spec_items.py::test_rejects_commented_table_tbd_proof_wrong_owner_duplicate_and_missing_test`
+- `P1.8`: `tests/Berth.Tests/Core/MessagesTests.cs::RefusalAndHelpersCoverEveryRowOfSpec18AndSpec10`, `tests/Berth.Tests/Core/FormatsTests.cs::CountsFormatSingularAndPluralAndRejectOutOfRange`
 - `P2.1`: `scripts/tests/test_readme.py::test_all_links_images_and_anchors_resolve`
 - `P2.2`: `tests/Berth.Tests/App/TrayIconTests.cs::EmbeddedTrayIconsLoadFromAssemblyAndContain16PxFrame`, `tests/Berth.Tests/App/TrayIconTests.cs::TrayIconSelectsSmallIconSizeMatchesDarkAndLightAssetsAndSwitchesLive`
 - `P2.3`: `scripts/tests/test_build_tokens.py::test_overlap_between_shared_and_color_keys_raises`, `tests/Berth.Tests/App/BerthApplicationTests.cs::UserPreferenceChangedSwitchesBetweenLightDarkAndHighContrastLive`
@@ -198,7 +215,7 @@
 - `P3.4`: `tests/Berth.Tests/Window/DetailHeaderTests.cs::MinWidthLongNameTrimsWithTooltipWrapsSubtitleAndMeets32PxControlHeight`, `tests/Berth.Tests/Window/StatusLineTests.cs::StatusLineWrapsLongSentenceCleanlyAtMinWidthHighContrastAnd150PercentScale`
 - `P3.5`: `tests/Berth.Tests/Core/FormatsTests.cs::WhenUsesLocalDatesAcrossMidnightInNonUtcZones`, `tests/Berth.Tests/Core/FormatsTests.cs::WhenGivesYesterdayPrecedenceAcrossNewYearAndAddsYearOtherwise`, `tests/Berth.Tests/Core/FormatsTests.cs::AllFormatsUseInvariantEnglishRegardlessOfCurrentCulture`
 - `P3.6`: `tests/Berth.Tests/Core/FormatsTests.cs::MonitorSizesOrdersAndJoinsWithMultiplicationSign`
-- `P3.7`: `tests/Berth.Tests/Core/SaveTests.cs::AFirstSaveOnAFreshProfileWritesTheArrangementsLayout`
+- `P3.7`: `tests/Berth.Tests/Core/UndoTests.cs::CanUndoLifecycleNeverTouchesTheDesktop`, `tests/Berth.Tests/Window/RevertDeleteTests.cs::RevertSwapsTwiceWithoutMovingDesktopShowsWorkingAndHandlesStaleRefusals`, `tests/Berth.Tests/Core/SaveTests.cs::AnUnreachableDesktopIsARefusalThatWritesNothing`, `tests/Berth.Tests/Core/RestoreTests.cs::AnUnreachableDesktopIsRefusedFirstAndMovesNothing`
 - `P3.8`: `tests/Berth.Tests/Core/BerthPathsTests.cs::ForRootPutsBothRootsUnderIt`, `tests/Berth.Tests/Desktop/RunValueTests.cs::SetWritesQuotedRegSzReadsBackAndDeletesCleanly`
 - `P4.1`: `tests/Berth.Tests/Window/MainWindowFrameTests.cs::FrameUsesSpecTitleIconTokensDividerAndPreservesLeftPaneOnResize`, `tests/Berth.Tests/Window/WindowPlacementTests.cs::StoredPlacementAppliesViaSetWindowPosAndNullOrOffScreenCentersOnPrimaryWorkArea`
 - `P4.2`: `tests/Berth.Tests/Window/MainWindowFrameTests.cs::FrameUsesSpecTitleIconTokensDividerAndPreservesLeftPaneOnResize`
@@ -296,8 +313,8 @@
 - `P13.20`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3`
 - `P13.21`: `tests/Berth.Tests/Cli/ListCommandTests.cs::ListReportsUnreadableFilesToStderrStillListsReadableAndHandlesCorruptOnly`
 - `P13.22`: `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::DetachedLaunchAllocatesNoConsoleForBerthAndAllocatesOneWhenPolicyIsStripped`, `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::InteractiveTerminalInheritsConsolePrintsVersionWaitsForHoldAndCapturesLiveExitCode`
-- `P14.1`: `tests/Berth.Tests/Core/BerthPathsTests.cs::ForRootPutsBothRootsUnderIt`
-- `P14.2`: `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs::SetPositionsRefreshesLiveScopeWhenProbeIsRemovedOrRenamedOutsidePrefix`
+- `P14.1`: `tests/Berth.Tests/Core/BerthPathsTests.cs::TheOverrideRedirectsEveryPathAndTurnsTestModeOn`, `tests/Berth.Tests/Core/BerthPathsTests.cs::WithoutAnOverrideThePathsAreTheUsersOwnAndTestModeIsOff`, `tests/Berth.Tests/Core/BerthPathsTests.cs::TheDefaultRootsComeFromTheGivenFolders`
+- `P14.2`: `tests/Berth.Tests/Desktop/ScopedDesktopIconsTests.cs::SetPositionsRefreshesLiveScopeWhenProbeIsRemovedOrRenamedOutsidePrefix`, `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::ApplyIgnoresReportAndHoldWhenTestModeIsOff`, `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::ApplyWritesConsoleReportBeforeHoldingAndCapsHoldAtFiveSecondsWhenTestModeIsOn`
 - `P14.3`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::LayoutsSurviveInAFreshStoreWithEveryValue`
 - `P14.4`: `tests/Berth.Tests/Core/LayoutJsonTests.cs::SpecExampleParsesToItsValues`, `tests/Berth.Tests/Core/LayoutJsonTests.cs::WritingGivesTheExpectedDocument`
 - `P14.5`: `tests/Berth.Tests/Core/ArrangementKeyTests.cs::TheSpecExampleKeyIsItsMonitorsKey`
@@ -360,9 +377,11 @@
 - `P19.6`: `tests/Berth.Tests/Window/RenameTests.cs::RendersAllFourSpec19RenameDialogStatesInLightAndDarkAndHighContrast150`, `tests/Berth.Tests/Window/RevertDeleteTests.cs::RendersDeleteDialogInLightAndDarkAndVerifies40CharNameAt150PercentHighContrast`
 - `P19.7`: `tests/Berth.Tests/App/TrayIconTests.cs::TrayIconSelectsSmallIconSizeMatchesDarkAndLightAssetsAndSwitchesLive`, `tests/Berth.Tests/App/TrayMenuTests.cs::OpeningRefreshesRestoreEnabledAndAutoCheckedOnSameMenuInstance`
 
+- `P20.1`: `scripts/tests/test_readme.py::test_readme_screenshots_badge_sections_and_limits`, `tests/Berth.Tests/Architecture/LayerRuleTests.cs::CoreUsesOnlyCoreAndTheBaseRuntime`
+
 ## Operator-owned live-hardware observations
 
-Three rows above carry `deferred (D99 T01 §N)` because their automated unit/fake suites pass while live-hardware or unlocked-desktop observation requires the owner:
+Three rows above carry `deferred (D99 T01 §N)` because their automated unit/fake suites pass while live-hardware or unlocked-desktop observation requires the owner (each row stays deferred until its recorded `D99 T01` acceptance file is linked back):
 
 - `§9.5` -> `D99 T01 §4` (`todo/99-manual/TODO-01-operator-steps.md`): opt-in Auto Arrange round-trip (`BERTH_TEST_ALLOW_AUTOARRANGE=1`) on a disposable interactive Windows 11 desktop.
 - `§12.8` -> `D99 T01 §4` (`todo/99-manual/TODO-01-operator-steps.md`): live unlocked-desktop Windows 11 warning notification capture and click-to-open check.
