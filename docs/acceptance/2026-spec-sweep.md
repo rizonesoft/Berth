@@ -274,7 +274,7 @@
 - `P12.6`: `tests/Berth.Tests/App/TrayMenuTests.cs::AttachedMenuSaveRefreshesTooltipAndExitDrainsInFlightOperationWithExitCodeZero`
 - `P12.7`: `tests/Berth.Tests/App/TrayIconTests.cs::TaskbarCreatedReaddsTrayIconBeforeArmingExplorerRestartTimer`
 - `P12.8`: `tests/Berth.Tests/App/BalloonTests.cs::TrayAppShowsOneWarningBalloonOnAutoArrangeAndPartialFailureSilentOnSuccessAndOpensWindowOnClick`, `tests/Berth.Tests/App/BalloonTests.cs::PolicyShortensOverlongMessagesWithin255CharactersPreservingReasonAndClosingGuidance`
-- `P13.1`: `tests/Berth.Tests/Cli/ProcessTests.cs::SaveMoveRestoreUndoAndListCycleOnProbeIconMatchesSpec13EndToEnd`
+- `P13.1`: `tests/Berth.Tests/App/StartupPlanTests.cs::CliCommandsAndUsageErrorsBypassTrayStartupAndDoNotLoadMalformedSettings`, `tests/Berth.Tests/Cli/ProcessTests.cs::SaveMoveRestoreUndoAndListCycleOnProbeIconMatchesSpec13EndToEnd`, `tests/Berth.Tests/Core/OperationLockTests.cs::AnotherProcessHoldingTheLockMakesRunBusyAndSeesItHeldDuringWork`
 - `P13.2`: `tests/Berth.Tests/Cli/SaveCommandTests.cs::SaveDefaultNameWritesExactLineToStdoutAndPersistsLayout`, `tests/Berth.Tests/Cli/SaveCommandTests.cs::SaveWithExplicitNameNamesNewLayoutAndRenamesExistingKeepingPrevious`
 - `P13.3`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreFullWritesExactLineToStdoutAndReturnsExit0`
 - `P13.4`: `tests/Berth.Tests/Cli/UndoCommandTests.cs::RestoreThenUndoReturnsIconsToPreRestorePositionsDeletesSnapshotAndSecondUndoIsRefused`
@@ -289,10 +289,10 @@
 - `P13.13`: `tests/Berth.Tests/Cli/UndoCommandTests.cs::UndoPartialWithOneMissingIconWritesExactLineToStdoutDeletesSnapshotAndReturnsExit0`, `tests/Berth.Tests/Cli/UndoCommandTests.cs::UndoPlacementFailuresWriteExactLinesToStderrPreserveSnapshotBytesAndReturnExit1`
 - `P13.14`: `tests/Berth.Tests/Core/MessagesTests.cs::MultilineNamesPathsOriginsAndReasonsCollapseLineBreaksAndTrailingPeriods`, `tests/Berth.Tests/Core/MessagesTests.cs::ControlCharactersInNamesPathsOriginsAndReasonsAreEscapedAsUnicodeHex`
 - `P13.15`: `tests/Berth.Tests/Cli/UsageTests.cs::UsageErrorsPrintTwoLineDiagnosticToStderrWithEmptyStdoutAndExit2ThroughBothEntryPoints`
-- `P13.16`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`
-- `P13.17`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`
-- `P13.18`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`
-- `P13.19`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`, `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3`
+- `P13.16`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`, `tests/Berth.Tests/Cli/SaveCommandTests.cs::SaveDefaultNameWritesExactLineToStdoutAndPersistsLayout`, `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreFullWritesExactLineToStdoutAndReturnsExit0`
+- `P13.17`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`, `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreNotPlacedWritesExactLineToStderrWithEmptyStdoutAndReturnsExit1`, `tests/Berth.Tests/Cli/SaveCommandTests.cs::SaveWriteFailureReturnsExit1WithExactStderrAndEmptyStdout`
+- `P13.18`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`, `tests/Berth.Tests/Cli/UsageTests.cs::UsageErrorsPrintTwoLineDiagnosticToStderrWithEmptyStdoutAndExit2ThroughBothEntryPoints`, `tests/Berth.Tests/Cli/SaveCommandTests.cs::SaveInvalidNamesReturnExit2WithExactSpecMessagesAndEmptyStdout`
+- `P13.19`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::ExitCodesMatchSpec13NumericContract`, `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3`, `tests/Berth.Tests/Cli/UndoCommandTests.cs::UndoRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3`
 - `P13.20`: `tests/Berth.Tests/Cli/RestoreCommandTests.cs::RestoreRefusalsWriteExactSpec18MessagesToStderrWithEmptyStdoutAndReturnExit3`
 - `P13.21`: `tests/Berth.Tests/Cli/ListCommandTests.cs::ListReportsUnreadableFilesToStderrStillListsReadableAndHandlesCorruptOnly`
 - `P13.22`: `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::DetachedLaunchAllocatesNoConsoleForBerthAndAllocatesOneWhenPolicyIsStripped`, `tests/Berth.Tests/Cli/ConsoleBehaviourTests.cs::InteractiveTerminalInheritsConsolePrintsVersionWaitsForHoldAndCapturesLiveExitCode`
