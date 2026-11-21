@@ -1,0 +1,86 @@
+{
+  "ref": "D06 T01 \u00a72",
+  "title": "Settle timer and the automatic restore",
+  "implementation_sha": "20ad49bbb29a5e9f1cd3f3680703f22c1d39c595",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/06-auto/D06-T01-s2.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *AutoRestoreTests"
+  ],
+  "completion": {
+    "report": "docs/reviews/06-auto/D06-T01-s2.md",
+    "verdict": "filed",
+    "candidate": "20ad49bbb29a5e9f1cd3f3680703f22c1d39c595",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": [
+      "D06 T01 \u00a73"
+    ]
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/06-auto/D06-T01-s2.md",
+    "candidate": "b8d7199b4110612894f3897441c579165c6dd838",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "b8d7199b4110612894f3897441c579165c6dd838",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 4,
+  "pass_cap": 33
+}

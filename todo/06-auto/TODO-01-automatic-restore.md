@@ -38,7 +38,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 | Order | Section | Deliverable | Depends On | Status |
 | ----- | ------- | ----------- | ---------- | ------ |
 | 1 | §1 | Message window for display change and Explorer restart | D04 T01 §5 | [x] |
-| 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [ ] |
+| 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [x] |
 | 3 | §3 | Failure balloon | §2, D04 T01 §7 | [ ] |
 | 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [ ] |
 | 5 | §5 | Result shown in the open window and the tooltip | §2, D05 T01 §6 | [ ] |
@@ -95,6 +95,9 @@ Waits for 3 quiet seconds, then restores the layout of the arrangement connected
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*AutoRestoreTests"` passes, and fails when five triggers in a burst cause more than one restore.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §2 | 20ad49bbb29a5e9f1cd3f3680703f22c1d39c595
+> **Review:** `docs/reviews/d06-t01-s2.json`
 
 ## 3. Failure balloon
 
