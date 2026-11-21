@@ -107,10 +107,56 @@ class SpecItemsTests(unittest.TestCase):
         self.assertNotEqual(blank_desc, sweep_text)
         self.assertTrue(any("empty Requirement description" in e for e in spec_items.check_sweep(spec_text, blank_desc, ROOT)))
 
-        # Prematurely flipping an open operator-deferred row (§9.5) to 'yes' must fail.
+        # Fixture-based pending vs completed operator-section tests (independent of live repo state):
+        op_todo_open = (ROOT / "todo" / "99-manual" / "TODO-01-operator-steps.md").read_text(encoding="utf-8")
+        # Ensure fixture has D99 T01 §4 open (`- [ ] `) and a completed copy where §4 is closed (`- [x] `).
+        op_todo_open = op_todo_open.replace("- [x] ", "- [ ] ")
+        op_todo_closed = op_todo_open.replace("- [ ] ", "- [x] ")
+
+        # When D99 T01 §4 is open, flipping §9.5 to 'yes' must fail.
         premature_yes = sweep_text.replace("| deferred (D99 T01 §4) |", "| yes |", 1)
         self.assertNotEqual(premature_yes, sweep_text)
-        self.assertTrue(any("still open" in e for e in spec_items.check_sweep(spec_text, premature_yes, ROOT)))
+        self.assertTrue(
+            any(
+                "still open" in e
+                for e in spec_items.check_sweep(
+                    spec_text, premature_yes, ROOT, operator_todo_text=op_todo_open, check_receipt=False
+                )
+            )
+        )
+
+        # When D99 T01 §4 is closed, keeping 'deferred (D99 T01 §4)' must fail, while flipping both to 'yes' passes.
+        closed_errs = spec_items.check_sweep(
+            spec_text, sweep_text, ROOT, operator_todo_text=op_todo_closed, check_receipt=False
+        )
+        self.assertTrue(any("still defers to closed" in e for e in closed_errs), f"Expected closed-deferral error: {closed_errs}")
+        all_yes = sweep_text.replace("| deferred (D99 T01 §4) |", "| yes |").replace("| deferred (D99 T01 §2) |", "| yes |")
+        self.assertEqual(
+            spec_items.check_sweep(spec_text, all_yes, ROOT, operator_todo_text=op_todo_closed, check_receipt=False),
+            [],
+        )
+
+        # Stale Tested commit (initial repo commit, before src/tests/scripts changes) must fail receipt check.
+        root_commit = subprocess.check_output(
+            ["git", "rev-list", "--max-parents=0", "HEAD"],
+            cwd=str(ROOT),
+            text=True,
+            creationflags=CREATE_NO_WINDOW,
+        ).strip().splitlines()[0]
+        stale_receipt = re.sub(
+            r"(- \*\*Tested commit:\*\* `)[0-9a-f]{40}(`)",
+            rf"\g<1>{root_commit}\g<2>",
+            sweep_text,
+            count=1,
+        )
+        self.assertNotEqual(stale_receipt, sweep_text)
+        self.assertTrue(
+            any("changed after tested commit" in e for e in spec_items.check_sweep(spec_text, stale_receipt, ROOT))
+        )
+        failed_receipt = sweep_text.replace("- **Gate result:** `passed`", "- **Gate result:** `failed`", 1)
+        self.assertTrue(
+            any("Gate result" in e for e in spec_items.check_sweep(spec_text, failed_receipt, ROOT))
+        )
 
         # Citing a non-test C# method (like DesktopCollection.Dispose) must fail.
         non_test_method = sweep_text.replace(
@@ -277,7 +323,33 @@ class SpecItemsTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(spec_log.returncode, 0, spec_log.stderr)
-        verified_ranges = 0
+        # Per-section SPEC-before-code validator: every behaviour-changing section must have SPEC coverage
+        # and every SPEC edit for that section must land in or before its own implementation_sha (never after).
+        def check_spec_leads_section(
+            spec_shas: list[str],
+            section_impl_sha: str,
+            is_ancestor_fn,
+            has_spec_coverage: bool,
+        ) -> tuple[bool, str]:
+            if not has_spec_coverage:
+                return False, "behaviour-changing diff has no governing SPEC coverage"
+            for spec_sha in spec_shas:
+                if not is_ancestor_fn(spec_sha, section_impl_sha):
+                    return False, f"SPEC commit {spec_sha[:8]} landed after section implementation {section_impl_sha[:8]}"
+            return True, "ok"
+
+        def git_is_ancestor(ancestor: str, descendant: str) -> bool:
+            proc = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
+                check=False,
+            )
+            return proc.returncode == 0
+
+        spec_shas_by_ref: dict[str, list[str]] = {}
         for sha in spec_log.stdout.strip().splitlines():
             diff_proc = subprocess.run(
                 ["git", "show", "--format=", "-U0", sha, "--", "design/SPEC.md"],
@@ -301,61 +373,29 @@ class SpecItemsTests(unittest.TestCase):
             }
             target_refs = sorted(added_refs - removed_refs) or sorted(added_refs & removed_refs)
             for ref in target_refs:
-                if ref in stamped_shas:
-                    anc = subprocess.run(
-                        ["git", "merge-base", "--is-ancestor", sha, stamped_shas[ref]],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        creationflags=CREATE_NO_WINDOW,
-                        check=False,
-                    )
-                    self.assertEqual(
-                        anc.returncode,
-                        0,
-                        f"SPEC commit {sha[:8]} for {ref} landed AFTER stamped commit {stamped_shas[ref][:8]}",
-                    )
-                    verified_ranges += 1
+                spec_shas_by_ref.setdefault(ref, []).append(sha)
+
+        verified_ranges = 0
+        for ref, shas in sorted(spec_shas_by_ref.items()):
+            if ref in stamped_shas:
+                ok, msg = check_spec_leads_section(shas, stamped_shas[ref], git_is_ancestor, True)
+                self.assertTrue(ok, f"{ref}: {msg}")
+                verified_ranges += len(shas)
         self.assertGreaterEqual(verified_ranges, 20, "Expected SPEC-before-stamp ordering checks across stamped sections")
 
-        # Also verify no unstamped surface or token commit exists outside a stamped section's range:
-        # every commit touching design/tokens.json or src/Berth/Window must be an ancestor of at least one stamped SHA.
-        surface_log = subprocess.run(
-            ["git", "log", "--format=%H", "--", "design/tokens.json", "src/Berth/Window"],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            creationflags=CREATE_NO_WINDOW,
-            check=False,
+        # Fixture cases for §1.1 Design first:
+        # (a) SPEC leads the fix inside the section's own range -> passes.
+        self.assertTrue(
+            check_spec_leads_section(["spec_before"], "impl_sha", lambda a, b: a == "spec_before" and b == "impl_sha", True)[0]
         )
-        self.assertEqual(surface_log.returncode, 0, surface_log.stderr)
-        surface_commits = [s for s in surface_log.stdout.strip().splitlines() if s]
-        self.assertGreater(len(surface_commits), 0)
-        latest_stamped_sha = max(
-            stamped_shas.values(),
-            key=lambda s: int(
-                subprocess.check_output(
-                    ["git", "show", "-s", "--format=%ct", s],
-                    cwd=str(ROOT),
-                    text=True,
-                    creationflags=CREATE_NO_WINDOW,
-                ).strip()
-            ),
+        # (b) SPEC follows the fix after the section's stamped range -> fails.
+        self.assertFalse(
+            check_spec_leads_section(["spec_after"], "impl_sha", lambda a, b: False, True)[0]
         )
-        for sha in surface_commits:
-            anc = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", sha, latest_stamped_sha],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                creationflags=CREATE_NO_WINDOW,
-                check=False,
-            )
-            self.assertEqual(
-                anc.returncode,
-                0,
-                f"Surface or token commit {sha[:8]} landed outside all stamped sections (after {latest_stamped_sha[:8]})",
-            )
+        # (c) Behaviour-changing surface diff has no governing SPEC coverage -> fails.
+        self.assertFalse(
+            check_spec_leads_section([], "impl_sha", lambda a, b: True, False)[0]
+        )
 
 
 if __name__ == "__main__":

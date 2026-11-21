@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Parse design/SPEC.md §2 to §19 items and verify docs/acceptance/2026-spec-sweep.md."""
+"""Parse design/SPEC.md §1 to §20 items and verify docs/acceptance/2026-spec-sweep.md."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SPEC = ROOT / "design" / "SPEC.md"
 DEFAULT_SWEEP = ROOT / "docs" / "acceptance" / "2026-spec-sweep.md"
 OPERATOR_TODO = ROOT / "todo" / "99-manual" / "TODO-01-operator-steps.md"
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # Deferred SPEC items must map to an operator section in todo/99-manual/TODO-01-operator-steps.md
 # whose body actually addresses the deferred topic (preventing assignment to an unrelated section).
@@ -173,14 +175,16 @@ def _collect_existing_test_names(repo_root: Path) -> dict[str, set[str]]:
     return cache
 
 
-def _parse_operator_sections(repo_root: Path) -> dict[int, tuple[str, bool]]:
+def _parse_operator_sections(repo_root: Path, operator_todo_text: str | None = None) -> dict[int, tuple[str, bool]]:
     """Return {section_number: (lowercase_body, is_open)} for todo/99-manual/TODO-01-operator-steps.md."""
-    path = repo_root / "todo" / "99-manual" / "TODO-01-operator-steps.md"
-    if not path.exists():
-        return {}
+    if operator_todo_text is None:
+        path = repo_root / "todo" / "99-manual" / "TODO-01-operator-steps.md"
+        if not path.exists():
+            return {}
+        operator_todo_text = path.read_text(encoding="utf-8")
     sections: dict[int, list[str]] = {}
     cur: int | None = None
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in operator_todo_text.splitlines():
         m = re.match(r"^##\s+(\d+)\.\s+", line.strip())
         if m:
             cur = int(m.group(1))
@@ -250,17 +254,83 @@ def _validate_citations(
     return errors
 
 
-def check_sweep(spec_text: str, sweep_text: str, repo_root: Path = ROOT) -> list[str]:
-    """Validate that sweep_text covers every §2..§19 SPEC item with matching digest, real proof, and valid status."""
+def _check_published_receipt(cleaned_sweep: str, repo_root: Path) -> list[str]:
+    """Verify the sweep header names a passing -Published commit that covers all src/, tests/, and scripts/ changes."""
+    errors: list[str] = []
+    commit_m = re.search(r"^\s*-\s+\*\*Tested commit:\*\*\s+`([0-9a-f]{40})`\s*$", cleaned_sweep, re.MULTILINE)
+    result_m = re.search(r"^\s*-\s+\*\*Gate result:\*\*\s+`passed`(?:\s|$|\()", cleaned_sweep, re.MULTILINE)
+    cmd_m = re.search(r"^\s*-\s+\*\*Gate command:\*\*\s+`pwsh scripts/check-all\.ps1 -Published`\s*$", cleaned_sweep, re.MULTILINE)
+    if not cmd_m:
+        errors.append("sweep header is missing `- **Gate command:** `pwsh scripts/check-all.ps1 -Published``")
+    if not result_m:
+        errors.append("sweep header is missing `- **Gate result:** `passed``")
+    if not commit_m:
+        errors.append("sweep header is missing `- **Tested commit:** `<40-hex-sha>``")
+        return errors
+
+    tested_sha = commit_m.group(1)
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        creationflags=CREATE_NO_WINDOW,
+        check=False,
+    )
+    if shallow.returncode != 0 or shallow.stdout.strip() != "false":
+        return errors
+
+    exists = subprocess.run(
+        ["git", "cat-file", "-e", f"{tested_sha}^{{commit}}"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        creationflags=CREATE_NO_WINDOW,
+        check=False,
+    )
+    if exists.returncode != 0:
+        errors.append(f"sweep header cites unknown tested commit {tested_sha}")
+        return errors
+
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", tested_sha, "HEAD", "--", "src/", "tests/", "scripts/"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        creationflags=CREATE_NO_WINDOW,
+        check=False,
+    )
+    if diff.returncode != 0:
+        errors.append(f"git diff failed while checking tested commit {tested_sha}: {diff.stderr.strip()}")
+        return errors
+    changed = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
+    if changed:
+        errors.append(
+            f"code or test files changed after tested commit {tested_sha[:12]}: {', '.join(changed[:5])}"
+        )
+    return errors
+
+
+def check_sweep(
+    spec_text: str,
+    sweep_text: str,
+    repo_root: Path = ROOT,
+    *,
+    operator_todo_text: str | None = None,
+    check_receipt: bool = True,
+) -> list[str]:
+    """Validate that sweep_text covers every §1..§20 SPEC item with matching digest, real proof, and valid status."""
     errors: list[str] = []
     expected_items = extract_spec_items(spec_text)
     expected_by_ref = {item.ref: item for item in expected_items}
     test_index = _collect_existing_test_names(repo_root)
-    operator_sections = _parse_operator_sections(repo_root)
+    operator_sections = _parse_operator_sections(repo_root, operator_todo_text=operator_todo_text)
 
     cleaned_sweep, had_unclosed_comment = _strip_html_comments(sweep_text)
     if had_unclosed_comment:
         errors.append("sweep contains an unclosed HTML/Markdown comment ('<!--' without matching '-->')")
+    if check_receipt:
+        errors.extend(_check_published_receipt(cleaned_sweep, repo_root))
     catalog = _parse_proof_catalog(cleaned_sweep)
 
     seen: dict[str, tuple[str, str, str]] = {}
@@ -333,11 +403,15 @@ def check_sweep(spec_text: str, sweep_text: str, repo_root: Path = ROOT) -> list
                 elif ref not in DEFERRED_TOPIC_KEYWORDS:
                     errors.append(f"sweep row {ref} is not an approved operator-deferred item")
                 else:
-                    body, _ = operator_sections[op_sec]
+                    body, is_open = operator_sections[op_sec]
                     keywords = DEFERRED_TOPIC_KEYWORDS[ref]
                     if not all(kw in body for kw in keywords):
                         errors.append(
                             f"sweep row {ref} defers to unrelated D99 T01 §{op_sec} (missing topic keywords {keywords})"
+                        )
+                    elif not is_open:
+                        errors.append(
+                            f"sweep row {ref} still defers to closed operator section D99 T01 §{op_sec}; update status to 'yes' with the recorded observation"
                         )
 
     for item in expected_items:

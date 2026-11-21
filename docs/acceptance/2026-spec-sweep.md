@@ -322,7 +322,7 @@
 - `P14.7`: `tests/Berth.Tests/Core/SettingsStoreTests.cs::TheDefaultsHaveTheSpecShape`, `tests/Berth.Tests/Core/SettingsStoreTests.cs::SettingsSurviveInAFreshStoreAndCanBeCleared`
 - `P14.8`: `tests/Berth.Tests/Core/UndoTests.cs::ARestoreFollowedByAnUndoReturnsEveryIconWhereItWasAndDeletesTheSnapshot`
 - `P14.9`: `tests/Berth.Tests/Core/LogTests.cs::ALineHasTheUtcTimeTheLevelAndTheMessage`
-- `P14.10`: `tests/Berth.Tests/Core/JsonFileTests.cs::AWriteCanBeReadBackAndLeavesNoTemporaryFile`
+- `P14.10`: `tests/Berth.Tests/Core/JsonFileTests.cs::AWriteCanBeReadBackAndLeavesNoTemporaryFile`, `tests/Berth.Tests/Core/JsonFileTests.cs::ACorruptedReadBackIsRefusedAndTheOldFileStays`
 - `P14.11`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::ASaveOverAnUnreadableFileIsRefusedAndTheFileKept`, `tests/Berth.Tests/Core/SettingsStoreTests.cs::AnUnreadableFileExistsGivesTheDefaultsAndIsNeverReplaced`
 - `P14.12`: `tests/Berth.Tests/Core/LayoutStoreTests.cs::ALayoutMayNameAtMost64Monitors`
 - `P14.13`: `tests/Berth.Tests/Core/JsonFileTests.cs::ANotePendingDeletionDoesNotFailRecoveryOrNextWrite`

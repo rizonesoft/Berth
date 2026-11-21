@@ -148,15 +148,15 @@ Sections: 5 | Checklist items: 26
 
 ### Phase 99: Manual, operator only
 
-Sections: 4 | Checklist items: 18
+Sections: 4 | Checklist items: 20
 
 | Status | Reference  | Deliverable                                     | Needs              | Items |
 | ------ | ---------- | ----------------------------------------------- | ------------------ | ----- |
 | [ ]    | D99 T01 §1 | Social preview image on the GitHub repository   | operator           | 3     |
-| [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors    | attended, operator | 6     |
+| [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors    | attended, operator | 7     |
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
-| [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 5     |
+| [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 6     |
 
 Progress: 83/88 verified sections, 1 ready to run now.
 
-Checklist: 504/523 items completed (includes Commit items).
+Checklist: 504/525 items completed (includes Commit items).
