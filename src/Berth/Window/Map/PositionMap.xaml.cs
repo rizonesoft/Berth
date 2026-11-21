@@ -123,11 +123,12 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
     {
         string? newLayoutKey = _viewModel?.Selected?.Key;
         LayoutComparison? comparison = _viewModel?.Comparison;
+        bool desktopUnavailable = _viewModel?.Desktop.Unavailable ?? false;
         string? currentSelectedIconId = (MarkersList.SelectedItem as MapMarkerItem)?.Icon.Saved.Id;
         int currentSelectedIndex = MarkersList.SelectedIndex;
         bool hadKeyboardFocus = MarkersList.IsKeyboardFocusWithin || _pendingFocusAfterTransientNull;
 
-        if (newLayoutKey is null || comparison is null)
+        if (newLayoutKey is null || (comparison is null && !desktopUnavailable))
         {
             if (currentSelectedIconId is not null)
             {

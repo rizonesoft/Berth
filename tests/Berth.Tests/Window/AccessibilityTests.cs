@@ -237,12 +237,33 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                     ]);
             });
 
-            // 5. Desktop unavailable (empty map + Retry notice, Restore & Save disabled)!
+            // 5. Desktop unavailable while an unsaved marker owns keyboard focus: focus must move cleanly out of the
+            // emptied map to a reachable control (without resetting focus!), and next Tab must continue in order!
+            appFixture.Invoke(() =>
+            {
+                WpfListBox markers = window!.PositionMapControl.MarkersList;
+                markers.SelectedIndex = 0;
+                var m0 = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(0);
+                m0.Focus();
+                PumpUi(window);
+                Assert.True(m0.IsKeyboardFocused);
+            });
+
             desktop.Unavailable = true;
             await vm.RefreshAsync();
             appFixture.Invoke(() =>
             {
                 PumpUi(window!);
+                Assert.Empty(window!.PositionMapControl.MarkersList.Items);
+                Assert.False(window.PositionMapControl.MarkersList.IsKeyboardFocusWithin);
+                Assert.Equal("This arrangement", FocusedName());
+
+                var current = Keyboard.FocusedElement as UIElement;
+                Assert.NotNull(current);
+                Assert.True(current!.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                PumpUi(window);
+                Assert.Equal("Restore automatically", FocusedName());
+
                 AssertFullTabCycle(
                     window!,
                     [
@@ -838,23 +859,26 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 MainWindow w = ShowOffScreen(vm);
                 SettingsPanel panel = w.LayoutsPaneControl.SettingsPanelControl;
 
-                // Keyboard-navigate (MoveFocus) to BOTH switches and verify each switch's own FocusVisualStyle template
-                // builds a visible focus visual with opaque distinct outer/inner strokes!
+                // Keyboard-navigate via in-process WPF InputManager (Key.Tab) so WPF itself attaches its live
+                // FocusVisualAdorner on each switch and removes it when focus leaves!
                 var firstRow = (ListBoxItem)w.LayoutsPaneControl.LayoutsList.ItemContainerGenerator.ContainerFromIndex(0);
                 firstRow.Focus();
                 PumpUi(w);
-                Assert.True(firstRow.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                SendProcessInputTab(firstRow);
                 PumpUi(w);
                 Assert.True(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
-                AssertVisibleFocusVisualStyle(panel.RestoreAutomaticallySwitch);
+                AssertLiveWpfFocusAdorner(panel.RestoreAutomaticallySwitch, expectedPresent: true);
+                AssertLiveWpfFocusAdorner(panel.StartWithWindowsSwitch, expectedPresent: false);
 
-                // Tab moves to Start with Windows without toggling Restore automatically and verifies its FocusVisualStyle!
-                Assert.True(panel.RestoreAutomaticallySwitch.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                // Tab moves to Start with Windows without toggling Restore automatically: adorner leaves Restore switch
+                // and appears on Start switch!
+                SendProcessInputTab(panel.RestoreAutomaticallySwitch);
                 PumpUi(w);
                 Assert.False(vm.Settings!.RestoreAutomatically);
                 Assert.False(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
                 Assert.True(panel.StartWithWindowsSwitch.IsKeyboardFocused);
-                AssertVisibleFocusVisualStyle(panel.StartWithWindowsSwitch);
+                AssertLiveWpfFocusAdorner(panel.RestoreAutomaticallySwitch, expectedPresent: false);
+                AssertLiveWpfFocusAdorner(panel.StartWithWindowsSwitch, expectedPresent: true);
 
                 // Space (key-down + key-up) toggles Start with Windows ON!
                 SendKey(panel.StartWithWindowsSwitch, Key.Space, sendKeyUp: true);
@@ -1167,107 +1191,45 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         return window;
     }
 
-    private static void AssertVisibleFocusVisualStyle(System.Windows.Controls.Control control)
+    private static void SendProcessInputTab(UIElement target)
     {
-        Style? style = control.FocusVisualStyle;
-        Assert.NotNull(style);
-
-        // Verify no ancestor hides or dims the control.
-        DependencyObject? ancestor = control;
-        while (ancestor is not null)
+        PresentationSource? source = PresentationSource.FromVisual(target);
+        Assert.NotNull(source);
+        var args = new System.Windows.Input.KeyEventArgs(Keyboard.PrimaryDevice, source!, 0, Key.Tab)
         {
-            if (ancestor is UIElement ui)
-            {
-                Assert.Equal(Visibility.Visible, ui.Visibility);
-                Assert.Equal(1d, ui.Opacity);
-            }
-
-            ancestor = VisualTreeHelper.GetParent(ancestor);
-        }
-
-        // Render the control's actual FocusVisualStyle inside the window's live AdornerLayer so all theme
-        // DynamicResources resolve identically to live keyboard focus!
-        const int pad = 8;
-        int pxW = Math.Max(1, (int)Math.Ceiling(control.ActualWidth));
-        int pxH = Math.Max(1, (int)Math.Ceiling(control.ActualHeight));
-        int canvasW = pxW + (pad * 2);
-        int canvasH = pxH + (pad * 2);
-        var host = new System.Windows.Controls.Control
-        {
-            Style = style,
-            Width = pxW,
-            Height = pxH,
-            Margin = new Thickness(pad),
+            RoutedEvent = Keyboard.KeyDownEvent,
         };
-        var wrapper = new Grid { Width = canvasW, Height = canvasH };
-        wrapper.Children.Add(host);
-
-        System.Windows.Documents.AdornerLayer? layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(control);
-        Assert.NotNull(layer);
-        var adorner = new SingleChildAdorner(control, wrapper);
-        layer!.Add(adorner);
-        try
-        {
-            host.ApplyTemplate();
-            wrapper.Measure(new System.Windows.Size(canvasW, canvasH));
-            wrapper.Arrange(new Rect(0d, 0d, canvasW, canvasH));
-            wrapper.UpdateLayout();
-
-            var dv = new DrawingVisual();
-            using (DrawingContext dc = dv.RenderOpen())
-            {
-                dc.DrawRectangle(new VisualBrush(wrapper), null, new Rect(0d, 0d, canvasW, canvasH));
-            }
-
-            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(canvasW, canvasH, 96d, 96d, PixelFormats.Pbgra32);
-            rtb.Render(dv);
-            byte[] pixels = new byte[canvasW * canvasH * 4];
-            rtb.CopyPixels(pixels, canvasW * 4, 0);
-
-            int visibleFocusPixels = 0;
-            for (int i = 3; i < pixels.Length; i += 4)
-            {
-                if (pixels[i] >= 128)
-                {
-                    visibleFocusPixels++;
-                }
-            }
-
-            Assert.True(visibleFocusPixels >= 80, $"FocusVisualStyle on {control.Name} rendered only {visibleFocusPixels} visible pixels.");
-        }
-        finally
-        {
-            layer.Remove(adorner);
-        }
+        InputManager.Current.ProcessInput(args);
     }
 
-    private sealed class SingleChildAdorner : System.Windows.Documents.Adorner
+    private static void AssertLiveWpfFocusAdorner(System.Windows.Controls.Control control, bool expectedPresent)
     {
-        private readonly UIElement _child;
+        var outer = (Border)control.Template.FindName("FocusRingOuter", control);
+        var inner = (Border)control.Template.FindName("FocusRingInner", control);
+        Assert.NotNull(outer);
+        Assert.NotNull(inner);
 
-        public SingleChildAdorner(UIElement adornedElement, UIElement child)
-            : base(adornedElement)
+        if (!expectedPresent)
         {
-            _child = child;
-            AddVisualChild(child);
-            AddLogicalChild(child);
+            Assert.Equal(Visibility.Collapsed, outer.Visibility);
+            Assert.Equal(Visibility.Collapsed, inner.Visibility);
+            return;
         }
 
-        protected override int VisualChildrenCount => 1;
+        Assert.Equal(Visibility.Visible, outer.Visibility);
+        Assert.Equal(Visibility.Visible, inner.Visibility);
+        Assert.Equal(46d, outer.ActualWidth);
+        Assert.Equal(26d, outer.ActualHeight);
+        Assert.Equal(2d, outer.BorderThickness.Left);
+        var outerBrush = Assert.IsType<SolidColorBrush>(outer.BorderBrush);
+        Assert.True(outerBrush.Color.A >= 200);
 
-        protected override Visual GetVisualChild(int index) => _child;
-
-        protected override System.Windows.Size MeasureOverride(System.Windows.Size constraint)
-        {
-            _child.Measure(constraint);
-            return _child.DesiredSize;
-        }
-
-        protected override System.Windows.Size ArrangeOverride(System.Windows.Size finalSize)
-        {
-            _child.Arrange(new Rect(finalSize));
-            return finalSize;
-        }
+        Assert.Equal(44d, inner.ActualWidth);
+        Assert.Equal(24d, inner.ActualHeight);
+        Assert.Equal(1d, inner.BorderThickness.Left);
+        var innerBrush = Assert.IsType<SolidColorBrush>(inner.BorderBrush);
+        Assert.True(innerBrush.Color.A >= 160);
+        Assert.NotEqual(outerBrush.Color, innerBrush.Color);
     }
 
     private static void AssertFullTabCycle(MainWindow window, string[] expected)

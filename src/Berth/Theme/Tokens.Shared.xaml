@@ -32,6 +32,10 @@
     <sys:Double x:Key="Berth.ToggleTrackWidth">40</sys:Double>
     <sys:Double x:Key="Berth.ToggleTrackHeight">20</sys:Double>
     <sys:Double x:Key="Berth.ToggleKnob">12</sys:Double>
+    <sys:Double x:Key="Berth.ToggleFocusRingOuterWidth">46</sys:Double>
+    <sys:Double x:Key="Berth.ToggleFocusRingOuterHeight">26</sys:Double>
+    <sys:Double x:Key="Berth.ToggleFocusRingInnerWidth">44</sys:Double>
+    <sys:Double x:Key="Berth.ToggleFocusRingInnerHeight">24</sys:Double>
     <CornerRadius x:Key="Berth.RadiusControl">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusCard">6</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarker">3</CornerRadius>
@@ -44,6 +48,9 @@
     <CornerRadius x:Key="Berth.RadiusToggleKnob">6</CornerRadius>
     <Thickness x:Key="Berth.Space.None">0</Thickness>
     <Thickness x:Key="Berth.Space.BorderThin">1</Thickness>
+    <Thickness x:Key="Berth.Space.BorderFocusOuter">2</Thickness>
+    <Thickness x:Key="Berth.Space.ToggleFocusOuter">-3</Thickness>
+    <Thickness x:Key="Berth.Space.ToggleFocusInner">-2</Thickness>
     <Thickness x:Key="Berth.Space.PaneHeading">16,16,16,8</Thickness>
     <Thickness x:Key="Berth.Space.ListRow">12,8,12,8</Thickness>
     <Thickness x:Key="Berth.Space.BadgePadding">8,2,8,2</Thickness>

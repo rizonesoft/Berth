@@ -13,31 +13,67 @@
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
                         <Grid Background="Transparent"
-                              MinHeight="{DynamicResource Berth.ControlHeight}">
-                            <Border x:Name="Track"
-                                    Width="{DynamicResource Berth.ToggleTrackWidth}"
-                                    Height="{DynamicResource Berth.ToggleTrackHeight}"
-                                    CornerRadius="{DynamicResource Berth.RadiusToggleTrack}"
-                                    Background="{DynamicResource ToggleSwitchFillOff}"
-                                    BorderBrush="{DynamicResource ToggleSwitchStrokeOff}"
-                                    BorderThickness="{DynamicResource Berth.Space.BorderThin}"
-                                    Padding="{DynamicResource Berth.Space.ToggleKnobPadding}"
-                                    VerticalAlignment="Center"
-                                    HorizontalAlignment="Right">
-                                <Border x:Name="Knob"
-                                        Width="{DynamicResource Berth.ToggleKnob}"
-                                        Height="{DynamicResource Berth.ToggleKnob}"
-                                        CornerRadius="{DynamicResource Berth.RadiusToggleKnob}"
-                                        Background="{DynamicResource ToggleSwitchKnobFillOff}"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Center" />
-                            </Border>
+                              MinHeight="{DynamicResource Berth.ControlHeight}"
+                              ClipToBounds="False">
+                            <Grid Width="{DynamicResource Berth.ToggleTrackWidth}"
+                                  Height="{DynamicResource Berth.ToggleTrackHeight}"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Right"
+                                  ClipToBounds="False">
+                                <Border x:Name="FocusRingOuter"
+                                        Width="{DynamicResource Berth.ToggleFocusRingOuterWidth}"
+                                        Height="{DynamicResource Berth.ToggleFocusRingOuterHeight}"
+                                        CornerRadius="{DynamicResource Berth.RadiusToggleTrack}"
+                                        Margin="{DynamicResource Berth.Space.ToggleFocusOuter}"
+                                        Background="Transparent"
+                                        BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}"
+                                        BorderThickness="{DynamicResource Berth.Space.BorderFocusOuter}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        IsHitTestVisible="False"
+                                        Visibility="Collapsed" />
+                                <Border x:Name="FocusRingInner"
+                                        Width="{DynamicResource Berth.ToggleFocusRingInnerWidth}"
+                                        Height="{DynamicResource Berth.ToggleFocusRingInnerHeight}"
+                                        CornerRadius="{DynamicResource Berth.RadiusToggleTrack}"
+                                        Margin="{DynamicResource Berth.Space.ToggleFocusInner}"
+                                        Background="Transparent"
+                                        BorderBrush="{DynamicResource FocusStrokeColorInnerBrush}"
+                                        BorderThickness="{DynamicResource Berth.Space.BorderThin}"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        IsHitTestVisible="False"
+                                        Visibility="Collapsed" />
+                                <Border x:Name="Track"
+                                        Width="{DynamicResource Berth.ToggleTrackWidth}"
+                                        Height="{DynamicResource Berth.ToggleTrackHeight}"
+                                        CornerRadius="{DynamicResource Berth.RadiusToggleTrack}"
+                                        Background="{DynamicResource ToggleSwitchFillOff}"
+                                        BorderBrush="{DynamicResource ToggleSwitchStrokeOff}"
+                                        BorderThickness="{DynamicResource Berth.Space.BorderThin}"
+                                        Padding="{DynamicResource Berth.Space.ToggleKnobPadding}"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Right">
+                                    <Border x:Name="Knob"
+                                            Width="{DynamicResource Berth.ToggleKnob}"
+                                            Height="{DynamicResource Berth.ToggleKnob}"
+                                            CornerRadius="{DynamicResource Berth.RadiusToggleKnob}"
+                                            Background="{DynamicResource ToggleSwitchKnobFillOff}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRingOuter" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="FocusRingInner" Property="Visibility" Value="Visible" />
+                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Track" Property="Background" Value="{DynamicResource ToggleSwitchFillOffPointerOver}" />
                                 <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource ToggleSwitchStrokeOffPointerOver}" />
