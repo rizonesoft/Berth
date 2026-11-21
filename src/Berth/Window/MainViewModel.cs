@@ -77,7 +77,7 @@ internal sealed class MainViewModel : ObservableObject
         Notices = new NoticesViewModel(
             store.LayoutsFolder,
             turnAutoArrangeOffAsync: TurnAutoArrangeOffAsync,
-            retryDesktopAsync: () => RefreshAfterOperationAsync(),
+            retryDesktopAsync: RetryDesktopAsync,
             openFolder: OpenFolder,
             isBusyProvider: () => Detail.IsBusy);
 
@@ -612,12 +612,33 @@ internal sealed class MainViewModel : ObservableObject
                     _log?.Fail(Messages.Refusal(unavailable));
                     Status.SetResult(unavailable);
                 }
-                else if (!snapshotApplied || Desktop.AutoArrange)
+                else if (snapshotApplied && Desktop.AutoArrange)
                 {
                     _log?.Fail(Messages.AutoArrangeWouldNotTurnOff);
                     Status.SetCustomMessage(Messages.AutoArrangeWouldNotTurnOff);
                 }
             });
+    }
+
+    private async Task RetryDesktopAsync()
+    {
+        try
+        {
+            await RefreshAfterOperationAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            OperationResult failed = OperationResult.Failed(FailureKind.Unexpected, path: null, ex.Message, error: ex);
+            string message = Messages.Refusal(failed);
+            _log?.FailWithDetails(message, ex.ToString());
+            await _marshalToUiAsync(() =>
+            {
+                if (!Detail.IsBusy)
+                {
+                    Status.SetCustomMessage(message);
+                }
+            }).ConfigureAwait(false);
+        }
     }
 
     private void OpenFolder(string fullPath)

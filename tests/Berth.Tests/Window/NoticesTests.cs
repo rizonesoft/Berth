@@ -208,6 +208,11 @@ public sealed class NoticesTests(AppFixture appFixture)
                     Assert.True(sentenceBounds.Bottom <= barBounds.Height + 0.5d);
                     Assert.True(buttonBounds.Right <= barBounds.Right + 0.5d);
                     Assert.True(sentenceBounds.Right <= buttonBounds.Left + 0.5d);
+                    if (idx == 1)
+                    {
+                        // Long filename at 760 DIP MUST wrap across multiple lines rather than clip on one line!
+                        Assert.True(sentenceBounds.Height > 28d);
+                    }
                 }
 
                 ContentPresenter secondContainer = (ContentPresenter)items.ItemContainerGenerator.ContainerFromIndex(1);
@@ -303,7 +308,107 @@ public sealed class NoticesTests(AppFixture appFixture)
         vm.Notices.Items.Single(i => i.Kind == NoticeKind.AutoArrange).ActionCommand.Execute(null);
         await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Contains("Something went wrong: Shell COM fault.", vm.Status.Sentence);
-        Assert.Contains("Shell COM fault", File.ReadAllText(paths.LogFile));
+        string logText = File.ReadAllText(paths.LogFile);
+        Assert.Contains(" FAIL ", logText);
+        Assert.Contains("Shell COM fault", logText);
+
+        // 5. Unexpected exception during read-back logs FAIL + exception detail and shows §18 unexpected error (not "did not turn off").
+        desktop.UnexpectedExceptionOnTurnOff = null;
+        desktop.UnexpectedExceptionOnRead = new InvalidOperationException("Readback COM fault");
+        vm.Notices.Items.Single(i => i.Kind == NoticeKind.AutoArrange).ActionCommand.Execute(null);
+        await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Contains("Something went wrong: Readback COM fault.", vm.Status.Sentence);
+        Assert.NotEqual(Messages.AutoArrangeWouldNotTurnOff, vm.Status.Sentence);
+        string logAfterRead = File.ReadAllText(paths.LogFile);
+        Assert.Contains(" FAIL ", logAfterRead);
+        Assert.Contains("Readback COM fault", logAfterRead);
+
+        // 6. Retry throwing unexpectedly on fresh read logs FAIL and shows §18 unexpected error without faulting task.
+        desktop.UnexpectedExceptionOnRead = null;
+        inner.Unavailable = true;
+        await vm.RefreshAsync();
+        desktop.UnexpectedExceptionOnRead = new InvalidOperationException("Retry COM fault");
+        vm.Notices.Items.Single(i => i.Kind == NoticeKind.DesktopUnavailable).ActionCommand.Execute(null);
+        await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Contains("Something went wrong: Retry COM fault.", vm.Status.Sentence);
+        Assert.Contains("Retry COM fault", File.ReadAllText(paths.LogFile));
+    }
+
+    [Fact]
+    public async Task DiscardedReadbackAfterTurnAutoArrangeOffDoesNotFalselyClaimWindowsKeptItOn()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
+
+        var monitors = new ShiftingMonitors(MonSingle);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 100));
+        desktop.SetAutoArrange(true);
+        var log = new Log(paths, new FixedClock(FixedNow));
+        LayoutService service = CreateService(paths, store, desktop, monitors, log);
+        var vm = CreateViewModel(store, desktop, monitors, service, log: log);
+        await vm.RefreshAsync();
+
+        // Shifting monitors discard CaptureSnapshot (returns null) even though TryTurnAutoArrangeOff succeeded!
+        monitors.KeepShifting = true;
+        vm.Notices.Items.Single(i => i.Kind == NoticeKind.AutoArrange).ActionCommand.Execute(null);
+        await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        // Must NOT falsely claim "Windows did not turn auto arrange off."!
+        Assert.NotEqual(Messages.AutoArrangeWouldNotTurnOff, vm.Status.Sentence);
+        Assert.Single(vm.Notices.Items);
+        if (File.Exists(paths.LogFile))
+        {
+            Assert.DoesNotContain(Messages.AutoArrangeWouldNotTurnOff, File.ReadAllText(paths.LogFile));
+        }
+    }
+
+    [Fact]
+    public async Task ManyUnreadableFilesScrollWithinBoundedHeightAndKeepMapAndLastActionReachable()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        Directory.CreateDirectory(paths.LayoutsFolder);
+        var store = new LayoutStore(paths);
+        SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
+
+        for (int i = 0; i < 8; i++)
+        {
+            File.WriteAllText(Path.Combine(paths.LayoutsFolder, $"bad-{i:D2}.json"), "{ broken");
+        }
+
+        var monitors = new FakeMonitors(MonSingle);
+        var desktop = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 100));
+        desktop.SetAutoArrange(true);
+        LayoutService service = CreateService(paths, store, desktop, monitors);
+        var vm = CreateViewModel(store, desktop, monitors, service);
+        await vm.RefreshAsync();
+
+        appFixture.Invoke(() =>
+        {
+            var window = new MainWindow { DataContext = vm };
+            try
+            {
+                MeasureAndArrange(window, width: 760, height: 520);
+                Assert.Equal(9, window.NoticesControl.NoticesItems.Items.Count);
+                Assert.True(window.NoticesControl.NoticesScrollViewer.ActualHeight <= 128.5d);
+                Assert.True(window.NoticesControl.NoticesScrollViewer.ScrollableHeight > 0d);
+                Assert.True(window.PositionMapControl.ActualHeight >= 220d);
+
+                // Scrolling to bottom makes the last "Turn it off" button reachable and invocable!
+                window.NoticesControl.NoticesScrollViewer.ScrollToBottom();
+                window.RootGrid.UpdateLayout();
+                ContentPresenter lastContainer = (ContentPresenter)window.NoticesControl.NoticesItems.ItemContainerGenerator.ContainerFromIndex(8);
+                WpfButton lastButton = FindVisualChildren<WpfButton>(lastContainer).Single();
+                Assert.Equal("Turn it off", lastButton.Content);
+                Assert.True(lastButton.IsEnabled);
+            }
+            finally
+            {
+                window.CloseForShutdown();
+            }
+        });
     }
 
     [Fact]
@@ -626,7 +731,17 @@ public sealed class NoticesTests(AppFixture appFixture)
 
         public Exception? UnexpectedExceptionOnTurnOff { get; set; }
 
-        public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)inner).ReadIcons();
+        public Exception? UnexpectedExceptionOnRead { get; set; }
+
+        public IReadOnlyList<IconPosition> ReadIcons()
+        {
+            if (UnexpectedExceptionOnRead is { } ex)
+            {
+                throw ex;
+            }
+
+            return ((IDesktopIcons)inner).ReadIcons();
+        }
 
         public void SetPositions(IReadOnlyList<IconPosition> positions) => ((IDesktopIcons)inner).SetPositions(positions);
 
@@ -687,6 +802,24 @@ public sealed class NoticesTests(AppFixture appFixture)
             }
 
             return ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
+        }
+    }
+
+    private sealed class ShiftingMonitors(MonitorInfo baseMonitor) : IMonitors
+    {
+        private int _widthOffset;
+
+        public bool KeepShifting { get; set; }
+
+        public IReadOnlyList<MonitorInfo> Read()
+        {
+            if (!KeepShifting)
+            {
+                return [baseMonitor];
+            }
+
+            int delta = Interlocked.Increment(ref _widthOffset);
+            return [baseMonitor with { Width = baseMonitor.Width + delta }];
         }
     }
 

@@ -36,42 +36,48 @@
 
     <Border Padding="{DynamicResource Berth.Space.NoticesContainer}"
             Visibility="{Binding HasNotices, Converter={StaticResource BoolToVisibility}}">
-        <ItemsControl x:Name="NoticesItems"
-                      ItemsSource="{Binding Items}"
+        <ScrollViewer x:Name="NoticesScrollViewer"
+                      MaxHeight="{DynamicResource Berth.NoticesMaxHeight}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
                       Focusable="False">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Border Style="{StaticResource NoticeBarStyle}">
-                        <Grid MinHeight="{DynamicResource Berth.ControlHeight}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+            <ItemsControl x:Name="NoticesItems"
+                          ItemsSource="{Binding Items}"
+                          Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource NoticeBarStyle}">
+                            <Grid MinHeight="{DynamicResource Berth.ControlHeight}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Column="0"
-                                       Text="{Binding Glyph}"
-                                       Style="{StaticResource NoticeGlyphStyle}"
-                                       AutomationProperties.Name="{Binding SeverityName}" />
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Glyph}"
+                                           Style="{StaticResource NoticeGlyphStyle}"
+                                           AutomationProperties.Name="{Binding SeverityName}" />
 
-                            <TextBlock Grid.Column="1"
-                                       Margin="{DynamicResource Berth.Space.StatusSentence}"
-                                       Text="{Binding Text}"
-                                       Style="{DynamicResource Berth.Type.Body}"
-                                       TextWrapping="Wrap"
-                                       VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="{DynamicResource Berth.Space.StatusSentence}"
+                                           Text="{Binding Text}"
+                                           Style="{DynamicResource Berth.Type.Body}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Top" />
 
-                            <Button Grid.Column="2"
-                                    Margin="{DynamicResource Berth.Space.SectionGapLeft}"
-                                    Content="{Binding ButtonText}"
-                                    Command="{Binding ActionCommand}"
-                                    MinHeight="{DynamicResource Berth.ControlHeight}"
-                                    VerticalAlignment="Top"
-                                    AutomationProperties.Name="{Binding ButtonText}" />
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+                                <Button Grid.Column="2"
+                                        Margin="{DynamicResource Berth.Space.SectionGapLeft}"
+                                        Content="{Binding ButtonText}"
+                                        Command="{Binding ActionCommand}"
+                                        MinHeight="{DynamicResource Berth.ControlHeight}"
+                                        VerticalAlignment="Top"
+                                        AutomationProperties.Name="{Binding ButtonText}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
     </Border>
 </UserControl>

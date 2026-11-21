@@ -207,6 +207,13 @@ internal sealed class TrayMenu : IDisposable
 
         // Disable dynamic items while their background reads are pending so a late read cannot overwrite a click
         // and Opening never blocks the UI thread on file or shell contention.
+        bool busyOnOpen;
+        lock (_sync)
+        {
+            busyOnOpen = _activeOperations > 0 || (_externalBusy?.Invoke() ?? false);
+        }
+
+        _saveItem.Enabled = !busyOnOpen;
         _restoreItem.Enabled = false;
         _restoreAutomaticallyItem.Enabled = false;
 
@@ -260,14 +267,17 @@ internal sealed class TrayMenu : IDisposable
                         try
                         {
                             bool apply;
+                            bool busyNow;
                             lock (_sync)
                             {
                                 apply = !_disposed && !_exiting && generation == _openGeneration;
+                                busyNow = _activeOperations > 0 || (_externalBusy?.Invoke() ?? false);
                             }
 
                             if (apply)
                             {
-                                _restoreItem.Enabled = canRestore;
+                                _saveItem.Enabled = !busyNow;
+                                _restoreItem.Enabled = canRestore && !busyNow;
                                 _restoreAutomaticallyItem.Checked = restoreAutomatically;
                                 _restoreAutomaticallyItem.Enabled = true;
                             }
