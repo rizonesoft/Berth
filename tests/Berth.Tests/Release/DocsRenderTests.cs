@@ -1,3 +1,7 @@
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Berth.Core;
@@ -15,6 +19,10 @@ namespace Berth.Tests.Release;
 [Trait("Category", "Docs")]
 public sealed class DocsRenderTests(AppFixture appFixture)
 {
+    private const int OuterWidth = 980;
+    private const int OuterHeight = 640;
+    private const int TitleBarHeight = 32;
+
     private static readonly MonitorInfo MonPrimary = new(0, 0, 2560, 1440, 100, true);
     private static readonly MonitorInfo MonSecondary = new(2560, 0, 1920, 1080, 100, false);
     private static readonly MonitorInfo MonLaptop = new(0, 0, 1920, 1080, 100, true);
@@ -98,18 +106,25 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         string outputDir = ResolveOutputDirectory(data.Root);
         string lightPath = Path.Combine(outputDir, "main-window-light.png");
         string darkPath = Path.Combine(outputDir, "main-window-dark.png");
+        string clientTempDir = Path.Combine(data.Root, "client-renders");
+        Directory.CreateDirectory(clientTempDir);
+        string lightClientPath = Path.Combine(clientTempDir, "client-light.png");
+        string darkClientPath = Path.Combine(clientTempDir, "client-dark.png");
+
+        int clientWidth = OuterWidth - 2;
+        int clientHeight = OuterHeight - TitleBarHeight - 2;
 
         appFixture.Invoke(() =>
         {
             var window = new MainWindow { DataContext = vm };
             try
             {
-                window.RootGrid.Measure(new WpfSize(980, 640));
-                window.RootGrid.Arrange(new Rect(0, 0, 980, 640));
+                window.RootGrid.Measure(new WpfSize(clientWidth, clientHeight));
+                window.RootGrid.Arrange(new Rect(0, 0, clientWidth, clientHeight));
                 window.RootGrid.UpdateLayout();
 
-                WindowRenderer.Render(window.RootGrid, 980, 640, lightPath, RenderTheme.Light);
-                WindowRenderer.Render(window.RootGrid, 980, 640, darkPath, RenderTheme.Dark);
+                WindowRenderer.Render(window.RootGrid, clientWidth, clientHeight, lightClientPath, RenderTheme.Light);
+                WindowRenderer.Render(window.RootGrid, clientWidth, clientHeight, darkClientPath, RenderTheme.Dark);
             }
             finally
             {
@@ -117,9 +132,85 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             }
         });
 
+        string iconPath = ResolveRepoFile("assets", "icon", "berth.ico");
+        CompositeFramedScreenshot(lightClientPath, iconPath, lightPath, dark: false);
+        CompositeFramedScreenshot(darkClientPath, iconPath, darkPath, dark: true);
+
         byte[] lightBytes = AssertValid980x640Png(lightPath);
         byte[] darkBytes = AssertValid980x640Png(darkPath);
         Assert.False(lightBytes.AsSpan().SequenceEqual(darkBytes), "Light and dark screenshots must differ.");
+    }
+
+    private static void CompositeFramedScreenshot(string clientPngPath, string iconPath, string outputPath, bool dark)
+    {
+        Color titleBg = dark ? Color.FromArgb(0x20, 0x20, 0x20) : Color.FromArgb(0xF3, 0xF3, 0xF3);
+        Color borderColor = dark ? Color.FromArgb(0x3D, 0x3D, 0x3D) : Color.FromArgb(0xD1, 0xD1, 0xD1);
+        Color titleText = dark ? Color.FromArgb(0xFF, 0xFF, 0xFF) : Color.FromArgb(0x1A, 0x1A, 0x1A);
+        Color glyphColor = dark ? Color.FromArgb(0xE0, 0xE0, 0xE0) : Color.FromArgb(0x1A, 0x1A, 0x1A);
+
+        using var canvas = new Bitmap(OuterWidth, OuterHeight, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(canvas);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        g.Clear(titleBg);
+
+        using (var client = new Bitmap(clientPngPath))
+        {
+            g.DrawImage(client, new Rectangle(1, 1 + TitleBarHeight, OuterWidth - 2, OuterHeight - TitleBarHeight - 2));
+        }
+
+        // Standard Windows 11 title bar (32 px): Berth app icon + "Berth" + Minimize / Maximize / Close controls.
+        using (var icon = new Icon(iconPath, new System.Drawing.Size(16, 16)))
+        {
+            g.DrawIcon(icon, new Rectangle(12, 9, 16, 16));
+        }
+
+        using (var font = new Font("Segoe UI", 9.0f, System.Drawing.FontStyle.Regular, GraphicsUnit.Point))
+        using (var textBrush = new SolidBrush(titleText))
+        {
+            g.DrawString("Berth", font, textBrush, new PointF(36, 9));
+        }
+
+        using (var glyphPen = new Pen(glyphColor, 1.0f))
+        {
+            // Minimize (center x = OuterWidth - 115)
+            int minX = OuterWidth - 115;
+            g.DrawLine(glyphPen, minX - 5, 17, minX + 5, 17);
+
+            // Maximize (center x = OuterWidth - 69)
+            int maxX = OuterWidth - 69;
+            g.DrawRectangle(glyphPen, maxX - 5, 12, 10, 10);
+
+            // Close (center x = OuterWidth - 23)
+            int closeX = OuterWidth - 23;
+            g.DrawLine(glyphPen, closeX - 5, 12, closeX + 5, 22);
+            g.DrawLine(glyphPen, closeX + 5, 12, closeX - 5, 22);
+        }
+
+        using (var borderPen = new Pen(borderColor, 1.0f))
+        {
+            g.DrawRectangle(borderPen, 0, 0, OuterWidth - 1, OuterHeight - 1);
+            g.DrawLine(borderPen, 1, TitleBarHeight, OuterWidth - 2, TitleBarHeight);
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        canvas.Save(outputPath, ImageFormat.Png);
+    }
+
+    private static string ResolveRepoFile(params string[] parts)
+    {
+        string? dir = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(dir))
+        {
+            if (File.Exists(Path.Combine(dir, "Berth.slnx")))
+            {
+                return Path.Combine([dir, .. parts]);
+            }
+
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate Berth.slnx above " + AppContext.BaseDirectory);
     }
 
     private static IconPosition[] BuildSampleIcons(int total, int monitor2Count = 12)
@@ -166,8 +257,8 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         using var ms = new MemoryStream(bytes);
         var decoder = new PngBitmapDecoder(ms, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
         Assert.Single(decoder.Frames);
-        Assert.Equal(980, decoder.Frames[0].PixelWidth);
-        Assert.Equal(640, decoder.Frames[0].PixelHeight);
+        Assert.Equal(OuterWidth, decoder.Frames[0].PixelWidth);
+        Assert.Equal(OuterHeight, decoder.Frames[0].PixelHeight);
         return bytes;
     }
 
