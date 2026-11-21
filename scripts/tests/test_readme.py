@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import re
 import struct
+import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,8 +37,31 @@ def collect_headings(markdown: str) -> set[str]:
     return slugs
 
 
+def _exists_case_sensitive(raw_relative: str, base_dir: Path) -> bool:
+    """Verify each path component inside base_dir matches its exact on-disk casing."""
+    normalized = os.path.normpath(raw_relative.replace("/", os.sep))
+    candidate = Path(normalized)
+    if candidate.is_absolute():
+        return False
+    cur = base_dir.resolve()
+    for part in candidate.parts:
+        if part == ".":
+            continue
+        if part == "..":
+            cur = cur.parent
+            continue
+        try:
+            entries = os.listdir(cur)
+        except OSError:
+            return False
+        if part not in entries:
+            return False
+        cur = cur / part
+    return cur.exists()
+
+
 def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
-    """Return a list of broken relative file/image paths or unresolved anchors (including linked badges and .md fragments)."""
+    """Return a list of broken relative file/image paths or unresolved anchors."""
     errors: list[str] = []
     headings = collect_headings(markdown)
     heading_cache: dict[Path, set[str]] = {}
@@ -45,6 +71,8 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     badge_targets = [t for pair in badge_matches for t in pair]
     # Standard Markdown links/images: [text](target) and ![alt](target)
     md_targets = re.findall(r"!?\[[^\]]*\]\(([^)\s]+)\)", markdown)
+    # Reference-style Markdown link definitions: [label]: target
+    ref_targets = re.findall(r"^\s*\[[^\]]+\]:\s*<?([^\s>]+)>?", markdown, flags=re.MULTILINE)
     # HTML img/a attributes: src="..." and href="..."
     html_targets = re.findall(r'(?:src|href)="([^"]+)"', markdown)
 
@@ -52,11 +80,10 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
         r"^https://github\.com/rizonesoft/Berth/actions/workflows/([^/?#]+?)(?:/badge\.svg)?(?:\?.*)?$"
     )
 
-    for target in [*badge_targets, *md_targets, *html_targets]:
+    for target in [*badge_targets, *md_targets, *ref_targets, *html_targets]:
         wf_match = workflow_url_re.match(target)
         if wf_match:
-            wf_file = (base_dir / ".github" / "workflows" / wf_match.group(1)).resolve()
-            if not wf_file.exists():
+            if not _exists_case_sensitive(f".github/workflows/{wf_match.group(1)}", base_dir):
                 errors.append(f"missing GitHub workflow referenced by badge/link: {target}")
             continue
         if target.startswith(("http://", "https://", "mailto:")):
@@ -69,10 +96,10 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
         path_part, _, fragment = target.partition("#")
         if not path_part:
             continue
-        resolved = (base_dir / path_part).resolve()
-        if not resolved.exists():
+        if not _exists_case_sensitive(path_part, base_dir):
             errors.append(f"missing relative path: {target}")
             continue
+        resolved = (base_dir / path_part).resolve()
         if fragment and resolved.suffix.lower() == ".md":
             if resolved not in heading_cache:
                 heading_cache[resolved] = collect_headings(resolved.read_text(encoding="utf-8"))
@@ -83,10 +110,50 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
 
 
 def read_png_dimensions(path: Path) -> tuple[int, int]:
+    """Validate PNG signature, chunk CRCs, decompressed IDAT payload, and IEND, returning (width, height)."""
     data = path.read_bytes()
-    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+    if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError(f"{path} is not a valid PNG")
-    return struct.unpack(">II", data[16:24])
+    pos = 8
+    width = height = 0
+    bit_depth = color_type = 0
+    idat_parts: list[bytes] = []
+    saw_ihdr = False
+    saw_iend = False
+    while pos + 12 <= len(data):
+        length = struct.unpack(">I", data[pos : pos + 4])[0]
+        tag = data[pos + 4 : pos + 8]
+        payload_start = pos + 8
+        payload_end = payload_start + length
+        crc_end = payload_end + 4
+        if crc_end > len(data):
+            raise ValueError(f"{path} has a truncated {tag!r} chunk")
+        payload = data[payload_start:payload_end]
+        expected_crc = struct.unpack(">I", data[payload_end:crc_end])[0]
+        actual_crc = zlib.crc32(tag + payload) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            raise ValueError(f"{path} failed CRC check on chunk {tag!r}")
+        if tag == b"IHDR":
+            if length != 13:
+                raise ValueError(f"{path} has invalid IHDR length {length}")
+            width, height, bit_depth, color_type = struct.unpack(">IIBB", payload[:10])
+            saw_ihdr = True
+        elif tag == b"IDAT":
+            idat_parts.append(payload)
+        elif tag == b"IEND":
+            saw_iend = True
+            pos = crc_end
+            break
+        pos = crc_end
+    if not saw_ihdr or not saw_iend or not idat_parts:
+        raise ValueError(f"{path} is missing required PNG chunks (IHDR/IDAT/IEND)")
+    raw = zlib.decompress(b"".join(idat_parts))
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color_type)
+    if channels is not None and bit_depth in (8, 16):
+        expected_len = height * (1 + width * channels * (bit_depth // 8))
+        if len(raw) != expected_len:
+            raise ValueError(f"{path} decoded to {len(raw)} bytes, expected {expected_len}")
+    return width, height
 
 
 class ReadmeTests(unittest.TestCase):
@@ -99,6 +166,23 @@ class ReadmeTests(unittest.TestCase):
         broken = '<img src="docs/images/main-window-lght.png" alt="broken">\n'
         errors = check_readme_links(broken, ROOT)
         self.assertTrue(any("main-window-lght.png" in err for err in errors))
+
+    def test_case_mismatch_and_reference_style_link_fail_check(self) -> None:
+        case_broken = "[License](license)\n"
+        case_errors = check_readme_links(case_broken, ROOT)
+        self.assertTrue(any("license" in err for err in case_errors))
+
+        ref_broken = "[doc][d]\n\n[d]: missing.md\n"
+        ref_errors = check_readme_links(ref_broken, ROOT)
+        self.assertTrue(any("missing.md" in err for err in ref_errors))
+
+    def test_truncated_png_fails_decoder_check(self) -> None:
+        light_path = ROOT / "docs" / "images" / "main-window-light.png"
+        with tempfile.TemporaryDirectory() as tmp:
+            truncated = Path(tmp) / "truncated.png"
+            truncated.write_bytes(light_path.read_bytes()[:40])
+            with self.assertRaises(ValueError):
+                read_png_dimensions(truncated)
 
     def test_broken_linked_badge_and_missing_md_fragment_fail_check(self) -> None:
         broken_badge = "[![License](https://img.shields.io/example)](LICENCE-MISSING)\n"

@@ -9,12 +9,56 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+Add-Type -AssemblyName PresentationCore
+
+function Test-ValidDocsPng {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or (Get-Item -LiteralPath $Path).Length -le 0) {
+        throw "Expected docs screenshot '$Path' was not produced by this run."
+    }
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $decoder = [System.Windows.Media.Imaging.PngBitmapDecoder]::new(
+            $stream,
+            [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+            [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+        )
+        if ($decoder.Frames.Count -lt 1) {
+            throw "Docs screenshot '$Path' contains no PNG frames."
+        }
+        $frame = $decoder.Frames[0]
+        if ($frame.PixelWidth -ne 980 -or $frame.PixelHeight -ne 640) {
+            throw "Docs screenshot '$Path' must be 980x640, got $($frame.PixelWidth)x$($frame.PixelHeight)."
+        }
+        $stride = [int]([Math]::Ceiling($frame.PixelWidth * $frame.Format.BitsPerPixel / 8.0))
+        $pixels = New-Object byte[] ($stride * $frame.PixelHeight)
+        $frame.CopyPixels($pixels, $stride, 0)
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+$repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $solution = Join-Path $repoRoot 'Berth.slnx'
-$resolvedDestDir = if ([string]::IsNullOrWhiteSpace($DestDir)) { Join-Path $repoRoot 'docs\images' } else { $DestDir }
+$resolvedDestDir = if ([string]::IsNullOrWhiteSpace($DestDir)) {
+    [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'docs\images'))
+}
+else {
+    [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DestDir))
+}
+
 $scratchBase = if (Test-Path -LiteralPath 'R:\') { 'R:\scratch' } else { [System.IO.Path]::GetTempPath() }
 $ownsStageDir = [string]::IsNullOrWhiteSpace($StageDir)
-$resolvedStageDir = if ($ownsStageDir) { Join-Path $scratchBase ("berth-docs-images-" + [Guid]::NewGuid().ToString('N')) } else { $StageDir }
+$resolvedStageDir = if ($ownsStageDir) {
+    [System.IO.Path]::GetFullPath((Join-Path $scratchBase ("berth-docs-images-" + [Guid]::NewGuid().ToString('N'))))
+}
+else {
+    [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StageDir))
+}
 
 if ($ownsStageDir) {
     New-Item -ItemType Directory -Path $resolvedStageDir -Force | Out-Null
@@ -40,21 +84,19 @@ try {
 
     $expected = @('main-window-light.png', 'main-window-dark.png')
     foreach ($name in $expected) {
-        $stagedFile = Join-Path $resolvedStageDir $name
-        if (-not (Test-Path -LiteralPath $stagedFile) -or (Get-Item -LiteralPath $stagedFile).Length -le 0) {
-            throw "Expected docs screenshot '$stagedFile' was not produced by this run."
-        }
+        Test-ValidDocsPng -Path (Join-Path $resolvedStageDir $name)
     }
 
     New-Item -ItemType Directory -Path $resolvedDestDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $scratchBase -Force | Out-Null
-    $destFull = [System.IO.Path]::GetFullPath($resolvedDestDir).TrimEnd('\', '/').ToLowerInvariant()
+    $lockDir = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)) 'Berth\locks'
+    New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
+    $destFull = $resolvedDestDir.TrimEnd('\', '/').ToLowerInvariant()
     $destHash = [System.BitConverter]::ToString(
         [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($destFull))
     ).Replace('-', '').Substring(0, 16)
-    # Cross-session exclusive lock file in scratch: works across interactive and non-interactive Windows sessions,
-    # requires no SeCreateGlobalPrivilege, and is released automatically by the OS kernel if the process is killed.
-    $lockPath = Join-Path $scratchBase "berth-docs-images-$destHash.lock"
+    # Machine-wide exclusive lock file under ProgramData: identical across all Windows sessions and accounts
+    # (independent of drive mappings or per-user TEMP) and released automatically by the OS kernel on termination.
+    $lockPath = Join-Path $lockDir "berth-docs-images-$destHash.lock"
     $lockStream = $null
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while ($null -eq $lockStream) {
@@ -96,15 +138,18 @@ try {
             $backupPaths[$name] = "$dst.$runId.prev"
         }
 
-        # Use File.Replace (Win32 ReplaceFileW) under the cross-session lock so canonical paths never disappear.
+        # Use File.Replace (Win32 ReplaceFileW) under the machine-wide lock so canonical paths never disappear.
         $replaced = @()
+        $createdWithoutPrior = @{}
         try {
             foreach ($name in $expected) {
                 $dst = Join-Path $resolvedDestDir $name
                 if (Test-Path -LiteralPath $dst) {
+                    $createdWithoutPrior[$name] = $false
                     [System.IO.File]::Replace($nextPaths[$name], $dst, $backupPaths[$name], $true)
                 }
                 else {
+                    $createdWithoutPrior[$name] = $true
                     Move-Item -LiteralPath $nextPaths[$name] -Destination $dst -Force
                 }
                 $replaced += $name
@@ -122,6 +167,9 @@ try {
                 $dst = Join-Path $resolvedDestDir $name
                 if (Test-Path -LiteralPath $backupPaths[$name]) {
                     [System.IO.File]::Replace($backupPaths[$name], $dst, $null, $true)
+                }
+                elseif ($createdWithoutPrior[$name] -and (Test-Path -LiteralPath $dst)) {
+                    Remove-Item -LiteralPath $dst -Force
                 }
             }
             foreach ($name in $expected) {

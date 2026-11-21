@@ -34,11 +34,11 @@ Windows forgets where your desktop icons were. Change the resolution, dock or un
 
 | Part | What it does |
 | ---- | ------------ |
-| Tray application | Single-instance notification-area icon (dark and light taskbar variants), context menu, failure balloon, Explorer-restart recovery |
-| Main window | Saved layouts list, active monitor map with icon readout, Restore, Save, Undo, Revert, Rename, Delete, inline notices, light/dark/high-contrast themes |
-| Automatic restore | Restores the active arrangement 3 seconds after display changes or Explorer restarts while enabled, and updates the open window and tray tooltip |
+| Tray app | Single-instance tray icon (dark/light variants), context menu, failure balloon, Explorer recovery |
+| Main window | Layout list, monitor map with icon readout, Save/Restore/Undo/Revert/Rename/Delete, light/dark/HC |
+| Auto restore | Restores the active layout 3 seconds after display changes or Explorer restarts and updates the UI |
 | Command line | `save`, `restore`, `undo`, `list`, `--version`, and `--help` with documented console output and exit codes |
-| Single-file binary | Self-contained `win-x64` `berth.exe` with embedded manifest, icon and SHA-256 checksum sidecar |
+| Single-file | Self-contained `win-x64` `berth.exe` with embedded manifest, icon and SHA-256 checksum sidecar |
 
 ## How do I install it?
 

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import time
 import unittest
+import zlib
 
 from scripts.tests.test_readme import check_readme_links
 
@@ -16,10 +18,35 @@ IMAGES = ("main-window-light.png", "main-window-dark.png")
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def _make_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    row = b"\x00" + bytes(rgb) * width
+    raw = row * height
+    idat = zlib.compress(raw, level=1)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+
+
+PNG_BYTES = {
+    ("old", IMAGES[0]): _make_png(980, 640, (240, 240, 240)),
+    ("old", IMAGES[1]): _make_png(980, 640, (24, 24, 24)),
+    ("new", IMAGES[0]): _make_png(980, 640, (230, 240, 250)),
+    ("new", IMAGES[1]): _make_png(980, 640, (16, 26, 36)),
+    ("seed", IMAGES[0]): _make_png(980, 640, (200, 200, 200)),
+    ("seed", IMAGES[1]): _make_png(980, 640, (40, 40, 40)),
+    ("run-a", IMAGES[0]): _make_png(980, 640, (210, 220, 230)),
+    ("run-a", IMAGES[1]): _make_png(980, 640, (30, 40, 50)),
+    ("run-b", IMAGES[0]): _make_png(980, 640, (220, 210, 200)),
+    ("run-b", IMAGES[1]): _make_png(980, 640, (50, 40, 30)),
+}
+
+
 def _write_pair(directory: Path, tag: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for name in IMAGES:
-        (directory / name).write_bytes(f"{tag}:{name}".encode("ascii"))
+        (directory / name).write_bytes(PNG_BYTES[(tag, name)])
 
 
 def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
@@ -43,9 +70,10 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
 
 
 def _start_publish(
-    stage_dir: Path,
-    dest_dir: Path,
+    stage_dir: Path | str,
+    dest_dir: Path | str,
     pause_signal: Path | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.Popen[str]:
     env = os.environ.copy()
     if pause_signal is not None:
@@ -64,7 +92,7 @@ def _start_publish(
             "-DestDir",
             str(dest_dir),
         ],
-        cwd=str(REPO_ROOT),
+        cwd=str(cwd or REPO_ROOT),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -115,8 +143,8 @@ class RenderDocsImagesTests(unittest.TestCase):
                 _kill_process_tree(proc)
 
             # Confirm the kill landed between light and dark, while BOTH canonical paths remained present.
-            self.assertEqual((dest / IMAGES[0]).read_bytes(), f"new:{IMAGES[0]}".encode("ascii"))
-            self.assertEqual((dest / IMAGES[1]).read_bytes(), f"old:{IMAGES[1]}".encode("ascii"))
+            self.assertEqual((dest / IMAGES[0]).read_bytes(), PNG_BYTES[("new", IMAGES[0])])
+            self.assertEqual((dest / IMAGES[1]).read_bytes(), PNG_BYTES[("old", IMAGES[1])])
             self.assertEqual(check_readme_links(readme.read_text(encoding="utf-8"), root), [])
 
             # A subsequent publish acquires the released kernel file lock, cleans orphans, and writes a matched pair.
@@ -124,7 +152,7 @@ class RenderDocsImagesTests(unittest.TestCase):
             rc, stdout, stderr = _communicate_with_teardown(retry, timeout=20.0)
             self.assertEqual(rc, 0, f"retry failed: {stderr}\n{stdout}")
             for name in IMAGES:
-                self.assertEqual((dest / name).read_bytes(), f"new:{name}".encode("ascii"))
+                self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("new", name)])
             leftovers = [p.name for p in dest.iterdir() if p.name not in IMAGES]
             self.assertEqual(leftovers, [], f"orphaned temp files remained: {leftovers}")
 
@@ -150,14 +178,43 @@ class RenderDocsImagesTests(unittest.TestCase):
             self.assertEqual(rc_a, 0, f"publisher A failed: {err_a}\n{out_a}")
             self.assertEqual(rc_b, 0, f"publisher B failed: {err_b}\n{out_b}")
 
-            light = (dest / IMAGES[0]).read_bytes().decode("ascii")
-            dark = (dest / IMAGES[1]).read_bytes().decode("ascii")
-            light_tag = light.split(":", 1)[0]
-            dark_tag = dark.split(":", 1)[0]
-            self.assertIn(light_tag, {"run-a", "run-b"})
-            self.assertEqual(light_tag, dark_tag, f"mismatched pair after concurrent publish: {light} vs {dark}")
+            light = (dest / IMAGES[0]).read_bytes()
+            dark = (dest / IMAGES[1]).read_bytes()
+            matched_a = light == PNG_BYTES[("run-a", IMAGES[0])] and dark == PNG_BYTES[("run-a", IMAGES[1])]
+            matched_b = light == PNG_BYTES[("run-b", IMAGES[0])] and dark == PNG_BYTES[("run-b", IMAGES[1])]
+            self.assertTrue(matched_a or matched_b, "concurrent publishers left a mismatched pair")
             leftovers = [p.name for p in dest.iterdir() if p.name not in IMAGES]
             self.assertEqual(leftovers, [], f"leftover temp files after concurrent publish: {leftovers}")
+
+    def test_rejects_invalid_or_truncated_png_without_modifying_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "docs" / "images"
+            stage_bad = root / "stage-bad"
+            _write_pair(dest, "old")
+            stage_bad.mkdir(parents=True, exist_ok=True)
+            (stage_bad / IMAGES[0]).write_bytes(PNG_BYTES[("new", IMAGES[0])])
+            # Truncate the second PNG right after the IHDR chunk so it cannot decode.
+            (stage_bad / IMAGES[1]).write_bytes(PNG_BYTES[("new", IMAGES[1])][:40])
+
+            proc = _start_publish(stage_bad, dest)
+            rc, stdout, stderr = _communicate_with_teardown(proc, timeout=20.0)
+            self.assertNotEqual(rc, 0, f"truncated PNG should have been rejected: {stdout}\n{stderr}")
+            for name in IMAGES:
+                self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("old", name)])
+
+    def test_relative_dest_dir_from_outside_checkout_resolves_against_caller_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stage_new = root / "stage-new"
+            _write_pair(stage_new, "new")
+
+            proc = _start_publish(stage_new, "rel-out/images", cwd=root)
+            rc, stdout, stderr = _communicate_with_teardown(proc, timeout=20.0)
+            self.assertEqual(rc, 0, f"relative -DestDir publish failed: {stderr}\n{stdout}")
+            dest = root / "rel-out" / "images"
+            for name in IMAGES:
+                self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("new", name)])
 
 
 if __name__ == "__main__":
