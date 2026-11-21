@@ -219,17 +219,43 @@ internal sealed class MapSurface : FrameworkElement
         }
     }
 
-    private static Rect FindFreeLabelRect(
+    internal static Rect FindFreeLabelRect(
         double x,
         double preferredY,
         double width,
         double height,
         double gap,
         double viewportHeight,
-        List<Rect> placed)
+        IReadOnlyList<Rect> placed)
     {
         double maxY = Math.Max(0d, viewportHeight - height);
-        var candidatesY = new List<double> { preferredY };
+        double clampedPreferred = Math.Clamp(preferredY, 0d, maxY);
+
+        // Pass 1: try preferred spacing (gap) plus viewport boundaries.
+        if (TryPickFreeY(x, clampedPreferred, width, height, gap, maxY, placed) is { } withGap)
+        {
+            return new Rect(x, withGap, width, height);
+        }
+
+        // Pass 2: relax the gap down to 0 DIP before ever accepting an overlap.
+        if (gap > 0d && TryPickFreeY(x, clampedPreferred, width, height, 0d, maxY, placed) is { } tight)
+        {
+            return new Rect(x, tight, width, height);
+        }
+
+        return new Rect(x, clampedPreferred, width, height);
+    }
+
+    private static double? TryPickFreeY(
+        double x,
+        double preferredY,
+        double width,
+        double height,
+        double gap,
+        double maxY,
+        IReadOnlyList<Rect> placed)
+    {
+        var candidatesY = new List<double> { preferredY, 0d, maxY };
         foreach (Rect prev in placed)
         {
             if (prev.Right <= x || prev.Left >= x + width)
@@ -250,18 +276,17 @@ internal sealed class MapSurface : FrameworkElement
             }
         }
 
-        // Order by closest distance to preferredY so we pick the nearest non-overlapping vertical interval inside the viewport.
         candidatesY.Sort((a, b) => Math.Abs(a - preferredY).CompareTo(Math.Abs(b - preferredY)));
         foreach (double y in candidatesY)
         {
             var rect = new Rect(x, y, width, height);
             if (!placed.Any(p => p.IntersectsWith(rect)))
             {
-                return rect;
+                return y;
             }
         }
 
-        return new Rect(x, Math.Clamp(preferredY, 0d, maxY), width, height);
+        return null;
     }
 
     private double ResolveLabelGap() =>

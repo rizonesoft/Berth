@@ -237,6 +237,26 @@ public sealed class PositionMapTests(AppFixture appFixture)
     }
 
     [Fact]
+    public void FindFreeLabelRectUsesViewportBoundaryAndTightGapBeforeAcceptingOverlap()
+    {
+        // Viewport 34 DIP, label 16 DIP, gap 4 DIP, existing label occupies [18..34], preferredY = 18:
+        // above (-2) and below (38) are out of range, so boundary Y=0 (leaving 2 DIP clear) must be chosen!
+        Rect existing = new(0, 18, 100, 16);
+        Rect placed = MapSurface.FindFreeLabelRect(
+            x: 0,
+            preferredY: 18,
+            width: 100,
+            height: 16,
+            gap: 4,
+            viewportHeight: 34,
+            placed: [existing]);
+
+        Assert.Equal(0d, placed.Top, precision: 6);
+        Assert.False(placed.IntersectsWith(existing));
+        Assert.True(placed.Top >= 0d && placed.Bottom <= 34d);
+    }
+
+    [Fact]
     public async Task LiveThemeSwitchRepaintsSameLoadedPositionMapInLightDarkAndHighContrast()
     {
         using var data = new TestData();
@@ -251,12 +271,23 @@ public sealed class PositionMapTests(AppFixture appFixture)
 
         appFixture.Invoke(() =>
         {
-            var window = new MainWindow { DataContext = vm };
+            var window = new MainWindow
+            {
+                DataContext = vm,
+                ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -32000,
+                Top = -32000,
+            };
             var berthApp = (Berth.App.BerthApplication)System.Windows.Application.Current;
             Berth.App.ColorTheme originalTheme = berthApp.CurrentColorTheme;
             try
             {
-                // Switch theme on the SAME control WITHOUT calling any manual refresh helper:
+                window.Show();
+                window.UpdateLayout();
+                Assert.True(window.PositionMapControl.Surface.IsLoaded);
+
+                // Switch theme on the SAME loaded control WITHOUT calling any manual refresh helper:
                 // DependencyProperty DynamicResource bindings must match all 4 expected resources in every theme!
                 berthApp.ApplyColorTheme(Berth.App.ColorTheme.Light);
                 byte[] lightSurface = RenderSurfaceBytes(window);
