@@ -153,9 +153,9 @@ Sections: 4 | Checklist items: 17
 | Status | Reference  | Deliverable                                     | Needs              | Items |
 | ------ | ---------- | ----------------------------------------------- | ------------------ | ----- |
 | [ ]    | D99 T01 §1 | Social preview image on the GitHub repository   | operator           | 3     |
-| [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors    | attended, operator | 7     |
+| [ ]    | D99 T01 §2 | Dock and undock walkthrough on real monitors    | attended, operator | 6     |
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
-| [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 3     |
+| [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 4     |
 
 Progress: 76/88 verified sections, 3 ready to run now.
 

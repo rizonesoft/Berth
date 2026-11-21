@@ -109,7 +109,7 @@ The one notification Berth shows: an automatic restore that was refused or faile
 **Fidelity:** `design/SPEC.md` §12, last bullet, and §16, fourth bullet.
 **Job:** the user learns that their icons were not put back, and why, when nothing else would tell them.
 **Treatment:** one balloon per trigger with the SPEC title and the reason; clicking it opens the window. A success is silent. Cheaper substitute that fails: a balloon on every successful restore.
-**Chrome:** `NotifyIcon.ShowBalloonTip` on the existing tray icon, with the warning icon.
+**Chrome:** `NotifyIcon.ShowBalloonTip` on the existing tray icon, with the warning icon. **Corrected 2026-11-21:** native Windows 11 shell toasts are suppressed on unattended locked desktops (and `D06 T01 §3` has zero Berth XAML and no SPEC §19 render row), so §3 verifies the production `NotifyIcon.ShowBalloonTip(0)` path plus a fresh-session Opus 5.5 medium design check on copy/truncation/focus, while the live unlocked-desktop OS toast capture and Opus 5.5 visual observation are owned by `D99 T01 §4` on the disposable desktop.
 
 **Build order:**
 
