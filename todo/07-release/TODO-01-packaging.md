@@ -40,7 +40,7 @@ depends_on: ["dotnet-foundation", "command-line", "main-window", "automatic-rest
 | 1 | §1 | Single-file self-contained publish | D05 T01 §14, D06 T01 §5 | [x] |
 | 2 | §2 | Release workflow on a version tag | §1, D00 T01 §5 | [x] |
 | 3 | §3 | README for the built app with real screenshots | §1 | [x] |
-| 4 | §4 | Changelog and third-party notices | §3 | [ ] |
+| 4 | §4 | Changelog and third-party notices | §3 | [x] |
 | 5 | §5 | Acceptance sweep against the SPEC | §2, §4 | [ ] |
 
 ## 1. Single-file self-contained publish
@@ -147,11 +147,14 @@ What 0.1.0 contains, and whose work it includes.
 - [x] Move the "Unreleased" entries of `CHANGELOG.md` into a `## 0.1.0` section (no date until the owner tags it; the release workflow's notes come from this section) and add what the plan built: the command line, the tray app, the main window, the automatic restore, in user terms. Done when: `python scripts/changelog-section.py 0.1.0` prints the section. Cheaper substitute: a list of commit subjects.
 - [x] Add `NOTICE.md` listing each third-party component in the shipped file and in the repository (every `PackageReference` with its licence, the Contributor Covenant in `CODE_OF_CONDUCT.md`, the .NET runtime bundled by the self-contained publish) with where it is used. Done when: a test in `scripts/tests/test_notice.py` reads `Directory.Packages.props` and fails when a package is missing from `NOTICE.md`. Cheaper substitute: a notice written once and never checked.
 - [x] Link `NOTICE.md` from the README's licence section. Done when: the link resolves under the §3 README check. Cheaper substitute: none needed.
-- [ ] Commit: `docs: changelog and third-party notices`
+- [x] Commit: `docs: changelog and third-party notices`
 
 **Test checkpoint:** `python -m unittest discover -s scripts/tests` passes, and `test_notice.py` fails when a package in `Directory.Packages.props` is absent from `NOTICE.md`.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §4 | d5bfecc5d34f177bed7ab9b8e865b8429c7f21cb
+> **Review:** `docs/reviews/d07-t01-s4.json`
 
 ## 5. Acceptance sweep against the SPEC
 
