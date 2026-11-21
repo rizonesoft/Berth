@@ -123,6 +123,12 @@ internal static class ThemeResources
         }
     }
 
+    internal static bool HasColorDictionary(ResourceDictionary target, ColorTheme theme)
+    {
+        Uri expected = UriFor(theme);
+        return target.MergedDictionaries.Any(dict => UriEquals(dict.Source, expected));
+    }
+
     internal static bool IsSharedDictionary(ResourceDictionary dict) =>
         UriEquals(dict.Source, SharedUri);
 

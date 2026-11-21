@@ -45,7 +45,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 
 ## 1. Message window for display change and Explorer restart
 
-A hidden message-only window that turns three system messages into events.
+A hidden top-level window that turns three system messages into events.
 
 **Phase:** 6
 **Needs:** windows-host, display-session
@@ -65,6 +65,8 @@ A hidden message-only window that turns three system messages into events.
 - [ ] Commit: `app: message window for display change and Explorer restart`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SystemEventsTests"` passes, and fails when `WM_DISPLAYCHANGE` no longer raises `DisplayChanged`.
+
+> **Started:** 2026-11-21
 
 ## 2. Settle timer and the automatic restore
 

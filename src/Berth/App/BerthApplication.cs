@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using Microsoft.Win32;
+using Win32SystemEvents = Microsoft.Win32.SystemEvents;
 using WpfApplication = System.Windows.Application;
 
 namespace Berth.App;
@@ -39,7 +40,7 @@ internal sealed class BerthApplication : WpfApplication
         {
             _subscribed = true;
             SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
-            SystemEvents.UserPreferenceChanged += OnSystemUserPreferenceChanged;
+            Win32SystemEvents.UserPreferenceChanged += OnSystemUserPreferenceChanged;
         }
 
         if (!_themeInitialized)
@@ -48,14 +49,21 @@ internal sealed class BerthApplication : WpfApplication
 #pragma warning disable WPF0001 // WPF ThemeMode is experimental in .NET 11; SPEC §3 requires ThemeMode.System.
             ThemeMode = ThemeMode.System;
 #pragma warning restore WPF0001
-            ApplySystemTheme();
+            ApplySystemTheme(force: true);
         }
     }
 
     /// <summary>Re-evaluates High Contrast and Windows app theme and applies the matching colour dictionary.</summary>
-    public void ApplySystemTheme()
+    public void ApplySystemTheme() => ApplySystemTheme(force: false);
+
+    private void ApplySystemTheme(bool force)
     {
         ColorTheme selected = ThemeResources.Select(_readHighContrast(), _readAppsUseLightTheme());
+        if (!force && _themeInitialized && CurrentColorTheme == selected && ThemeResources.HasColorDictionary(Resources, selected))
+        {
+            return;
+        }
+
         ApplyColorTheme(selected);
     }
 
@@ -87,7 +95,7 @@ internal sealed class BerthApplication : WpfApplication
         {
             _subscribed = false;
             SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
-            SystemEvents.UserPreferenceChanged -= OnSystemUserPreferenceChanged;
+            Win32SystemEvents.UserPreferenceChanged -= OnSystemUserPreferenceChanged;
         }
 
         base.OnExit(e);
@@ -117,7 +125,7 @@ internal sealed class BerthApplication : WpfApplication
         }
         else
         {
-            _ = Dispatcher.BeginInvoke(ApplySystemTheme);
+            _ = Dispatcher.BeginInvoke(new Action(ApplySystemTheme));
         }
     }
 }

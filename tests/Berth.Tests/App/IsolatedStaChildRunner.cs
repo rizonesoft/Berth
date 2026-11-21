@@ -29,6 +29,7 @@ internal static class IsolatedStaChildRunner
     public const string ProductionTrayPlacementScenario = "production-tray-placement";
     public const string SettingsFailureHideReopenScenario = "settings-failure-hide-reopen";
     public const string RenderMainWindowFrameScenario = "render-main-window-frame";
+    public const string SystemEventsTrayWiringScenario = "system-events-tray-wiring";
 
     public static int RunMain(string[] args)
     {
@@ -192,6 +193,8 @@ internal static class IsolatedStaChildRunner
             SettingsFailureHideReopenScenario => RunSettingsFailureHideReopenScenario(paths, log, instanceName),
 
             RenderMainWindowFrameScenario => RunRenderMainWindowFrameScenario(),
+
+            SystemEventsTrayWiringScenario => RunSystemEventsTrayWiringScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -996,6 +999,151 @@ internal static class IsolatedStaChildRunner
             }
         };
         return app.Run();
+    }
+
+    private static int RunSystemEventsTrayWiringScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        MonitorInfo dockedMon = new(0, 0, 2560, 1440, 100, true);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(new IconPosition("id-a", "Alpha", 100, 200));
+        var store = new LayoutStore(paths);
+        string laptopKey = ArrangementKey.From([laptopMon]);
+        string dockedKey = ArrangementKey.From([dockedMon]);
+        store.Save(new Layout(Layout.CurrentSchemaVersion, laptopKey, "Laptop", fixedNow, [laptopMon], [new IconPosition("id-a", "Alpha", 100, 200)], null));
+        store.Save(new Layout(Layout.CurrentSchemaVersion, dockedKey, "Docked", fixedNow, [dockedMon], [new IconPosition("id-a", "Alpha", 300, 400)], null));
+
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+
+        // Start in dark app + dark taskbar theme, then flip both to light AFTER startup reconciliation.
+        bool fakeAppsLight = false;
+        int fakeTaskbarLight = 0;
+        var theme = new Berth.Desktop.TaskbarTheme(
+            @"Software\Berth.Tests\SystemEventsChild",
+            () => Volatile.Read(ref fakeTaskbarLight));
+
+        TrayIcon? capturedIcon = null;
+        SystemEvents? capturedEvents = null;
+        nint savedHandle = 0;
+        string initialTooltip = string.Empty;
+        string tooltipAfterDisplayChange = string.Empty;
+        ColorTheme initialAppTheme = ColorTheme.Light;
+        ColorTheme appThemeAfterSettingChange = ColorTheme.Dark;
+        bool hasLightDictAfterSettingChange = false;
+        IntPtr initialIconHandle = IntPtr.Zero;
+        bool iconHandleChanged = false;
+        bool taskbarIsLightAfterSettingChange = false;
+        bool sendSettingResult = false;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default,
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            createApplication: () => new BerthApplication(
+                readHighContrast: () => false,
+                readAppsUseLightTheme: () => Volatile.Read(ref fakeAppsLight)),
+            onTrayIconCreated: icon =>
+            {
+                capturedIcon = icon;
+                initialTooltip = icon.TooltipText;
+                initialIconHandle = icon.IconHandle;
+            },
+            onSystemEventsCreated: ev =>
+            {
+                capturedEvents = ev;
+                savedHandle = ev.Handle;
+            },
+            onAppStartup: app =>
+            {
+                if (capturedIcon is null || capturedEvents is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                initialAppTheme = app.CurrentColorTheme;
+
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        // 1. Switch monitors to Docked and post WM_DISPLAYCHANGE to the captured HWND.
+                        monitors.Monitors = [dockedMon];
+                        _ = SystemEventsTests.PostMessageW(savedHandle, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+
+                        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                        while (DateTime.UtcNow < deadline)
+                        {
+                            string currentTip = app.Dispatcher.Invoke(() => capturedIcon.TooltipText);
+                            if (currentTip.Contains("Docked", StringComparison.Ordinal))
+                            {
+                                tooltipAfterDisplayChange = currentTip;
+                                break;
+                            }
+
+                            Thread.Sleep(25);
+                        }
+
+                        // 2. Flip fake app + taskbar theme to Light and send WM_SETTINGCHANGE("ImmersiveColorSet")
+                        //    synchronously from this worker thread via SendMessageTimeoutW (2-second bound).
+                        Volatile.Write(ref fakeAppsLight, true);
+                        Volatile.Write(ref fakeTaskbarLight, 1);
+                        sendSettingResult = SystemEventsTests.SendSettingChange(savedHandle, "ImmersiveColorSet", 2000);
+
+                        app.Dispatcher.Invoke(() =>
+                        {
+                            appThemeAfterSettingChange = app.CurrentColorTheme;
+                            hasLightDictAfterSettingChange = ThemeResources.HasColorDictionary(app.Resources, ColorTheme.Light);
+                            iconHandleChanged = capturedIcon.IconHandle != initialIconHandle;
+                            taskbarIsLightAfterSettingChange = theme.IsLight;
+                            app.Shutdown(0);
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                });
+            });
+
+        bool isWindowAfterShutdown = savedHandle != 0 && SystemEventsTests.IsWindow(savedHandle);
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"savedHandleNonZero={savedHandle != 0}",
+                $"initialTooltip={initialTooltip}",
+                $"tooltipAfterDisplayChange={tooltipAfterDisplayChange}",
+                $"initialAppTheme={initialAppTheme}",
+                $"sendSettingResult={sendSettingResult}",
+                $"appThemeAfterSettingChange={appThemeAfterSettingChange}",
+                $"hasLightDictAfterSettingChange={hasLightDictAfterSettingChange}",
+                $"iconHandleChanged={iconHandleChanged}",
+                $"taskbarIsLightAfterSettingChange={taskbarIsLightAfterSettingChange}",
+                $"isWindowAfterShutdown={isWindowAfterShutdown}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
     }
 
     private sealed class RecordingMainWindow(Action onBringToFront) : Berth.Window.IMainWindow

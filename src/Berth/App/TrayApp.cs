@@ -64,7 +64,9 @@ internal static class TrayApp
         Composition? composition = null,
         Action<TrayMenu>? onTrayMenuCreated = null,
         Func<IMainWindow>? createMainWindow = null,
-        Action? onInstanceActivatedHandled = null)
+        Action? onInstanceActivatedHandled = null,
+        Func<BerthApplication>? createApplication = null,
+        Action<SystemEvents>? onSystemEventsCreated = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(createInstance);
@@ -103,7 +105,7 @@ internal static class TrayApp
                 return runPrimary(instance, crashHandler);
             }
 
-            var app = new BerthApplication();
+            BerthApplication app = createApplication is not null ? createApplication() : new BerthApplication();
             activeApp = app;
             using IDisposable crashAttachment = crashHandler.Attach(app);
 
@@ -212,8 +214,23 @@ internal static class TrayApp
             onTrayIconCreated?.Invoke(trayIcon);
             onTrayMenuCreated?.Invoke(trayMenu);
 
-            void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) =>
-                HandleUserPreferenceChanged(effectiveTheme, e.Category);
+            using var systemEvents = new SystemEvents();
+            onSystemEventsCreated?.Invoke(systemEvents);
+
+            void OnDisplayChanged() => MarshalToUi(
+                () => _ = trayIcon.TryRefreshTooltip(effectiveComposition.Store, effectiveMonitors, effectiveClock, effectiveZone),
+                onAborted: null);
+
+            void OnSettingChanged(string? area) => MarshalToUi(
+                () =>
+                {
+                    effectiveTheme.OnSettingChange(area);
+                    if (string.Equals(area, "ImmersiveColorSet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        app.ApplySystemTheme();
+                    }
+                },
+                onAborted: null);
 
             void OnInstanceActivated() => MarshalToUi(
                 () =>
@@ -223,7 +240,8 @@ internal static class TrayApp
                 },
                 onAborted: onInstanceActivatedHandled);
 
-            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            systemEvents.DisplayChanged += OnDisplayChanged;
+            systemEvents.SettingChanged += OnSettingChanged;
             try
             {
                 // Reconcile immediately after subscribing so any theme flip between initial read and subscribe is never missed.
@@ -254,7 +272,9 @@ internal static class TrayApp
             }
             finally
             {
-                SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+                systemEvents.DisplayChanged -= OnDisplayChanged;
+                systemEvents.SettingChanged -= OnSettingChanged;
+                systemEvents.Dispose();
             }
         }
         catch (Exception ex)
