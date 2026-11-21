@@ -87,8 +87,8 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                     new WindowOperationRequest(WindowOperationKind.Restore, () => OperationResult.Restored("Laptop", 1, 1, 0, 0)));
                 PumpUi(window!);
 
-                string[] forward = WalkTabOrder(window!, FocusNavigationDirection.Next, 9);
-                Assert.Equal(
+                AssertFullTabCycle(
+                    window!,
                     [
                         "Laptop",
                         "Restore automatically",
@@ -99,23 +99,7 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                         "More options",
                         "Notes.txt, x 120, y 200, monitor 1, moved",
                         "Retry",
-                    ],
-                    forward);
-
-                // Walk backward from Retry back to LayoutsList!
-                string[] backward = WalkTabOrderFromCurrent(window!, FocusNavigationDirection.Previous, 8);
-                Assert.Equal(
-                    [
-                        "Notes.txt, x 120, y 200, monitor 1, moved",
-                        "More options",
-                        "Save current layout",
-                        "Turn it off",
-                        "Open folder",
-                        "Start with Windows",
-                        "Restore automatically",
-                        "Laptop",
-                    ],
-                    backward);
+                    ]);
             });
 
             // 2. Clear notices (Auto-arrange off + corrupt file deleted) + Undo status action -> Restore is enabled!
@@ -128,8 +112,8 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 vm.Status.SetResult(OperationResult.Restored("Laptop", 1, 1, 0, 0), canUndo: true);
                 PumpUi(window!);
 
-                string[] forward = WalkTabOrder(window!, FocusNavigationDirection.Next, 8);
-                Assert.Equal(
+                AssertFullTabCycle(
+                    window!,
                     [
                         "Laptop",
                         "Restore automatically",
@@ -139,8 +123,25 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                         "More options",
                         "Notes.txt, x 120, y 200, monitor 1, moved",
                         "Undo",
-                    ],
-                    forward);
+                    ]);
+            });
+
+            // 2b. Working/busy state disables header buttons and status action -> Tab skips them cleanly!
+            appFixture.Invoke(() =>
+            {
+                vm.Detail.SetExternalBusy(true);
+                PumpUi(window!);
+
+                AssertFullTabCycle(
+                    window!,
+                    [
+                        "Laptop",
+                        "Restore automatically",
+                        "Start with Windows",
+                        "Notes.txt, x 120, y 200, monitor 1, moved",
+                    ]);
+                vm.Detail.SetExternalBusy(false);
+                PumpUi(window!);
             });
 
             // 3. Other arrangement selected -> only More options in header, no Restore or Save!
@@ -149,19 +150,18 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 vm.Selected = vm.Rows.Single(r => r.Name == "Docked");
                 PumpUi(window!);
 
-                string[] forward = WalkTabOrder(window!, FocusNavigationDirection.Next, 5);
-                Assert.Equal(
+                AssertFullTabCycle(
+                    window!,
                     [
                         "Docked",
                         "Restore automatically",
                         "Start with Windows",
                         "More options",
                         "Notes.txt, x 120, y 200, monitor 2",
-                    ],
-                    forward);
+                    ]);
             });
 
-            // 4. Unsaved current arrangement -> Save current layout only, empty map skipped!
+            // 4. Unsaved current arrangement -> Save current layout + live desktop neutral marker!
             layoutStore.Delete(savedLayout.Key);
             await vm.RefreshAsync();
 
@@ -170,15 +170,15 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 vm.Selected = vm.Rows.Single(r => r.IsUnsaved);
                 PumpUi(window!);
 
-                string[] forward = WalkTabOrder(window!, FocusNavigationDirection.Next, 4);
-                Assert.Equal(
+                AssertFullTabCycle(
+                    window!,
                     [
                         "This arrangement",
                         "Restore automatically",
                         "Start with Windows",
                         "Save current layout",
-                    ],
-                    forward);
+                        "Notes.txt, x 300, y 200, monitor 1",
+                    ]);
             });
         }
         finally
@@ -231,8 +231,9 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.NotNull(morePeer);
                 Assert.Equal("More options", morePeer!.GetName());
 
-                // Map list must be named "Saved icon positions" (SPEC §7, §12).
+                // Map list must be named "Saved icon positions" (SPEC §7, §12), and NoticesItems named "Notices".
                 Assert.Equal("Saved icon positions", AutomationProperties.GetName(w.PositionMapControl.MarkersList));
+                Assert.Equal("Notices", AutomationProperties.GetName(w.NoticesControl.NoticesItems));
                 var mapPeer = UIElementAutomationPeer.CreatePeerForElement(w.PositionMapControl.MarkersList);
                 Assert.NotNull(mapPeer);
                 Assert.Equal("Saved icon positions", mapPeer!.GetName());
@@ -745,6 +746,24 @@ public sealed class AccessibilityTests(AppFixture appFixture)
             }
 
             Assert.Equal(1, Volatile.Read(ref retryCount));
+            await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // Status Undo button activated via keyboard Enter invokes Undo and puts icon back!
+            OperationResult? restoreResult = await vm.Detail.RestoreAsync();
+            Assert.NotNull(restoreResult);
+            Assert.Equal(100, ((IDesktopIcons)desktop).ReadIcons()[0].X);
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                WpfButton undoButton = window!.StatusLineControl.ActionButton;
+                Assert.Equal("Undo", undoButton.Content);
+                undoButton.Focus();
+                PumpUi(window);
+                Assert.True(undoButton.IsKeyboardFocused);
+                SendKey(undoButton, Key.Enter, sendKeyUp: true);
+            });
+            await vm.Status.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(250, ((IDesktopIcons)desktop).ReadIcons()[0].X);
         }
         finally
         {
@@ -822,7 +841,8 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                         $"Control {control.Name} ({control.GetType().Name}) height {control.ActualHeight} < 32 px");
                 }
 
-                // Every map marker ListBoxItem must be EXACTLY 19x19 px and hit-testable on its transparent edge!
+                // Every map marker ListBoxItem must be EXACTLY 19x19 px and hit-testable from MarkersList on its transparent edge
+                // without enlarging past 19x19!
                 WpfListBox markers = w.PositionMapControl.MarkersList;
                 Assert.Equal(2, markers.Items.Count);
                 for (int i = 0; i < markers.Items.Count; i++)
@@ -830,9 +850,52 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                     var item = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(i);
                     Assert.Equal(19d, item.ActualWidth);
                     Assert.Equal(19d, item.ActualHeight);
-                    HitTestResult? edgeHit = VisualTreeHelper.HitTest(item, new WpfPoint(1d, 1d));
+                    WpfPoint insideInList = item.TransformToAncestor(markers).Transform(new WpfPoint(1d, 1d));
+                    HitTestResult? edgeHit = VisualTreeHelper.HitTest(markers, insideInList);
                     Assert.NotNull(edgeHit);
+                    Assert.True(IsDescendantOf(edgeHit!.VisualHit, item));
+
+                    WpfPoint outsideInList = item.TransformToAncestor(markers).Transform(new WpfPoint(-2d, -2d));
+                    HitTestResult? outsideHit = VisualTreeHelper.HitTest(markers, outsideInList);
+                    Assert.False(outsideHit is not null && IsDescendantOf(outsideHit.VisualHit, item));
                 }
+
+                // Open More menu and measure realized heights >= 32 px on all 3 menu items!
+                w.DetailHeaderControl.MoreButton.ContextMenu!.PlacementTarget = w.DetailHeaderControl.MoreButton;
+                w.DetailHeaderControl.MoreButton.ContextMenu.IsOpen = true;
+                PumpUi(w);
+                Assert.True(w.DetailHeaderControl.RenameMenuItem.ActualHeight >= 32d);
+                Assert.True(w.DetailHeaderControl.RevertMenuItem.ActualHeight >= 32d);
+                Assert.True(w.DetailHeaderControl.DeleteMenuItem.ActualHeight >= 32d);
+                w.DetailHeaderControl.MoreButton.ContextMenu.IsOpen = false;
+
+                // Measure RenameDialog and DeleteDialog controls >= 32 px!
+                var renameDialog = new RenameDialog(new RenameViewModel("Laptop", []), _ => true)
+                {
+                    Owner = w,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -10000,
+                    Top = -10000,
+                };
+                renameDialog.Show();
+                PumpUi(renameDialog);
+                Assert.True(renameDialog.NameBox.ActualHeight >= 32d);
+                Assert.True(renameDialog.RenameButton.ActualHeight >= 32d);
+                Assert.True(renameDialog.CancelButton.ActualHeight >= 32d);
+                renameDialog.Close();
+
+                var deleteDialog = new DeleteDialog(new DeleteDialogViewModel("Laptop"), () => true)
+                {
+                    Owner = w,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -10000,
+                    Top = -10000,
+                };
+                deleteDialog.Show();
+                PumpUi(deleteDialog);
+                Assert.True(deleteDialog.DeleteButton.ActualHeight >= 32d);
+                Assert.True(deleteDialog.CancelButton.ActualHeight >= 32d);
+                deleteDialog.Close();
 
                 return w;
             });
@@ -860,6 +923,33 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         window.Show();
         PumpUi(window);
         return window;
+    }
+
+    private static void AssertFullTabCycle(MainWindow window, string[] expected)
+    {
+        string[] forward = WalkTabOrder(window, FocusNavigationDirection.Next, expected.Length + 1);
+        Assert.Equal([.. expected, expected[0]], forward);
+
+        // From wrapped expected[0], walk backward expected.Length steps back to expected[0] in exact reverse!
+        string[] backward = WalkTabOrderFromCurrent(window, FocusNavigationDirection.Previous, expected.Length);
+        string[] expectedReverse = [.. expected.Skip(1).Reverse(), expected[0]];
+        Assert.Equal(expectedReverse, backward);
+    }
+
+    private static bool IsDescendantOf(DependencyObject? visual, DependencyObject ancestor)
+    {
+        DependencyObject? current = visual;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private static string[] WalkTabOrder(MainWindow window, FocusNavigationDirection direction, int steps)
