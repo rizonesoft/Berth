@@ -173,13 +173,13 @@ The plan's acceptance bar, checked line by line: every control, state and comman
 - [x] For every `no`, either add the missing test and fix what it finds in the owning layer, or, when the behaviour is wrong in the SPEC rather than the code, change the SPEC with a dated line first. Done when: the table holds no `no`. Cheaper substitute: marking a row `yes` on the strength of reading the code.
 - [x] Run `pwsh scripts/check-all.ps1 -Published` and record its result and the commit in the sweep file's header. Done when: the header names the commit and "passed". Cheaper substitute: none needed. **Corrected 2026-11-21:** the recorded `-Published` pass must cover the final implementation and test changes (`src/`, `tests/`, `scripts/`); a later commit that only records the receipt or review log may cite that tested revision.
 - [x] Record anything found that belongs to the owner in `todo/99-manual/TODO-01-operator-steps.md` through `add-todo`, and anything unrelated in `todo/findings.md` with `file:line`. Done when: the sweep file's last section lists what was filed, or says nothing was. Cheaper substitute: leaving findings in the run's chat.
-- [ ] Commit: `docs: acceptance sweep against the SPEC`
+- [x] Commit: `docs: acceptance sweep against the SPEC`
 
 **Test checkpoint:** `python scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md` exits 0 (every SPEC item has a row and every row says `yes`), and exits 1 when a SPEC bullet is added without a row. **Corrected 2026-11-21:** `scripts/spec-items.py` covers all 20 sections (§1 through §20: bullets, table rows, normative prose paragraphs, and the §14 JSON schema block) with per-item content digests, verifies that the header's `-Published` tested commit covers all `src/`, `tests/`, and `scripts/` changes, and accepts `yes` for proven automated items and `deferred (D99 T01 §N)` only while the owning operator section (`D99 T01 §2` or `D99 T01 §4`) is open.
 
-> **Started:** 2026-11-21T14:55Z
+> **Started:** 2026-11-21T16:10Z
 
-**Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/07-release/D07-T01-s5-chain1.md`.
+**Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its earlier review chains are kept as `docs/reviews/07-release/D07-T01-s5-chain1.md` and `docs/reviews/07-release/D07-T01-s5-chain2.md`.
 
 ## Verification
 
