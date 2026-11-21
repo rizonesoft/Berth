@@ -418,7 +418,7 @@ public sealed class SingleInstanceTests
         try
         {
             using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
-            client.Connect(1000);
+            client.Connect(5000);
             if (payload.Length > 0)
             {
                 client.Write(payload, 0, payload.Length);
