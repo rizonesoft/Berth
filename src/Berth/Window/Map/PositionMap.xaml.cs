@@ -83,6 +83,39 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         UpdateFooterAndSurfaceOverlays();
     }
 
+    private void OnMarkersPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (_items.Count == 0)
+        {
+            return;
+        }
+
+        int current = MarkersList.SelectedIndex;
+        int next = e.Key switch
+        {
+            System.Windows.Input.Key.Down or System.Windows.Input.Key.Right =>
+                current < 0 ? 0 : Math.Min(_items.Count - 1, current + 1),
+            System.Windows.Input.Key.Up or System.Windows.Input.Key.Left =>
+                current < 0 ? _items.Count - 1 : Math.Max(0, current - 1),
+            System.Windows.Input.Key.Home => 0,
+            System.Windows.Input.Key.End => _items.Count - 1,
+            _ => -1,
+        };
+
+        if (next < 0)
+        {
+            return;
+        }
+
+        MarkersList.SelectedIndex = next;
+        if (MarkersList.ItemContainerGenerator.ContainerFromIndex(next) is System.Windows.Controls.ListBoxItem container)
+        {
+            container.Focus();
+        }
+
+        e.Handled = true;
+    }
+
     private void RebuildItemsAndLayout()
     {
         string? newLayoutKey = _viewModel?.Selected?.Key;

@@ -136,6 +136,7 @@
                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
                              SelectionMode="Single"
                              SelectionChanged="OnMarkersSelectionChanged"
+                             PreviewKeyDown="OnMarkersPreviewKeyDown"
                              ItemTemplateSelector="{StaticResource MarkerTemplateSelector}"
                              AutomationProperties.Name="Icon positions">
                         <ListBox.ItemsPanel>

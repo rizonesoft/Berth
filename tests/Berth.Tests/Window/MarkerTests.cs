@@ -206,6 +206,8 @@ public sealed class MarkerTests(AppFixture appFixture)
                 PositionMap map = window!.PositionMapControl;
                 Assert.Null(map.MarkersList.SelectedItem);
                 Assert.Null(map.Surface.RenderedSelectionDropLine);
+                Assert.All(RealizeItems(map.MarkersList), item =>
+                    Assert.Equal(Visibility.Collapsed, FindDescendant<WpfRectangle>(item, "SelectionRing")!.Visibility));
                 Assert.Equal("Select an icon to see its position.", map.ReadoutPrimaryText.Text);
                 Assert.Equal("1 of 2 in place", map.CountTextBlock.Text);
 
@@ -261,30 +263,52 @@ public sealed class MarkerTests(AppFixture appFixture)
 
         appFixture.Invoke(() =>
         {
-            var window = new MainWindow { DataContext = vm };
+            var window = new MainWindow
+            {
+                DataContext = vm,
+                ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -32000,
+                Top = -32000,
+                Width = 760,
+                Height = 520,
+            };
             try
             {
+                window.Show();
                 RenderMeasureAndArrange(window, 760, 520);
                 PositionMap map = window.PositionMapControl;
                 WpfListBoxItem[] items = RealizeItems(map.MarkersList);
                 Assert.Equal(2, items.Length);
 
-                // Select earlier overlapping item (index 0): its Panel.ZIndex must rise ABOVE index 1 so it is never concealed!
-                map.MarkersList.SelectedIndex = 0;
+                // Measure single-line readout height before selecting the 60-char wrapping name.
+                double singleLineHeight = map.ReadoutPrimaryText.ActualHeight;
+
+                // Exercise real arrow-key navigation (Key.Down -> item 0, Key.Down -> item 1, Key.Up -> item 0)
+                // on the realized list with two coincident icons!
+                PresentationSource source = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(window));
+                SendKey(map.MarkersList, source, System.Windows.Input.Key.Down);
                 RenderMeasureAndArrange(window, 760, 520);
+                Assert.Equal(0, map.MarkersList.SelectedIndex);
                 Assert.True(System.Windows.Controls.Panel.GetZIndex(items[0]) > System.Windows.Controls.Panel.GetZIndex(items[1]));
                 Assert.Same(
                     System.Windows.Application.Current.FindResource("Berth.MarkerSelected"),
                     FindDescendant<WpfRectangle>(items[0], "MarkerVisual")!.Fill);
                 Assert.Equal(longName, map.ReadoutPrimaryText.Text);
-                Assert.Equal(TextWrapping.Wrap, map.ReadoutPrimaryText.TextWrapping);
+                Assert.True(
+                    map.ReadoutPrimaryText.ActualHeight > singleLineHeight + 4d,
+                    $"Expected long name to wrap onto multiple lines ({map.ReadoutPrimaryText.ActualHeight} > {singleLineHeight}).");
                 Assert.Equal("1 of 2 in place", map.CountTextBlock.Text);
-                Assert.True(map.CountTextBlock.ActualWidth > 0d);
+                WpfPoint countRight = map.CountTextBlock.TranslatePoint(new WpfPoint(map.CountTextBlock.ActualWidth, 0), map.MapFooter);
+                Assert.True(countRight.X <= map.MapFooter.ActualWidth + 0.5d);
+                double expectedCountWidth = map.CountTextBlock.DesiredSize.Width - map.CountTextBlock.Margin.Left - map.CountTextBlock.Margin.Right;
+                Assert.True(map.CountTextBlock.ActualWidth >= expectedCountWidth - 0.5d);
                 Assert.Equal(map.MapViewport.ActualHeight, map.Surface.RenderedSelectionDropLine!.Value.To.Y, precision: 2);
 
-                // Navigate to second coincident item: Panel.ZIndex flips so index 1 is on top and readout updates!
-                map.MarkersList.SelectedIndex = 1;
+                // Key.Down reaches the second coincident item in reading order!
+                SendKey(map.MarkersList, source, System.Windows.Input.Key.Down);
                 RenderMeasureAndArrange(window, 760, 520);
+                Assert.Equal(1, map.MarkersList.SelectedIndex);
                 Assert.True(System.Windows.Controls.Panel.GetZIndex(items[1]) > System.Windows.Controls.Panel.GetZIndex(items[0]));
                 Assert.Same(
                     System.Windows.Application.Current.FindResource("Berth.MarkerSelected"),
@@ -292,16 +316,59 @@ public sealed class MarkerTests(AppFixture appFixture)
                 Assert.Equal("SecondOverlap.txt", map.ReadoutPrimaryText.Text);
                 Assert.Contains("moved", map.ReadoutSecondaryText.Text, StringComparison.Ordinal);
 
-                // Downward moved connector extends past viewport bottom but MapViewport clips it before MapFooter!
+                // Key.Up returns to item 0 cleanly!
+                SendKey(map.MarkersList, source, System.Windows.Input.Key.Up);
+                RenderMeasureAndArrange(window, 760, 520);
+                Assert.Equal(0, map.MarkersList.SelectedIndex);
+                Assert.Equal(longName, map.ReadoutPrimaryText.Text);
+
+                // Downward moved connector extends past viewport bottom, AND rendered footer pixels have ZERO MarkerMoved colour!
                 Assert.True(map.MapViewport.ClipToBounds);
                 (WpfPoint from, WpfPoint to) = Assert.Single(map.Surface.RenderedMovedLines);
                 Assert.True(to.Y > map.MapViewport.ActualHeight);
+
+                var rtb = new RenderTargetBitmap(760, 520, 96, 96, PixelFormats.Pbgra32);
+                rtb.Render(window.RootGrid);
+                byte[] pixels = new byte[760 * 520 * 4];
+                rtb.CopyPixels(pixels, 760 * 4, 0);
+                var movedBrush = Assert.IsType<SolidColorBrush>(System.Windows.Application.Current.FindResource("Berth.MarkerMoved"));
+                System.Windows.Media.Color movedColor = movedBrush.Color;
+
+                WpfPoint footerOrigin = map.MapFooter.TranslatePoint(new WpfPoint(0, 0), window.RootGrid);
+                int yStart = Math.Clamp((int)Math.Ceiling(footerOrigin.Y) + 1, 0, 519);
+                int yEnd = Math.Clamp((int)Math.Floor(footerOrigin.Y + map.MapFooter.ActualHeight) - 1, yStart, 519);
+                int xStart = Math.Clamp((int)Math.Floor(footerOrigin.X), 0, 759);
+                int xEnd = Math.Clamp((int)Math.Ceiling(footerOrigin.X + map.MapFooter.ActualWidth) - 1, xStart, 759);
+                for (int y = yStart; y <= yEnd; y++)
+                {
+                    for (int x = xStart; x <= xEnd; x++)
+                    {
+                        int idx = ((y * 760) + x) * 4;
+                        bool matchesMoved = Math.Abs(pixels[idx] - movedColor.B) <= 4
+                            && Math.Abs(pixels[idx + 1] - movedColor.G) <= 4
+                            && Math.Abs(pixels[idx + 2] - movedColor.R) <= 4;
+                        Assert.False(matchesMoved, $"Moved connector pixel leaked into MapFooter at ({x}, {y}).");
+                    }
+                }
             }
             finally
             {
                 window.CloseForShutdown();
             }
         });
+    }
+
+    private static void SendKey(UIElement target, PresentationSource source, System.Windows.Input.Key key)
+    {
+        var args = new System.Windows.Input.KeyEventArgs(
+            System.Windows.Input.Keyboard.PrimaryDevice,
+            source,
+            timestamp: 0,
+            key)
+        {
+            RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent,
+        };
+        target.RaiseEvent(args);
     }
 
     [Fact]
