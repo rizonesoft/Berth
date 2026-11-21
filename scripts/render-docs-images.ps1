@@ -94,9 +94,35 @@ function Test-ValidDocsPng {
         if ($frame.PixelWidth -ne 980 -or $frame.PixelHeight -ne 640) {
             throw "Docs screenshot '$Path' must be 980x640, got $($frame.PixelWidth)x$($frame.PixelHeight)."
         }
-        $stride = [int]([Math]::Ceiling($frame.PixelWidth * $frame.Format.BitsPerPixel / 8.0))
-        $pixels = New-Object byte[] ($stride * $frame.PixelHeight)
-        $frame.CopyPixels($pixels, $stride, 0)
+        $bgra = if ($frame.Format -eq [System.Windows.Media.PixelFormats]::Bgra32) {
+            $frame
+        }
+        else {
+            [System.Windows.Media.Imaging.FormatConvertedBitmap]::new($frame, [System.Windows.Media.PixelFormats]::Bgra32, $null, 0)
+        }
+        $stride = $bgra.PixelWidth * 4
+        $pixels = New-Object byte[] ($stride * $bgra.PixelHeight)
+        $bgra.CopyPixels($pixels, $stride, 0)
+
+        # Verify the right-hand position-map pane (x=290..920, y=175..525) is populated with icon dots, not blank.
+        $distinct = [System.Collections.Generic.HashSet[int]]::new()
+        $accentDots = 0
+        for ($y = 175; $y -lt 525; $y += 2) {
+            $rowOffset = $y * $stride
+            for ($x = 290; $x -lt 920; $x += 2) {
+                $idx = $rowOffset + ($x * 4)
+                $b = [int]$pixels[$idx]
+                $g = [int]$pixels[$idx + 1]
+                $r = [int]$pixels[$idx + 2]
+                $null = $distinct.Add(($r -shl 16) -bor ($g -shl 8) -bor $b)
+                if ($b -gt ($r + 40) -and $b -gt 140) {
+                    $accentDots++
+                }
+            }
+        }
+        if ($distinct.Count -lt 6 -or $accentDots -lt 40) {
+            throw "Docs screenshot '$Path' appears to have a blank or unpopulated position map (distinct=$($distinct.Count), accentDots=$accentDots)."
+        }
     }
     finally {
         $stream.Dispose()

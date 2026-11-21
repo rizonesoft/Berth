@@ -18,13 +18,39 @@ IMAGES = ("main-window-light.png", "main-window-dark.png")
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def _make_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+def _make_png(width: int, height: int, rgb: tuple[int, int, int], populate_map: bool = True) -> bytes:
     def chunk(tag: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    row = b"\x00" + bytes(rgb) * width
-    raw = row * height
+    base_row = bytearray(b"\x00" + bytes(rgb) * width)
+    if not populate_map:
+        raw = bytes(base_row) * height
+    else:
+        rows: list[bytes] = []
+        base_bytes = bytes(base_row)
+        # Paint distinct colours and Harbour Blue (#0F6CBD) dots inside x=290..920, y=175..525.
+        palette = [
+            (15, 108, 189),
+            (76, 166, 240),
+            (180, 180, 180),
+            (120, 120, 120),
+            (80, 80, 80),
+            (40, 40, 40),
+            (255, 255, 255),
+        ]
+        for y in range(height):
+            if 200 <= y < 230:
+                row = bytearray(base_bytes)
+                for idx, col in enumerate(palette):
+                    x0 = 320 + idx * 30
+                    for x in range(x0, x0 + 16):
+                        off = 1 + x * 3
+                        row[off : off + 3] = bytes(col)
+                rows.append(bytes(row))
+            else:
+                rows.append(base_bytes)
+        raw = b"".join(rows)
     idat = zlib.compress(raw, level=1)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
 
@@ -200,6 +226,17 @@ class RenderDocsImagesTests(unittest.TestCase):
             proc = _start_publish(stage_bad, dest)
             rc, stdout, stderr = _communicate_with_teardown(proc, timeout=20.0)
             self.assertNotEqual(rc, 0, f"truncated PNG should have been rejected: {stdout}\n{stderr}")
+            for name in IMAGES:
+                self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("old", name)])
+
+            # A valid 980x640 PNG with a blank position map must also be rejected before replacing destination files.
+            stage_blank = root / "stage-blank"
+            stage_blank.mkdir(parents=True, exist_ok=True)
+            (stage_blank / IMAGES[0]).write_bytes(_make_png(980, 640, (243, 243, 243), populate_map=False))
+            (stage_blank / IMAGES[1]).write_bytes(_make_png(980, 640, (32, 32, 32), populate_map=False))
+            proc_blank = _start_publish(stage_blank, dest)
+            rc_b, out_b, err_b = _communicate_with_teardown(proc_blank, timeout=20.0)
+            self.assertNotEqual(rc_b, 0, f"blank-map PNG should have been rejected: {out_b}\n{err_b}")
             for name in IMAGES:
                 self.assertEqual((dest / name).read_bytes(), PNG_BYTES[("old", name)])
 
