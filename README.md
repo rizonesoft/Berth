@@ -84,6 +84,7 @@ Berth follows the Windows theme, light or dark. The icon is a two by two grid of
 - **Interface:** WPF with the built-in Fluent theme, and a Windows Forms tray icon.
 - **Icon positions:** the documented shell interface `IFolderView`, never Explorer's internal list-view window.
 - **Storage:** one JSON file per monitor arrangement under `%APPDATA%\Berth\layouts`.
+- **Published binary:** single self-contained `win-x64` `berth.exe`, 75.05 MB (measured 2026-11-21 via `pwsh scripts/publish.ps1`).
 
 | Document | What it holds |
 | --- | --- |

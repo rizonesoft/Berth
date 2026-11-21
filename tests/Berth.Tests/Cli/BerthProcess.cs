@@ -32,8 +32,29 @@ internal sealed class BerthProcess : IDisposable
     public int Id => _process.Id;
     public bool HasExited => _process.HasExited;
 
-    /// <summary>Locates the built <c>berth.exe</c> matching the test assembly's configuration.</summary>
+    /// <summary>
+    /// Locates the <c>berth.exe</c> under test: uses <c>BERTH_EXE</c> when set (failing loudly if missing, never
+    /// falling back to the build output) and otherwise resolves the built binary matching this test configuration.
+    /// </summary>
     public static string FindBerthExe()
+    {
+        string? envExe = Environment.GetEnvironmentVariable("BERTH_EXE");
+        if (!string.IsNullOrWhiteSpace(envExe))
+        {
+            string fullPath = Path.GetFullPath(envExe);
+            if (!File.Exists(fullPath))
+            {
+                throw new FileNotFoundException($"BERTH_EXE points to a missing file: '{fullPath}'.", fullPath);
+            }
+
+            return fullPath;
+        }
+
+        return FindBuiltBerthExe();
+    }
+
+    /// <summary>Locates the ordinary built <c>berth.exe</c> matching the test assembly's configuration.</summary>
+    internal static string FindBuiltBerthExe()
     {
         string besideTest = Path.Combine(AppContext.BaseDirectory, "berth.exe");
         if (File.Exists(besideTest))

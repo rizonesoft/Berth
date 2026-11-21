@@ -262,20 +262,23 @@ public sealed partial class ConsoleBehaviourTests
         Assert.SkipUnless(Sta.HasInteractiveDesktopSession, "Requires an interactive Windows desktop session.");
 
         using var data = new TestData();
-        string sourceDir = Path.GetDirectoryName(BerthProcess.FindBerthExe())!;
+        string targetBerthExe = BerthProcess.FindBerthExe();
+        Assert.True(File.Exists(targetBerthExe));
+
+        // 1) Unchanged berth.exe (including single-file BERTH_EXE when set) launched from console-less parent -> console=0.
+        string reportWithPolicy = Path.Combine(data.Root, "report-with-policy.txt");
+        int exitWithPolicy = LaunchViaConsolelessHelper(targetBerthExe, ["--version"], data.Root, reportWithPolicy);
+        Assert.Equal(0, exitWithPolicy);
+        Assert.True(File.Exists(reportWithPolicy), "Berth did not write BERTH_TEST_REPORT for unchanged executable.");
+        Assert.Equal("console=0", File.ReadAllText(reportWithPolicy).Trim());
+
+        // 2) Copy the ordinary apphost so mt.exe resource rewriting cannot invalidate a single-file bundle payload,
+        //    then strip ONLY consoleAllocationPolicy from its embedded manifest.
+        string sourceDir = Path.GetDirectoryName(BerthProcess.FindBuiltBerthExe())!;
         string copyDir = Path.Combine(data.Root, "berth-copy");
         CopyDirectory(sourceDir, copyDir);
         string tempBerthExe = Path.Combine(copyDir, "berth.exe");
         Assert.True(File.Exists(tempBerthExe));
-
-        // 1) Unchanged copy (with consoleAllocationPolicy=detached) launched from console-less parent -> console=0.
-        string reportWithPolicy = Path.Combine(data.Root, "report-with-policy.txt");
-        int exitWithPolicy = LaunchViaConsolelessHelper(tempBerthExe, ["--version"], data.Root, reportWithPolicy);
-        Assert.Equal(0, exitWithPolicy);
-        Assert.True(File.Exists(reportWithPolicy), "Berth did not write BERTH_TEST_REPORT for unchanged copy.");
-        Assert.Equal("console=0", File.ReadAllText(reportWithPolicy).Trim());
-
-        // 2) Strip ONLY consoleAllocationPolicy from tempBerthExe's embedded manifest using hidden Windows SDK mt.exe.
         string mtExe = FindWindowsSdkMtExe();
         string extractedManifest = Path.Combine(data.Root, "extracted.manifest");
         string strippedManifest = Path.Combine(data.Root, "stripped.manifest");

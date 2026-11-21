@@ -28,7 +28,8 @@ pwsh scripts/check-all.ps1 -Only build,test
 [CmdletBinding()]
 param(
     [switch]$List,
-    [string[]]$Only
+    [string[]]$Only,
+    [switch]$Published
 )
 
 Set-StrictMode -Version Latest
@@ -45,7 +46,7 @@ $steps = @(
     @{ Name = 'agent-tiers'; Program = 'node'; Arguments = @('scripts/verify-agent-tiers.mjs') }
     @{ Name = 'tokens'; Program = 'python'; Arguments = @('scripts/build-tokens.py', '--check') }
     @{ Name = 'build'; Program = 'dotnet'; Arguments = @('build', 'Berth.slnx', '-c', 'Release'); Heavy = $true }
-    @{ Name = 'test'; Program = 'dotnet'; Arguments = @('test', '--solution', 'Berth.slnx', '-c', 'Release'); Heavy = $true; ReusesBuild = $true }
+    @{ Name = 'test'; Program = 'dotnet'; Arguments = @('test', '--solution', 'Berth.slnx', '-c', 'Release', '--filter-not-trait', 'Category=Published'); Heavy = $true; ReusesBuild = $true }
 )
 $names = $steps | ForEach-Object { $_.Name }
 
@@ -102,6 +103,79 @@ foreach ($step in $steps | Where-Object { $selected -contains $_.Name }) {
 
     if ($step.Name -eq 'build') {
         $built = $true
+    }
+}
+
+if ($Published) {
+    Write-Output '== publish: pwsh scripts/publish.ps1'
+    & pwsh (Join-Path $PSScriptRoot 'publish.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "FAILED publish: pwsh scripts/publish.ps1 (exit $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
+
+    $publishedExe = Join-Path $root 'artifacts\berth.exe'
+    if (-not (Test-Path -LiteralPath $publishedExe)) {
+        Write-Output "FAILED publish: expected $publishedExe to exist"
+        exit 1
+    }
+
+    $previousBerthExe = $env:BERTH_EXE
+    $env:BERTH_EXE = (Resolve-Path -LiteralPath $publishedExe).Path
+    try {
+        $publishedSuites = @(
+            @{ Name = 'published-artifact'; Trait = 'Category=Published'; AllowSkipped = $false }
+            @{ Name = 'published-real-desktop'; Trait = 'Category=RealDesktop'; AllowSkipped = $true }
+            @{ Name = 'published-smoke'; Trait = 'Category=Smoke'; AllowSkipped = $false }
+        )
+
+        foreach ($suite in $publishedSuites) {
+            $suiteArgs = @('test', '--solution', 'Berth.slnx', '-c', 'Release', '--filter-trait', $suite.Trait)
+            if ($built) {
+                $suiteArgs += '--no-build'
+            }
+
+            $line = (@('dotnet') + $suiteArgs) -join ' '
+            if ($bosun) {
+                $line = "bosun run -- $line"
+                Write-Output "== $($suite.Name): $line"
+                $output = & $bosun.Source run -- dotnet @suiteArgs 2>&1
+            }
+            else {
+                Write-Output "== $($suite.Name): $line"
+                $output = & dotnet @suiteArgs 2>&1
+            }
+
+            $code = $LASTEXITCODE
+            $output | ForEach-Object { Write-Output $_ }
+            if ($code -ne 0) {
+                Write-Output "FAILED $($suite.Name): $line (exit $code)"
+                exit $code
+            }
+
+            $joined = ($output | Out-String)
+            $totalMatch = [regex]::Match($joined, 'total:\s*(\d+)')
+            $skippedMatch = [regex]::Match($joined, 'skipped:\s*(\d+)')
+            if (-not $totalMatch.Success -or [int]$totalMatch.Groups[1].Value -le 0) {
+                Write-Output "FAILED $($suite.Name): filter '$($suite.Trait)' selected 0 tests"
+                exit 1
+            }
+
+            if (-not $suite.AllowSkipped -and $skippedMatch.Success -and [int]$skippedMatch.Groups[1].Value -gt 0) {
+                Write-Output "FAILED $($suite.Name): required published suite skipped $($skippedMatch.Groups[1].Value) test(s)"
+                exit 1
+            }
+        }
+    }
+    finally {
+        if ($null -eq $previousBerthExe) {
+            if (Test-Path Env:BERTH_EXE) {
+                Remove-Item Env:BERTH_EXE
+            }
+        }
+        else {
+            $env:BERTH_EXE = $previousBerthExe
+        }
     }
 }
 
