@@ -57,7 +57,9 @@
 
                 <ContentControl x:Name="StatusHost"
                                 Grid.Row="3"
-                                Focusable="False" />
+                                Focusable="False">
+                    <local:StatusLine x:Name="StatusLineControl" DataContext="{Binding Status}" />
+                </ContentControl>
             </Grid>
         </ContentControl>
     </Grid>

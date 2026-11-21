@@ -25,6 +25,12 @@ internal enum WindowOperationKind
     Delete,
 }
 
+/// <summary>Repeatable operation request carrying its target, arguments, and post-success selection key for Retry (SPEC §8).</summary>
+internal sealed record WindowOperationRequest(
+    WindowOperationKind Kind,
+    Func<OperationResult> Action,
+    Func<OperationResult, string?>? SelectKeyAfter = null);
+
 /// <summary>
 /// View model for the right-pane detail header and action buttons (SPEC §6): computes title, subtitle,
 /// action visibility, shared busy state, and off-UI-thread Save and Restore execution.
@@ -82,6 +88,8 @@ internal sealed class DetailViewModel : ObservableObject
     public event Action<WindowOperationKind>? OperationStarted;
 
     public event Action<WindowOperationKind, OperationResult>? OperationFinished;
+
+    internal event Action<WindowOperationRequest, OperationResult, bool>? OperationCompleted;
 
     public DetailKind Kind
     {
@@ -216,14 +224,19 @@ internal sealed class DetailViewModel : ObservableObject
 
     /// <summary>
     /// Runs a layout operation off the UI thread under the shared busy state (used by Save, Restore, Undo, Revert,
-    /// Rename, and Delete), refreshes after the write, clears busy, and publishes <see cref="OperationFinished"/>.
+    /// Rename, and Delete), refreshes after the write, clears busy, and publishes <see cref="OperationFinished"/> and
+    /// <see cref="OperationCompleted"/>.
     /// </summary>
-    public async Task<OperationResult?> RunOperationAsync(
+    public Task<OperationResult?> RunOperationAsync(
         WindowOperationKind kind,
         Func<OperationResult> action,
-        Func<OperationResult, string?>? selectKeyAfter = null)
+        Func<OperationResult, string?>? selectKeyAfter = null) =>
+        RunOperationAsync(new WindowOperationRequest(kind, action, selectKeyAfter));
+
+    public async Task<OperationResult?> RunOperationAsync(WindowOperationRequest request)
     {
-        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Action);
 
         if (Interlocked.CompareExchange(ref _operationInFlight, 1, 0) != 0)
         {
@@ -231,18 +244,24 @@ internal sealed class DetailViewModel : ObservableObject
         }
 
         OperationResult? result = null;
+        bool canUndoAfter = false;
         try
         {
             await _main.MarshalToUiAsync(() =>
             {
                 _localBusy = true;
                 IsBusy = true;
-                OperationStarted?.Invoke(kind);
+                OperationStarted?.Invoke(request.Kind);
             }).ConfigureAwait(false);
 
-            result = await Task.Run(action).ConfigureAwait(false);
+            result = await Task.Run(() =>
+            {
+                OperationResult opResult = request.Action();
+                canUndoAfter = _service?.CanUndo ?? false;
+                return opResult;
+            }).ConfigureAwait(false);
 
-            string? selectKey = selectKeyAfter?.Invoke(result);
+            string? selectKey = request.SelectKeyAfter?.Invoke(result);
             try
             {
                 await _main.RefreshAfterOperationAsync(selectKey).ConfigureAwait(false);
@@ -257,6 +276,7 @@ internal sealed class DetailViewModel : ObservableObject
         finally
         {
             OperationResult? finalResult = result;
+            bool finalCanUndo = canUndoAfter;
             await _main.MarshalToUiAsync(() =>
             {
                 Volatile.Write(ref _operationInFlight, 0);
@@ -264,7 +284,8 @@ internal sealed class DetailViewModel : ObservableObject
                 IsBusy = _externalBusy;
                 if (finalResult is not null)
                 {
-                    OperationFinished?.Invoke(kind, finalResult);
+                    OperationCompleted?.Invoke(request, finalResult, finalCanUndo);
+                    OperationFinished?.Invoke(request.Kind, finalResult);
                 }
             }).ConfigureAwait(false);
         }
@@ -277,10 +298,10 @@ internal sealed class DetailViewModel : ObservableObject
             return Task.FromResult<OperationResult?>(null);
         }
 
-        return RunOperationAsync(
+        return RunOperationAsync(new WindowOperationRequest(
             WindowOperationKind.Save,
             () => _service.Save(),
-            result => result.Done ? result.ArrangementKey : null);
+            result => result.Done ? result.ArrangementKey : null));
     }
 
     public Task<OperationResult?> RestoreAsync()
@@ -291,9 +312,32 @@ internal sealed class DetailViewModel : ObservableObject
         }
 
         string? expectedKey = _main.Selected?.Key;
-        return RunOperationAsync(
+        return RunOperationAsync(new WindowOperationRequest(
             WindowOperationKind.Restore,
-            () => _service.Restore(expectedKey: expectedKey));
+            () => _service.Restore(expectedKey: expectedKey)));
+    }
+
+    public Task<OperationResult?> UndoAsync()
+    {
+        if (_isBusy || _service is null)
+        {
+            return Task.FromResult<OperationResult?>(null);
+        }
+
+        return RunOperationAsync(new WindowOperationRequest(
+            WindowOperationKind.Undo,
+            () => _service.Undo()));
+    }
+
+    public Task<OperationResult?> RetryAsync(WindowOperationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (_isBusy)
+        {
+            return Task.FromResult<OperationResult?>(null);
+        }
+
+        return RunOperationAsync(request);
     }
 
     private void ExecuteSave() => _lastOperationTask = SaveAsync();

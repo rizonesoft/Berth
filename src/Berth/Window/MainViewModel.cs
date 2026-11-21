@@ -19,10 +19,12 @@ internal sealed class MainViewModel : ObservableObject
     private readonly IMonitors _monitors;
     private readonly TimeProvider _clock;
     private readonly Func<Action, Task> _marshalToUiAsync;
+    private readonly LayoutService? _service;
     private readonly object _refreshGate = new();
 
     private Task? _activeRefreshTask;
     private bool _isApplyingSnapshot;
+    private bool _lastCanUndo;
     private LayoutRow? _selected;
     private string? _lastKnownSelectedKey;
     private string? _pendingSelectedKey;
@@ -51,6 +53,7 @@ internal sealed class MainViewModel : ObservableObject
         _desktop = desktop;
         _monitors = monitors;
         _clock = clock;
+        _service = service;
         _marshalToUiAsync = marshalToUiAsync ?? (action =>
         {
             action();
@@ -58,9 +61,29 @@ internal sealed class MainViewModel : ObservableObject
         });
         _desktopState = DesktopState.Empty(clock.GetUtcNow());
         Detail = new DetailViewModel(this, service, clock, timeZone);
+        Status = new StatusViewModel(
+            clock,
+            timeZone,
+            undoHandler: service is not null ? () => Detail.UndoAsync() : null,
+            retryHandler: request => Detail.RetryAsync(request));
+
+        Detail.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(DetailViewModel.IsBusy) or "")
+            {
+                Status.SetBusyState(Detail.IsBusy);
+            }
+        };
+        Detail.OperationCompleted += (request, result, canUndo) =>
+        {
+            _lastCanUndo = canUndo;
+            Status.SetResult(result, canUndo, request);
+        };
     }
 
     public DetailViewModel Detail { get; }
+
+    public StatusViewModel Status { get; }
 
     public ObservableCollection<LayoutRow> Rows { get; } = [];
 
@@ -345,7 +368,48 @@ internal sealed class MainViewModel : ObservableObject
             storeReadError = ex.Message;
         }
 
-        return new RefreshSnapshot(currentKey, desktopState, layouts, unreadable, storeReadError);
+        bool canUndo = _service?.CanUndo ?? false;
+        return new RefreshSnapshot(currentKey, desktopState, layouts, unreadable, storeReadError, canUndo);
+    }
+
+    /// <summary>
+    /// Refreshes the window's comparison baseline after a tray-initiated operation finishes and publishes the result
+    /// to <see cref="Status"/> with Undo/Retry support (SPEC §8).
+    /// </summary>
+    internal async Task OnExternalOperationFinishedAsync(WindowOperationKind kind, OperationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        string? selectKey = kind == WindowOperationKind.Save && result.Done ? result.ArrangementKey : null;
+        try
+        {
+            await RefreshAfterOperationAsync(selectKey).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Still surface the tray operation result in the status line even if refresh fails.
+        }
+
+        WindowOperationRequest? retryRequest = null;
+        if (_service is not null)
+        {
+            retryRequest = kind switch
+            {
+                WindowOperationKind.Save => new WindowOperationRequest(
+                    WindowOperationKind.Save,
+                    () => _service.Save(),
+                    res => res.Done ? res.ArrangementKey : null),
+                WindowOperationKind.Restore => new WindowOperationRequest(
+                    WindowOperationKind.Restore,
+                    () => _service.Restore()),
+                _ => null,
+            };
+        }
+
+        await _marshalToUiAsync(() =>
+        {
+            Status.SetResult(result, _lastCanUndo, retryRequest);
+        }).ConfigureAwait(false);
     }
 
     private void ApplySnapshot(RefreshSnapshot snapshot)
@@ -354,6 +418,7 @@ internal sealed class MainViewModel : ObservableObject
         // while a post-operation target key takes priority until a usable snapshot contains that row.
         string? preferredKey = _pendingSelectedKey ?? _selected?.Key ?? _lastKnownSelectedKey;
 
+        _lastCanUndo = snapshot.CanUndo;
         Desktop = snapshot.Desktop;
         Unreadable = snapshot.Unreadable;
         StoreReadError = snapshot.StoreReadError;
@@ -480,6 +545,7 @@ internal sealed class MainViewModel : ObservableObject
             MapMonitors = [];
             ComparisonKind = ComparisonKind.None;
             Comparison = null;
+            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
             return;
         }
 
@@ -498,6 +564,7 @@ internal sealed class MainViewModel : ObservableObject
                 Comparison = LayoutComparison.Unsaved(_desktopState.Monitors, _desktopState.Icons);
             }
 
+            Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
             return;
         }
 
@@ -513,6 +580,8 @@ internal sealed class MainViewModel : ObservableObject
             ComparisonKind = ComparisonKind.Neutral;
             Comparison = LayoutComparison.Neutral(saved);
         }
+
+        Status.SetComparison(_selected, Comparison, ComparisonKind, _desktopState, _lastCanUndo);
     }
 
     private sealed record RefreshSnapshot(
@@ -520,5 +589,6 @@ internal sealed class MainViewModel : ObservableObject
         DesktopState Desktop,
         IReadOnlyList<Layout> Layouts,
         IReadOnlyList<UnreadableFile> Unreadable,
-        string? StoreReadError);
+        string? StoreReadError,
+        bool CanUndo);
 }

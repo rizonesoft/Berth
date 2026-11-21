@@ -241,6 +241,8 @@ The card under the map: one sentence chosen by the SPEC §8 table, with a time o
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*StatusViewModelTests"` and `--filter-class "*StatusLineTests"` pass, and fail when a sentence differs from the `design/SPEC.md` §8 table.
 
+> **Started:** 2026-11-21
+
 ## 7. Notices and the controls they disable
 
 The three notices of SPEC §9, their buttons, and what each one disables.

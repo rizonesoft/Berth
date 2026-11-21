@@ -1,0 +1,67 @@
+<UserControl x:Class="Berth.Window.StatusLine"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </UserControl.Resources>
+
+    <Border Padding="{DynamicResource Berth.Space.StatusFooter}">
+        <Border x:Name="StatusCard"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="{DynamicResource Berth.Space.BorderThin}"
+                CornerRadius="{DynamicResource Berth.RadiusCard}"
+                Padding="{DynamicResource Berth.Space.ListRow}">
+            <Grid MinHeight="{DynamicResource Berth.ControlHeight}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="StatusSquare"
+                        Grid.Column="0"
+                        Width="{DynamicResource Berth.StatusSquare}"
+                        Height="{DynamicResource Berth.StatusSquare}"
+                        Background="{DynamicResource Berth.MarkerInPlace}"
+                        CornerRadius="{DynamicResource Berth.RadiusMarker}"
+                        Margin="{DynamicResource Berth.Space.StatusSquareOffset}"
+                        VerticalAlignment="Top"
+                        IsHitTestVisible="False" />
+
+                <TextBlock x:Name="SentenceText"
+                           Grid.Column="1"
+                           Margin="{DynamicResource Berth.Space.StatusSentence}"
+                           Text="{Binding Sentence}"
+                           Style="{DynamicResource Berth.Type.Body}"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Top" />
+
+                <Grid Grid.Column="2"
+                      Margin="{DynamicResource Berth.Space.SectionGapLeft}"
+                      MinHeight="{DynamicResource Berth.ControlHeight}"
+                      VerticalAlignment="Top">
+                    <TextBlock x:Name="RightTimeText"
+                               Text="{Binding RightText}"
+                               Style="{DynamicResource Berth.Type.Caption}"
+                               Foreground="{DynamicResource Berth.TextSecondary}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding ShowRightText, Converter={StaticResource BoolToVisibility}}" />
+
+                    <Button x:Name="ActionButton"
+                            Content="{Binding ActionButtonText}"
+                            Command="{Binding ActionCommand}"
+                            MinHeight="{DynamicResource Berth.ControlHeight}"
+                            Margin="{DynamicResource Berth.Space.StatusActionPullRight}"
+                            Background="Transparent"
+                            BorderThickness="{DynamicResource Berth.Space.None}"
+                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                            Padding="{DynamicResource Berth.Space.BadgePadding}"
+                            AutomationProperties.Name="{Binding ActionButtonText}"
+                            Visibility="{Binding ShowActionButton, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

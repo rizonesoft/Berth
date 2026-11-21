@@ -313,8 +313,15 @@ internal static class TrayApp
         {
             viewModel.Detail.SetExternalBusy(trayMenu.IsOperationBusy);
             void OnTrayBusyChanged(bool busy) => viewModel.Detail.SetExternalBusy(busy);
+            void OnTrayCompleted(WindowOperationKind kind, OperationResult result) =>
+                _ = viewModel.OnExternalOperationFinishedAsync(kind, result);
             trayMenu.OperationBusyChanged += OnTrayBusyChanged;
-            window.Closed += (_, _) => trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
+            trayMenu.OperationCompleted += OnTrayCompleted;
+            window.Closed += (_, _) =>
+            {
+                trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
+                trayMenu.OperationCompleted -= OnTrayCompleted;
+            };
         }
 
         return window;

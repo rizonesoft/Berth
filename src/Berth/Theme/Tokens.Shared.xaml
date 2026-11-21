@@ -39,8 +39,13 @@
     <Thickness x:Key="Berth.Space.DetailHeader">28,24,28,16</Thickness>
     <Thickness x:Key="Berth.Space.DetailSection">28,0,28,16</Thickness>
     <Thickness x:Key="Berth.Space.DetailFooter">28,12,28,24</Thickness>
+    <Thickness x:Key="Berth.Space.StatusFooter">28,0,28,24</Thickness>
+    <Thickness x:Key="Berth.Space.StatusSquareOffset">0,11,0,0</Thickness>
+    <Thickness x:Key="Berth.Space.StatusSentence">8,6,0,6</Thickness>
+    <Thickness x:Key="Berth.Space.StatusActionPullRight">0,0,-8,0</Thickness>
     <Thickness x:Key="Berth.Space.DialogPadding">24,20,24,20</Thickness>
     <Thickness x:Key="Berth.Space.ControlGapLeft">8,0,0,0</Thickness>
+    <Thickness x:Key="Berth.Space.SectionGapLeft">16,0,0,0</Thickness>
     <Thickness x:Key="Berth.Space.SectionGapTop">0,16,0,0</Thickness>
     <Thickness x:Key="Berth.Space.ItemGapTop">0,8,0,0</Thickness>
     <sys:Double x:Key="Berth.VisiblePollSeconds">5</sys:Double>

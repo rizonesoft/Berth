@@ -102,6 +102,9 @@ internal sealed class TrayMenu : IDisposable
     /// <summary>Raised on the UI thread after a Save or Restore triggered from the menu finishes.</summary>
     public event Action<OperationResult>? OperationFinished;
 
+    /// <summary>Raised on the UI thread with the attempted operation kind and result after a tray Save or Restore completes.</summary>
+    internal event Action<Window.WindowOperationKind, OperationResult>? OperationCompleted;
+
     /// <summary>Raised on the UI thread when an off-UI-thread tray operation starts (<c>true</c>) or all finish (<c>false</c>).</summary>
     public event Action<bool>? OperationBusyChanged;
 
@@ -348,12 +351,12 @@ internal sealed class TrayMenu : IDisposable
 
     private void OnSaveClick(object? sender, EventArgs e)
     {
-        RunOperationOffUiThread(() => _service.Save());
+        RunOperationOffUiThread(Window.WindowOperationKind.Save, () => _service.Save());
     }
 
     private void OnRestoreClick(object? sender, EventArgs e)
     {
-        RunOperationOffUiThread(() => _service.Restore());
+        RunOperationOffUiThread(Window.WindowOperationKind.Restore, () => _service.Restore());
     }
 
     private void OnRestoreAutomaticallyClick(object? sender, EventArgs e)
@@ -428,7 +431,7 @@ internal sealed class TrayMenu : IDisposable
         }
     }
 
-    private void RunOperationOffUiThread(Func<OperationResult> operation)
+    private void RunOperationOffUiThread(Window.WindowOperationKind kind, Func<OperationResult> operation)
     {
         bool becameBusy;
         lock (_sync)
@@ -485,7 +488,7 @@ internal sealed class TrayMenu : IDisposable
                             return;
                         }
 
-                        CompleteOperationOnUiThread(result, activeLayout);
+                        CompleteOperationOnUiThread(kind, result, activeLayout);
                     },
                     SettleAborted);
             }
@@ -496,10 +499,11 @@ internal sealed class TrayMenu : IDisposable
         });
     }
 
-    private void CompleteOperationOnUiThread(OperationResult result, Layout? activeLayout)
+    private void CompleteOperationOnUiThread(Window.WindowOperationKind kind, OperationResult result, Layout? activeLayout)
     {
         Action? drainCallback = null;
         bool becameIdle = false;
+        bool notifyResult = false;
         try
         {
             bool disposed;
@@ -511,7 +515,7 @@ internal sealed class TrayMenu : IDisposable
             if (!disposed)
             {
                 LastObservedActiveLayout = activeLayout;
-                OperationFinished?.Invoke(result);
+                notifyResult = true;
             }
         }
         finally
@@ -523,9 +527,16 @@ internal sealed class TrayMenu : IDisposable
             }
         }
 
+        // Clear busy BEFORE publishing the finished result so open-window status precedence shows the result (not Working).
         if (becameIdle)
         {
             OperationBusyChanged?.Invoke(false);
+        }
+
+        if (notifyResult)
+        {
+            OperationFinished?.Invoke(result);
+            OperationCompleted?.Invoke(kind, result);
         }
 
         drainCallback?.Invoke();
