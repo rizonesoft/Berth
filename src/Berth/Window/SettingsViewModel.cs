@@ -194,10 +194,7 @@ internal sealed class SettingsViewModel : ObservableObject
             await prior.ConfigureAwait(false);
             bool baseline = Volatile.Read(ref _confirmedRestore);
             SettingChange result = await Task.Run(() => _changes.SetRestoreAutomatically(target, baseline)).ConfigureAwait(false);
-            if (result.Applied)
-            {
-                Volatile.Write(ref _confirmedRestore, result.Value);
-            }
+            Volatile.Write(ref _confirmedRestore, result.Value);
 
             await _marshalToUiAsync(() =>
             {

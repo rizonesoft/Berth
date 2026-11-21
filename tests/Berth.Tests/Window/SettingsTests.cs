@@ -325,6 +325,33 @@ public sealed class SettingsTests(AppFixture appFixture)
         rapidRegistry.ReleaseWriteGate();
         await rapidVm.Settings.LastStartTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.False(rapidVm.Settings.StartWithWindows);
+
+        // 5. Failed restore write that discovers an external On value via read-back retains On as rollback baseline
+        // for a subsequent failed toggle when settings.json becomes unreadable (before any refresh)!
+        using var data2 = new TestData();
+        BerthPaths paths2 = BerthPaths.ForRoot(data2.Root);
+        var layoutStore2 = new LayoutStore(paths2);
+        var settingsStore2 = new SettingsStore(paths2);
+        var log2 = new Log(paths2, new FixedClock(FixedNow));
+        var changes2 = new SettingChanges(settingsStore2, log2);
+        var vm2 = CreateViewModel(layoutStore2, innerDesktop, monitors, service, settingsStore2, runValue, changes2, log2);
+        await vm2.RefreshAsync();
+        Assert.False(vm2.Settings!.RestoreAutomatically);
+
+        // External writer saves On, then locks settings.json so a write fails while read-back discovers On!
+        settingsStore2.Save(Settings.Default with { RestoreAutomatically = true });
+        using (var lockStream = new FileStream(paths2.SettingsFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            vm2.Settings.RestoreAutomatically = true;
+            await vm2.Settings.LastRestoreTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.True(vm2.Settings.RestoreAutomatically);
+        }
+
+        // Now corrupt settings.json and toggle Off before any refresh -> must snap back to discovered On!
+        File.WriteAllBytes(paths2.SettingsFile, "{ corrupt json"u8.ToArray());
+        vm2.Settings.RestoreAutomatically = false;
+        await vm2.Settings.LastRestoreTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(vm2.Settings.RestoreAutomatically);
     }
 
     [Fact]
