@@ -16,7 +16,7 @@
 
 <img src="docs/images/main-window-light.png" alt="Screenshot of the Berth main window in the light theme showing three saved layouts on the left and a 42-icon position map across two monitors on the right" width="820">
 
-<sub>Screenshot of the built Berth window in the light theme with sample data (3 saved layouts, 42 icons across two monitors).</sub>
+<sub>Built Berth client rendered in the light theme with sample data (3 layouts, 42 icons, 2 monitors; framed capture).</sub>
 
 </div>
 
@@ -36,7 +36,7 @@ Windows forgets where your desktop icons were. Change the resolution, dock or un
 | ---- | ------------ |
 | Tray app | Single-instance tray icon (dark/light variants), context menu, failure balloon, Explorer recovery |
 | Main window | Layout list, monitor map with icon readout, Save/Restore/Undo/Revert/Rename/Delete, light/dark/HC |
-| Auto restore | Restores the active layout 3 seconds after display changes or Explorer restarts and updates the UI |
+| Auto restore | When turned on, restores the active layout 3 seconds after display changes or Explorer restarts |
 | Command line | `save`, `restore`, `undo`, `list`, `--version`, and `--help` with documented console output and exit codes |
 | Single-file | Self-contained `win-x64` `berth.exe` with embedded manifest, icon and SHA-256 checksum sidecar |
 
@@ -94,7 +94,7 @@ From PowerShell or a script, run the same operations as commands from the folder
 
 <img src="docs/images/main-window-dark.png" alt="Screenshot of the Berth main window in the dark theme showing three saved layouts on the left and a 42-icon position map across two monitors on the right" width="820">
 
-<sub>Screenshot of the built Berth window in the dark theme with sample data. The original HTML/PNG design references are kept in [`design/mockups/main-window-light.png`](design/mockups/main-window-light.png) and [`design/mockups/main-window-dark.png`](design/mockups/main-window-dark.png).</sub>
+<sub>Built Berth client rendered in the dark theme with sample data (framed capture). The original HTML/PNG design references are kept in [`design/mockups/main-window-light.png`](design/mockups/main-window-light.png) and [`design/mockups/main-window-dark.png`](design/mockups/main-window-dark.png).</sub>
 
 Berth follows the Windows theme, light or dark, and Windows high contrast. The icon is a two by two grid of desktop icons on a blue tile, with a dot on the one Berth is holding in place.
 

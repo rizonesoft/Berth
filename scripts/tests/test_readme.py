@@ -68,8 +68,11 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     # Nested linked badges: [![alt](img_target)](link_target)
     badge_matches = re.findall(r"\[!\[[^\]]*\]\(([^)\s]+)\)\]\(([^)\s]+)\)", markdown)
     badge_targets = [t for pair in badge_matches for t in pair]
-    # Standard Markdown links/images: [text](target) and ![alt](target)
-    md_targets = re.findall(r"!?\[[^\]]*\]\(([^)\s]+)\)", markdown)
+    # Standard Markdown links/images (with optional title): [text](target "Title") and ![alt](target)
+    md_targets = re.findall(
+        r'!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*\)',
+        markdown,
+    )
     # Reference-style Markdown link definitions: [label]: target
     ref_targets = re.findall(r"^\s*\[[^\]]+\]:\s*<?([^\s>]+)>?", markdown, flags=re.MULTILINE)
     # HTML img/a attributes: src="..." and href="..."
@@ -145,12 +148,19 @@ def validate_png_bytes(data: bytes, label: str = "<bytes>") -> tuple[int, int]:
         pos = crc_end
     if not saw_ihdr or not saw_iend or not idat_parts:
         raise ValueError(f"{label} is missing required PNG chunks (IHDR/IDAT/IEND)")
-    raw = zlib.decompress(b"".join(idat_parts))
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color_type)
-    if channels is not None and bit_depth in (8, 16):
-        expected_len = height * (1 + width * channels * (bit_depth // 8))
-        if len(raw) != expected_len:
-            raise ValueError(f"{label} decoded to {len(raw)} bytes, expected {expected_len}")
+    if channels is None:
+        raise ValueError(f"{label} has invalid PNG colour type {color_type}")
+    if bit_depth not in (8, 16):
+        raise ValueError(f"{label} has unsupported PNG bit depth {bit_depth}")
+    expected_len = height * (1 + width * channels * (bit_depth // 8))
+    decompressor = zlib.decompressobj()
+    raw = decompressor.decompress(b"".join(idat_parts), expected_len + 1)
+    if len(raw) > expected_len or decompressor.unconsumed_tail:
+        raise ValueError(f"{label} decompressed payload exceeds expected {expected_len} bytes")
+    raw += decompressor.flush()
+    if not decompressor.eof or len(raw) != expected_len:
+        raise ValueError(f"{label} decoded to {len(raw)} bytes, expected {expected_len}")
     return width, height
 
 
@@ -178,10 +188,30 @@ class ReadmeTests(unittest.TestCase):
         ref_errors = check_readme_links(ref_broken, ROOT)
         self.assertTrue(any("missing.md" in err for err in ref_errors))
 
-    def test_truncated_png_fails_decoder_check(self) -> None:
+        titled_broken = '[guide](missing.md "Guide")\n'
+        titled_errors = check_readme_links(titled_broken, ROOT)
+        self.assertTrue(any("missing.md" in err for err in titled_errors))
+
+    def test_truncated_invalid_color_and_oversized_png_fail_decoder_check(self) -> None:
         light_path = ROOT / "docs" / "images" / "main-window-light.png"
         with self.assertRaises(ValueError):
             validate_png_bytes(light_path.read_bytes()[:40], "truncated.png")
+
+        def make_chunk(tag: bytes, payload: bytes) -> bytes:
+            return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+
+        # Reserved colour type 7 must be rejected even with a valid CRC.
+        bad_ihdr = struct.pack(">IIBBBBB", 2, 2, 8, 7, 0, 0, 0)
+        bad_color_png = b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", bad_ihdr) + make_chunk(b"IDAT", zlib.compress(b"\x00" * 10)) + make_chunk(b"IEND", b"")
+        with self.assertRaises(ValueError):
+            validate_png_bytes(bad_color_png, "bad-color.png")
+
+        # Oversized decompressed payload must be rejected by the bounded decompressor.
+        small_ihdr = struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)
+        bomb_idat = zlib.compress(b"\x00" * 65536, level=9)
+        bomb_png = b"\x89PNG\r\n\x1a\n" + make_chunk(b"IHDR", small_ihdr) + make_chunk(b"IDAT", bomb_idat) + make_chunk(b"IEND", b"")
+        with self.assertRaises(ValueError):
+            validate_png_bytes(bomb_png, "oversized.png")
 
     def test_broken_linked_badge_and_missing_md_fragment_fail_check(self) -> None:
         broken_badge = "[![License](https://img.shields.io/example)](LICENCE-MISSING)\n"

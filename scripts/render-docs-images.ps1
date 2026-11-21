@@ -10,6 +10,63 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName PresentationCore
+if (-not ('BerthDocsPathHelper' -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public static class BerthDocsPathHelper
+{
+    private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    private const uint FILE_SHARE_ALL = 0x00000007;
+    private const uint OPEN_EXISTING = 3;
+    private const uint VOLUME_NAME_GUID = 0x1;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(
+        SafeFileHandle hFile,
+        StringBuilder lpszFilePath,
+        uint cchFilePath,
+        uint dwFlags);
+
+    public static string GetCanonicalDirectoryKey(string directoryPath)
+    {
+        using SafeFileHandle handle = CreateFileW(
+            directoryPath,
+            0,
+            FILE_SHARE_ALL,
+            IntPtr.Zero,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            return Path.GetFullPath(directoryPath).TrimEnd('\\', '/').ToLowerInvariant();
+        }
+        var sb = new StringBuilder(1024);
+        uint len = GetFinalPathNameByHandleW(handle, sb, (uint)sb.Capacity, VOLUME_NAME_GUID);
+        if (len == 0 || len >= sb.Capacity)
+        {
+            return Path.GetFullPath(directoryPath).TrimEnd('\\', '/').ToLowerInvariant();
+        }
+        return sb.ToString().TrimEnd('\\', '/').ToLowerInvariant();
+    }
+}
+"@
+}
 
 function Test-ValidDocsPng {
     param(
@@ -90,12 +147,12 @@ try {
     New-Item -ItemType Directory -Path $resolvedDestDir -Force | Out-Null
     $lockDir = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)) 'Berth\locks'
     New-Item -ItemType Directory -Path $lockDir -Force | Out-Null
-    $destFull = $resolvedDestDir.TrimEnd('\', '/').ToLowerInvariant()
+    # Resolve via GetFinalPathNameByHandleW (VOLUME_NAME_GUID) so subst/junction/symlink aliases share one lock.
+    $destFull = [BerthDocsPathHelper]::GetCanonicalDirectoryKey($resolvedDestDir)
     $destHash = [System.BitConverter]::ToString(
         [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($destFull))
     ).Replace('-', '').Substring(0, 16)
-    # Machine-wide exclusive lock file under ProgramData: identical across all Windows sessions and accounts
-    # (independent of drive mappings or per-user TEMP) and released automatically by the OS kernel on termination.
+    # Machine-wide exclusive lock file under ProgramData with DeleteOnClose so the OS kernel removes it on close/kill.
     $lockPath = Join-Path $lockDir "berth-docs-images-$destHash.lock"
     $lockStream = $null
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -105,10 +162,12 @@ try {
                 $lockPath,
                 [System.IO.FileMode]::OpenOrCreate,
                 [System.IO.FileAccess]::ReadWrite,
-                [System.IO.FileShare]::None
+                [System.IO.FileShare]::None,
+                4096,
+                [System.IO.FileOptions]::DeleteOnClose
             )
         }
-        catch [System.IO.IOException] {
+        catch [System.IO.IOException], [System.UnauthorizedAccessException] {
             if ([DateTime]::UtcNow -ge $deadline) {
                 throw "Timed out waiting for docs image publish lock '$lockPath' for '$resolvedDestDir'."
             }
