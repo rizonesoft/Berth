@@ -490,8 +490,72 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.True(deleteRan);
                 Assert.True(moreButton.IsKeyboardFocused);
 
+                // Regression: open More on layout A, dismiss with Escape, switch to layout B, open MoreMenu directly
+                // (as Shift+F10 does, bypassing OnMoreButtonClick), invoke Revert -> layout B (NOT A) must revert!
+                var layoutAWithPrev = new Layout(
+                    Layout.CurrentSchemaVersion,
+                    ArrangementKey.From([MonPrimary]),
+                    "Layout A",
+                    FixedNow,
+                    [MonPrimary],
+                    [new IconPosition("id-1", "Notes.txt", 200, 200)],
+                    new PreviousSave(FixedNow.AddHours(-1), [new IconPosition("id-1", "Notes.txt", 10, 10)]));
+                var layoutBWithPrev = new Layout(
+                    Layout.CurrentSchemaVersion,
+                    ArrangementKey.From([MonLeft, MonPrimary]),
+                    "Layout B",
+                    FixedNow,
+                    [MonLeft, MonPrimary],
+                    [new IconPosition("id-1", "Notes.txt", 500, 500)],
+                    new PreviousSave(FixedNow.AddHours(-2), [new IconPosition("id-1", "Notes.txt", 50, 50)]));
+                layoutStore.Save(layoutAWithPrev);
+                layoutStore.Save(layoutBWithPrev);
                 return w;
             });
+
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                vm.Selected = vm.Rows.Single(r => r.Name == "Layout A");
+                PumpUi(window!);
+                WpfButton moreButton = window!.DetailHeaderControl.MoreButton;
+                var morePeer = UIElementAutomationPeer.CreatePeerForElement(moreButton)!;
+                var invoke = (System.Windows.Automation.Provider.IInvokeProvider)morePeer.GetPattern(PatternInterface.Invoke);
+                invoke.Invoke();
+                PumpUi(window);
+                WpfContextMenu menu = moreButton.ContextMenu!;
+                Assert.True(menu.IsOpen);
+                menu.Focus();
+                PumpUi(window);
+                SendKey(menu, Key.Escape, sendKeyUp: true);
+                PumpUi(window);
+                Assert.False(menu.IsOpen);
+
+                // Select Layout B, then open MoreMenu directly (Shift+F10 path bypassing OnMoreButtonClick) and Revert!
+                vm.Selected = vm.Rows.Single(r => r.Name == "Layout B");
+                PumpUi(window);
+                menu.PlacementTarget = moreButton;
+                menu.IsOpen = true;
+                PumpUi(window);
+                var revertInvoke = (System.Windows.Automation.Provider.IInvokeProvider)
+                    UIElementAutomationPeer.CreatePeerForElement(window.DetailHeaderControl.RevertMenuItem)!
+                        .GetPattern(PatternInterface.Invoke);
+                revertInvoke.Invoke();
+            });
+
+            string keyA = ArrangementKey.From([MonPrimary]);
+            string keyB = ArrangementKey.From([MonLeft, MonPrimary]);
+            DateTime revertDeadline = DateTime.UtcNow.AddSeconds(5);
+            while (layoutStore.Snapshot(keyB).Layout!.Icons[0].X != 50
+                && DateTime.UtcNow < revertDeadline)
+            {
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+
+            // Layout B reverted to (50, 50), while Layout A stayed untouched at (200, 200)!
+            Assert.Equal(50, layoutStore.Snapshot(keyB).Layout!.Icons[0].X);
+            Assert.Equal(200, layoutStore.Snapshot(keyA).Layout!.Icons[0].X);
         }
         finally
         {
@@ -812,6 +876,24 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 PumpUi(window);
                 Assert.True(restoreSwitch.IsKeyboardFocused);
                 Assert.Equal(0, markers.SelectedIndex);
+
+                // 3f. Synchronous recovery after a transient Selected=null while a marker had focus:
+                // focus marker 0, clear Selected (simulating transient read failure), move focus to switch,
+                // then restore Selected -> synchronous map recovery MUST NOT steal focus off the switch!
+                m0.Focus();
+                PumpUi(window);
+                Assert.True(m0.IsKeyboardFocused);
+
+                LayoutRow savedSelected = vm.Selected!;
+                vm.Selected = null;
+                PumpUi(window);
+                restoreSwitch.Focus();
+                PumpUi(window);
+                Assert.True(restoreSwitch.IsKeyboardFocused);
+
+                vm.Selected = savedSelected;
+                PumpUi(window);
+                Assert.True(restoreSwitch.IsKeyboardFocused);
             });
         }
         finally
@@ -867,18 +949,18 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 SendProcessInputTab(firstRow);
                 PumpUi(w);
                 Assert.True(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
-                AssertLiveWpfFocusAdorner(panel.RestoreAutomaticallySwitch, expectedPresent: true);
-                AssertLiveWpfFocusAdorner(panel.StartWithWindowsSwitch, expectedPresent: false);
+                AssertSwitchFocusRings(panel.RestoreAutomaticallySwitch, panel, expectedPresent: true);
+                AssertSwitchFocusRings(panel.StartWithWindowsSwitch, panel, expectedPresent: false);
 
-                // Tab moves to Start with Windows without toggling Restore automatically: adorner leaves Restore switch
-                // and appears on Start switch!
+                // Tab moves to Start with Windows without toggling Restore automatically: rings leave Restore switch
+                // and appear on Start switch!
                 SendProcessInputTab(panel.RestoreAutomaticallySwitch);
                 PumpUi(w);
                 Assert.False(vm.Settings!.RestoreAutomatically);
                 Assert.False(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
                 Assert.True(panel.StartWithWindowsSwitch.IsKeyboardFocused);
-                AssertLiveWpfFocusAdorner(panel.RestoreAutomaticallySwitch, expectedPresent: false);
-                AssertLiveWpfFocusAdorner(panel.StartWithWindowsSwitch, expectedPresent: true);
+                AssertSwitchFocusRings(panel.RestoreAutomaticallySwitch, panel, expectedPresent: false);
+                AssertSwitchFocusRings(panel.StartWithWindowsSwitch, panel, expectedPresent: true);
 
                 // Space (key-down + key-up) toggles Start with Windows ON!
                 SendKey(panel.StartWithWindowsSwitch, Key.Space, sendKeyUp: true);
@@ -1202,7 +1284,7 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         InputManager.Current.ProcessInput(args);
     }
 
-    private static void AssertLiveWpfFocusAdorner(System.Windows.Controls.Control control, bool expectedPresent)
+    private static void AssertSwitchFocusRings(System.Windows.Controls.Control control, FrameworkElement scopeRoot, bool expectedPresent)
     {
         var outer = (Border)control.Template.FindName("FocusRingOuter", control);
         var inner = (Border)control.Template.FindName("FocusRingInner", control);
@@ -1230,6 +1312,31 @@ public sealed class AccessibilityTests(AppFixture appFixture)
         var innerBrush = Assert.IsType<SolidColorBrush>(inner.BorderBrush);
         Assert.True(innerBrush.Color.A >= 160);
         Assert.NotEqual(outerBrush.Color, innerBrush.Color);
+
+        // Verify NO intermediate container up to scopeRoot clips or hides the 46x26 outer focus ring!
+        var ringRect = new Rect(0d, 0d, outer.ActualWidth, outer.ActualHeight);
+        DependencyObject? cursor = VisualTreeHelper.GetParent(outer);
+        while (cursor is not null && !ReferenceEquals(cursor, scopeRoot))
+        {
+            if (cursor is UIElement ui)
+            {
+                Assert.Equal(Visibility.Visible, ui.Visibility);
+                Assert.Equal(1d, ui.Opacity);
+                if (VisualTreeHelper.GetClip(ui) is Geometry clip)
+                {
+                    Rect ringInUi = outer.TransformToAncestor(ui).TransformBounds(ringRect);
+                    Assert.True(clip.Bounds.Contains(ringInUi), $"Clip on {ui.GetType().Name} clips switch FocusRingOuter.");
+                }
+
+                if (ui.ClipToBounds && ui is FrameworkElement fe)
+                {
+                    Rect ringInUi = outer.TransformToAncestor(fe).TransformBounds(ringRect);
+                    Assert.True(new Rect(0d, 0d, fe.ActualWidth, fe.ActualHeight).Contains(ringInUi), $"ClipToBounds on {fe.GetType().Name} clips switch FocusRingOuter.");
+                }
+            }
+
+            cursor = VisualTreeHelper.GetParent(cursor);
+        }
     }
 
     private static void AssertFullTabCycle(MainWindow window, string[] expected)

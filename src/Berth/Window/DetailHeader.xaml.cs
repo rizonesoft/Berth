@@ -42,6 +42,18 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         menu.IsOpen = true;
     }
 
+    private void OnMoreMenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (MoreButton.ContextMenu is not { } menu)
+        {
+            return;
+        }
+
+        _menuTargetLayout = (DataContext as DetailViewModel)?.SelectedSavedLayout;
+        menu.DataContext = DataContext;
+        RevertMenuItem.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+    }
+
     private void OnMoreMenuPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Escape && MoreButton.ContextMenu is { IsOpen: true } menu)
@@ -53,6 +65,7 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
 
     private void OnMoreMenuClosed(object sender, RoutedEventArgs e)
     {
+        _menuTargetLayout = null;
         if (MoreButton.IsVisible && MoreButton.IsEnabled)
         {
             MoreButton.Focus();

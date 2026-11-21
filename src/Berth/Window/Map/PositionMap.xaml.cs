@@ -215,20 +215,23 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         {
             if (restoredSelection is not null)
             {
-                MarkersList.UpdateLayout();
-                if (MarkersList.ItemContainerGenerator.ContainerFromItem(restoredSelection) is ListBoxItem container)
+                if (CanRestoreMapFocus())
                 {
-                    container.Focus();
-                }
-                else
-                {
-                    MapMarkerItem target = restoredSelection;
-                    _ = Dispatcher.BeginInvoke(
-                        System.Windows.Threading.DispatcherPriority.Loaded,
-                        new Action(() => TryRestoreDeferredFocus(target)));
+                    MarkersList.UpdateLayout();
+                    if (MarkersList.ItemContainerGenerator.ContainerFromItem(restoredSelection) is ListBoxItem container)
+                    {
+                        container.Focus();
+                    }
+                    else
+                    {
+                        MapMarkerItem target = restoredSelection;
+                        _ = Dispatcher.BeginInvoke(
+                            System.Windows.Threading.DispatcherPriority.Loaded,
+                            new Action(() => TryRestoreDeferredFocus(target)));
+                    }
                 }
             }
-            else if (_items.Count == 0)
+            else if (_items.Count == 0 && CanRestoreMapFocus())
             {
                 // Focused marker disappeared and map is now empty: move focus cleanly so it is never stranded.
                 _ = MarkersList.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
@@ -236,11 +239,16 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         }
     }
 
+    private bool CanRestoreMapFocus()
+    {
+        System.Windows.IInputElement? focused = System.Windows.Input.Keyboard.FocusedElement;
+        return focused is null || focused is System.Windows.Window || MarkersList.IsKeyboardFocusWithin;
+    }
+
     internal void TryRestoreDeferredFocus(MapMarkerItem target)
     {
         // Never steal focus back if the user has already moved keyboard focus outside the map.
-        if (System.Windows.Input.Keyboard.FocusedElement is not null
-            && !MarkersList.IsKeyboardFocusWithin)
+        if (!CanRestoreMapFocus())
         {
             return;
         }
