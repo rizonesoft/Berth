@@ -151,7 +151,7 @@ Two switches at the bottom of the layouts pane, label on the left and switch on 
 - "Save layout" and "Restore layout" do what the window's buttons do. "Restore layout" is disabled when the current arrangement has no layout or auto arrange is on.
 - "Exit" removes the icon and ends the process.
 - After Explorer restarts (the `TaskbarCreated` message) Berth adds its icon again.
-- Berth shows a balloon only for a failure nobody would otherwise see: an automatic restore that was refused or failed (§16). Its title is "Berth could not restore your icons", its text the §18 message, and clicking it opens the main window. A success shows nothing.
+- Berth shows a balloon only for a failure nobody would otherwise see: an automatic restore that was refused or failed (§16). Its title is "Berth could not restore your icons", its text the §18 message, and clicking it opens the main window. A success shows nothing. When a balloon body would exceed Windows's 255-character `NOTIFYICONDATA.szInfo` limit, Berth shortens the embedded detail with an ellipsis so closing guidance (such as "The details are in the log.") stays whole, while the log keeps the full message (clarified 2026-11-21, D06 T01 §3).
 
 ## 13. Command line
 

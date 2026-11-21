@@ -32,6 +32,7 @@ internal static class IsolatedStaChildRunner
     public const string SystemEventsTrayWiringScenario = "system-events-tray-wiring";
     public const string AutoRestoreTrayScenario = "auto-restore-tray";
     public const string AutoRestoreDirectShutdownScenario = "auto-restore-direct-shutdown";
+    public const string AutoRestoreBalloonScenario = "auto-restore-balloon";
 
     public static int RunMain(string[] args)
     {
@@ -201,6 +202,8 @@ internal static class IsolatedStaChildRunner
             AutoRestoreTrayScenario => RunAutoRestoreTrayScenario(paths, log, instanceName),
 
             AutoRestoreDirectShutdownScenario => RunAutoRestoreDirectShutdownScenario(paths, log, instanceName),
+
+            AutoRestoreBalloonScenario => RunAutoRestoreBalloonScenario(paths, log, instanceName),
 
             _ => throw new InvalidOperationException($"Unknown scenario '{scenario}'."),
         };
@@ -1496,8 +1499,8 @@ internal static class IsolatedStaChildRunner
                 }
 
                 nint hwnd = capturedEvents.Handle;
-                var appExited = new ManualResetEventSlim(false);
-                app.Exit += (_, _) => appExited.Set();
+                var appExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                app.Exit += (_, _) => appExited.TrySetResult();
                 _ = Task.Run(() =>
                 {
                     try
@@ -1510,7 +1513,7 @@ internal static class IsolatedStaChildRunner
                         // 10.5s (strictly past both historical 5s waits = 10s) so only an unconditional drain keeps the
                         // owned Composition alive until the restore completes.
                         _ = app.Dispatcher.BeginInvoke(() => app.Shutdown(0));
-                        if (!appExited.Wait(TimeSpan.FromSeconds(5)))
+                        if (!appExited.Task.Wait(TimeSpan.FromSeconds(5)))
                         {
                             throw new TimeoutException("Application.Exit did not fire in time.");
                         }
@@ -1524,10 +1527,6 @@ internal static class IsolatedStaChildRunner
                         workerError = ex.ToString();
                         app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
                     }
-                    finally
-                    {
-                        appExited.Dispose();
-                    }
                 });
             });
 
@@ -1539,6 +1538,235 @@ internal static class IsolatedStaChildRunner
                 $"restoreCompletedBeforeDispose={restoreCompletedBeforeDispose}",
                 $"desktopReadAfterDispose={desktopReadAfterDispose}",
                 $"posAfterReturn={posAfterReturn.X},{posAfterReturn.Y}",
+                $"workerError={workerError}",
+                $"exitCode={exitCode}",
+            ]);
+
+        return exitCode;
+    }
+
+    private static int RunAutoRestoreBalloonScenario(BerthPaths paths, Log log, string instanceName)
+    {
+        string reportFile = Environment.GetEnvironmentVariable(ReportFileEnvVar)
+            ?? throw new InvalidOperationException("BERTH_TEST_CHILD_REPORT_FILE must be set.");
+
+        var fixedNow = new DateTimeOffset(2026, 11, 20, 9, 14, 0, TimeSpan.Zero);
+        var clock = new FixedChildClock(fixedNow);
+        MonitorInfo laptopMon = new(0, 0, 1920, 1080, 100, true);
+        var monitors = new Berth.Tests.Fakes.FakeMonitors(laptopMon);
+        var desktop = new Berth.Tests.Fakes.FakeDesktopIcons(
+            new IconPosition("id-a", "Alpha", 900, 900),
+            new IconPosition("id-b", "Beta", 950, 950));
+        desktop.SetAutoArrange(true);
+
+        var store = new LayoutStore(paths);
+        string laptopKey = ArrangementKey.From([laptopMon]);
+        store.Save(new Layout(
+            Layout.CurrentSchemaVersion,
+            laptopKey,
+            "Laptop",
+            fixedNow,
+            [laptopMon],
+            [
+                new IconPosition("id-a", "Alpha", 111, 222),
+                new IconPosition("id-b", "Beta", 333, 444),
+            ],
+            null));
+
+        var settingsStore = new SettingsStore(paths);
+        settingsStore.Save(Settings.Default with { RestoreAutomatically = true });
+
+        var gate = OperationLock.ForApp(paths);
+        var service = new LayoutService(desktop, monitors, store, paths, gate, log, clock);
+        using var composition = Composition.ForTest(paths, log, monitors, desktop, store, gate, service);
+        var theme = new Berth.Desktop.TaskbarTheme(@"Software\Berth.Tests\MissingTrayTheme");
+
+        int uiThreadId = Environment.CurrentManagedThreadId;
+        var balloons = new List<(string Title, string Text, System.Windows.Forms.ToolTipIcon Icon, bool OnUiThread)>();
+        TrayIcon? capturedIcon = null;
+        SystemEvents? capturedEvents = null;
+        int bringToFrontCount = 0;
+        int finishedCount = 0;
+        using var step1Done = new ManualResetEventSlim(false);
+        using var step2Done = new ManualResetEventSlim(false);
+        using var step3Done = new ManualResetEventSlim(false);
+        int balloonsAfterRefusal = -1;
+        int balloonsAfterPartial = -1;
+        int balloonsAfterSuccess = -1;
+        string refusalTitle = string.Empty;
+        string refusalText = string.Empty;
+        string partialText = string.Empty;
+        bool allOnUiThread = true;
+        bool allWarningIcon = true;
+        string workerError = string.Empty;
+
+        int exitCode = TrayApp.RunWithInstance(
+            openWindow: false,
+            Settings.Default with { RestoreAutomatically = true },
+            onWindowOpened: null,
+            () => new SingleInstance(instanceName),
+            log,
+            showCrashMessage: _ => true,
+            runPrimary: null,
+            paths: paths,
+            monitors: monitors,
+            clock: clock,
+            zone: TimeZoneInfo.Utc,
+            taskbarTheme: theme,
+            composition: composition,
+            onTrayIconCreated: icon => capturedIcon = icon,
+            onSystemEventsCreated: ev => capturedEvents = ev,
+            displayChangeSettle: TimeSpan.FromMilliseconds(40),
+            explorerRestartSettle: TimeSpan.FromMilliseconds(40),
+            createMainWindow: () => new RecordingMainWindow(() => Interlocked.Increment(ref bringToFrontCount)),
+            showBalloon: (title, text, icon) =>
+            {
+                bool onUi = Environment.CurrentManagedThreadId == uiThreadId;
+                if (!onUi)
+                {
+                    allOnUiThread = false;
+                }
+
+                if (icon != System.Windows.Forms.ToolTipIcon.Warning)
+                {
+                    allWarningIcon = false;
+                }
+
+                lock (balloons)
+                {
+                    balloons.Add((title, text, icon, onUi));
+                }
+            },
+            onAutoRestoreCreated: auto =>
+            {
+                auto.Finished += (_, _, _) =>
+                {
+                    int n = Interlocked.Increment(ref finishedCount);
+                    if (n == 1)
+                    {
+                        step1Done.Set();
+                    }
+                    else if (n == 2)
+                    {
+                        step2Done.Set();
+                    }
+                    else if (n == 3)
+                    {
+                        step3Done.Set();
+                    }
+                };
+            },
+            onAppStartup: app =>
+            {
+                if (capturedIcon is null || capturedEvents is null)
+                {
+                    app.Shutdown(2);
+                    return;
+                }
+
+                nint hwnd = capturedEvents.Handle;
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        // 1. AutoArrange ON -> Refused -> 1 warning balloon + 1 WARN log line.
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!step1Done.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("AutoArrange refusal restore did not finish.");
+                        }
+
+                        // Drain queued BeginInvoke(Normal) balloon work on UI dispatcher before reading recorder.
+                        app.Dispatcher.Invoke(
+                            () =>
+                            {
+                                lock (balloons)
+                                {
+                                    balloonsAfterRefusal = balloons.Count;
+                                    if (balloons.Count >= 1)
+                                    {
+                                        refusalTitle = balloons[0].Title;
+                                        refusalText = balloons[0].Text;
+                                    }
+                                }
+
+                                // Raise the real NotifyIcon.BalloonTipClicked event -> must open/bring window to front!
+                                typeof(System.Windows.Forms.NotifyIcon)
+                                    .GetMethod("OnBalloonTipClicked", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                                    .Invoke(capturedIcon.NotifyIcon, null);
+                            },
+                            DispatcherPriority.Background);
+
+                        // 2. Partial restore (NotPlaced: 1 icon shifts off its saved spot) -> 1 warning balloon + 1 FAIL log line!
+                        desktop.SetAutoArrange(false);
+                        desktop.SnapBy = 10;
+                        desktop.SnapIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "id-b" };
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!step2Done.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Partial restore did not finish.");
+                        }
+
+                        app.Dispatcher.Invoke(
+                            () =>
+                            {
+                                lock (balloons)
+                                {
+                                    balloonsAfterPartial = balloons.Count;
+                                    if (balloons.Count >= 2)
+                                    {
+                                        partialText = balloons[1].Text;
+                                    }
+                                }
+                            },
+                            DispatcherPriority.Background);
+
+                        // 3. Successful restore -> 0 new balloons + 1 INFO log line!
+                        desktop.SnapBy = 0;
+                        desktop.SnapIds = null;
+                        _ = SystemEventsTests.PostMessageW(hwnd, SystemEvents.WmDisplayChange, IntPtr.Zero, IntPtr.Zero);
+                        if (!step3Done.Wait(TimeSpan.FromSeconds(5)))
+                        {
+                            throw new TimeoutException("Successful restore did not finish.");
+                        }
+
+                        app.Dispatcher.Invoke(
+                            () =>
+                            {
+                                lock (balloons)
+                                {
+                                    balloonsAfterSuccess = balloons.Count;
+                                }
+
+                                app.Shutdown(0);
+                            },
+                            DispatcherPriority.Background);
+                    }
+                    catch (Exception ex)
+                    {
+                        workerError = ex.ToString();
+                        app.Dispatcher.BeginInvoke(() => app.Shutdown(3));
+                    }
+                });
+            });
+
+        string[] logLines = File.Exists(paths.LogFile) ? File.ReadAllLines(paths.LogFile) : [];
+        File.WriteAllLines(
+            reportFile,
+            [
+                $"balloonsAfterRefusal={balloonsAfterRefusal}",
+                $"balloonsAfterPartial={balloonsAfterPartial}",
+                $"balloonsAfterSuccess={balloonsAfterSuccess}",
+                $"refusalTitle={refusalTitle}",
+                $"refusalText={refusalText}",
+                $"partialText={partialText}",
+                $"allOnUiThread={allOnUiThread}",
+                $"allWarningIcon={allWarningIcon}",
+                $"bringToFrontCount={bringToFrontCount}",
+                $"logLineCount={logLines.Length}",
+                $"logLine0={(logLines.Length > 0 ? logLines[0] : string.Empty)}",
+                $"logLine1={(logLines.Length > 1 ? logLines[1] : string.Empty)}",
+                $"logLine2={(logLines.Length > 2 ? logLines[2] : string.Empty)}",
                 $"workerError={workerError}",
                 $"exitCode={exitCode}",
             ]);

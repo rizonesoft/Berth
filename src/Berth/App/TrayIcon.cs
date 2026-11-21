@@ -20,6 +20,7 @@ internal sealed class TrayIcon : IDisposable
 
     private readonly TaskbarTheme _theme;
     private readonly Action<Action>? _marshal;
+    private readonly Action<string, string, ToolTipIcon> _showBalloon;
     private readonly NotifyIcon _notifyIcon;
     private readonly Lock _sync = new();
     private Icon? _currentIcon;
@@ -30,12 +31,14 @@ internal sealed class TrayIcon : IDisposable
         Layout? initialActive = null,
         DateTimeOffset? now = null,
         TimeZoneInfo? zone = null,
-        Action<Action>? marshal = null)
+        Action<Action>? marshal = null,
+        Action<string, string, ToolTipIcon>? showBalloon = null)
     {
         ArgumentNullException.ThrowIfNull(theme);
         _theme = theme;
         _marshal = marshal;
         _notifyIcon = new NotifyIcon();
+        _showBalloon = showBalloon ?? ((title, text, icon) => _notifyIcon.ShowBalloonTip(0, title, text, icon));
 
         // Initialize icon and tooltip BEFORE setting Visible = true so Windows never flashes an empty icon or tooltip.
         ApplyIconForTheme();
@@ -48,6 +51,7 @@ internal sealed class TrayIcon : IDisposable
         // double-click (suppressing MouseClick on the second button-up), so filtering MouseClick to MouseButtons.Left
         // handles both gestures once and ignores right/middle clicks and double-clicks.
         _notifyIcon.MouseClick += OnNotifyIconMouseClick;
+        _notifyIcon.BalloonTipClicked += OnNotifyIconBalloonTipClicked;
         _theme.Changed += OnThemeChanged;
         _notifyIcon.Visible = true;
     }
@@ -165,6 +169,30 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    /// <summary>Shows Berth's warning balloon on the UI thread unless the tray icon has been disposed (SPEC §12, §16).</summary>
+    public void ShowBalloon(string title, string text)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+        }
+
+        if (_marshal is not null)
+        {
+            _marshal(() => ApplyShowBalloon(title, text));
+        }
+        else
+        {
+            ApplyShowBalloon(title, text);
+        }
+    }
+
     public void Dispose()
     {
         lock (_sync)
@@ -177,6 +205,7 @@ internal sealed class TrayIcon : IDisposable
             _disposed = true;
             _theme.Changed -= OnThemeChanged;
             _notifyIcon.MouseClick -= OnNotifyIconMouseClick;
+            _notifyIcon.BalloonTipClicked -= OnNotifyIconBalloonTipClicked;
             _notifyIcon.ContextMenuStrip = null;
             _notifyIcon.Visible = false;
             _notifyIcon.Icon = null;
@@ -220,6 +249,33 @@ internal sealed class TrayIcon : IDisposable
             _currentIcon = next;
             _notifyIcon.Icon = next;
             previous?.Dispose();
+        }
+    }
+
+    private void ApplyShowBalloon(string title, string text)
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _showBalloon(title, text, ToolTipIcon.Warning);
+        }
+    }
+
+    private void OnNotifyIconBalloonTipClicked(object? sender, EventArgs e)
+    {
+        bool disposed;
+        lock (_sync)
+        {
+            disposed = _disposed;
+        }
+
+        if (!disposed)
+        {
+            OpenRequested?.Invoke();
         }
     }
 

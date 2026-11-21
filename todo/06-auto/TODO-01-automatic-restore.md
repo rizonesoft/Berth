@@ -116,14 +116,16 @@ The one notification Berth shows: an automatic restore that was refused or faile
 1. Add `BalloonPolicy` (pure). Done when: it says when to show and what.
 2. Show it through the tray icon. Done when: a refused automatic restore shows one balloon and a click opens the window.
 
-- [ ] Add `BalloonPolicy.For(OperationResult result)` in `src/Berth/App/BalloonPolicy.cs` returning `null` for `Restored` (including one with missing icons) and for `Refused` with `NoLayout`, and otherwise the title `Berth could not restore your icons` with the text `Messages.Refusal(result)`, or for a `Failed` restore whose icons did not stay the SPEC §8 partial sentence from `Messages.Status`. Done when: unit tests cover success, success with missing icons, no layout, auto arrange, unreachable desktop, busy, a failed write and icons that did not stay, comparing title and text. Cheaper substitute: a balloon when saved icons are merely missing, which SPEC §16 counts as success.
-- [ ] Add `TrayIcon.ShowBalloon(string title, string text)` and call it from `AutoRestore.Finished` when the policy returns a balloon. Done when: a test on the app fixture with auto arrange on in the fake triggers an automatic restore and sees exactly one `ShowBalloon` call through a seam, with the SPEC text. Cheaper substitute: a message box from a background trigger, which steals focus.
-- [ ] Clicking the balloon raises `OpenRequested` (`NotifyIcon.BalloonTipClicked`). Done when: a test invokes the handler and the window factory's `BringToFront` is called. Cheaper substitute: a balloon that leads nowhere.
-- [ ] Assert the log holds exactly one line per automatic restore, written by `LayoutService`: `WARN` for a refusal, `FAIL` for a failure, `INFO` for a success, each ending ` (automatic, <reason>)` (SPEC §16). Done when: a test reads exactly one new line, `WARN Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again. (automatic, display change)`. Cheaper substitute: a second line from this layer, so every automatic restore is logged twice.
-- [ ] Add `tests/Berth.Tests/App/BalloonTests.cs`. Done when: all pass, and the success test fails when a balloon is returned for `Restored`. Cheaper substitute: none needed.
-- [ ] Commit: `app: failure balloon`
+- [x] Add `BalloonPolicy.For(OperationResult result)` in `src/Berth/App/BalloonPolicy.cs` returning `null` for `Restored` (including one with missing icons) and for `Refused` with `NoLayout`, and otherwise the title `Berth could not restore your icons` with the text `Messages.Refusal(result)`, or for a `Failed` restore whose icons did not stay the SPEC §8 partial sentence from `Messages.Status`. Done when: unit tests cover success, success with missing icons, no layout, auto arrange, unreachable desktop, busy, a failed write and icons that did not stay, comparing title and text. Cheaper substitute: a balloon when saved icons are merely missing, which SPEC §16 counts as success.
+- [x] Add `TrayIcon.ShowBalloon(string title, string text)` and call it from `AutoRestore.Finished` when the policy returns a balloon. Done when: a test on the app fixture with auto arrange on in the fake triggers an automatic restore and sees exactly one `ShowBalloon` call through a seam, with the SPEC text. Cheaper substitute: a message box from a background trigger, which steals focus.
+- [x] Clicking the balloon raises `OpenRequested` (`NotifyIcon.BalloonTipClicked`). Done when: a test invokes the handler and the window factory's `BringToFront` is called. Cheaper substitute: a balloon that leads nowhere.
+- [x] Assert the log holds exactly one line per automatic restore, written by `LayoutService`: `WARN` for a refusal, `FAIL` for a failure, `INFO` for a success, each ending ` (automatic, <reason>)` (SPEC §16). Done when: a test reads exactly one new line, `WARN Auto arrange icons is on, so Windows would ignore the saved positions. Turn it off and try again. (automatic, display change)`. Cheaper substitute: a second line from this layer, so every automatic restore is logged twice.
+- [x] Add `tests/Berth.Tests/App/BalloonTests.cs`. Done when: all pass, and the success test fails when a balloon is returned for `Restored`. Cheaper substitute: none needed.
+- [x] Commit: `app: failure balloon`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*BalloonTests"` passes, and fails when a successful automatic restore produces a balloon.
+
+> **Started:** 2026-11-21
 
 ## 4. Tray icon added again after Explorer restarts
 
