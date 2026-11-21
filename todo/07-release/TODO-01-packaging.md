@@ -151,6 +151,8 @@ What 0.1.0 contains, and whose work it includes.
 
 **Test checkpoint:** `python -m unittest discover -s scripts/tests` passes, and `test_notice.py` fails when a package in `Directory.Packages.props` is absent from `NOTICE.md`.
 
+> **Started:** 2026-11-21
+
 ## 5. Acceptance sweep against the SPEC
 
 The plan's acceptance bar, checked line by line: every control, state and command in `design/SPEC.md` works end to end.
