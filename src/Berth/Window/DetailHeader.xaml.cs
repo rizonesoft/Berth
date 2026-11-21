@@ -42,6 +42,15 @@ internal sealed partial class DetailHeader : System.Windows.Controls.UserControl
         menu.IsOpen = true;
     }
 
+    private void OnMoreMenuPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape && MoreButton.ContextMenu is { IsOpen: true } menu)
+        {
+            menu.IsOpen = false;
+            e.Handled = true;
+        }
+    }
+
     private void OnMoreMenuClosed(object sender, RoutedEventArgs e)
     {
         if (MoreButton.IsVisible && MoreButton.IsEnabled)

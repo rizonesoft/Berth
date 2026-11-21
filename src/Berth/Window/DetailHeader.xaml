@@ -75,6 +75,7 @@
                         <Button.ContextMenu>
                             <ContextMenu x:Name="MoreMenu"
                                          AutomationProperties.Name="More options"
+                                         PreviewKeyDown="OnMoreMenuPreviewKeyDown"
                                          Closed="OnMoreMenuClosed">
                                 <MenuItem x:Name="RenameMenuItem"
                                           Header="Rename"

@@ -121,9 +121,21 @@ public sealed class AccessibilityTests(AppFixture appFixture)
             {
                 PumpUi(window!);
                 Assert.Contains(vm.Notices.Items, i => i.ButtonText == "Turn it off");
+                // Re-focusing or continuing traversal after the busy round-trip must land on a valid named control!
                 var current = Keyboard.FocusedElement as UIElement;
                 Assert.NotNull(current);
                 Assert.True(current!.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                PumpUi(window!);
+                Assert.True(FocusedName() is "Laptop" or "Save current layout");
+
+                // And tabbing directly from the still-present "Turn it off" button moves straight to "Save current layout"!
+                WpfButton remainingTurnOff = FindVisualChildren<WpfButton>(window!.NoticesControl)
+                    .Single(b => string.Equals(AutomationProperties.GetName(b), "Turn it off", StringComparison.Ordinal));
+                remainingTurnOff.Focus();
+                PumpUi(window!);
+                Assert.True(remainingTurnOff.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                PumpUi(window!);
+                Assert.Equal("Save current layout", FocusedName());
             });
 
             // 1c. Activate focused "Turn it off" notice when it succeeds -> notice disappears and focus continues cleanly!
@@ -137,11 +149,22 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 SendKey(turnOffBtn, Key.Enter, sendKeyUp: true);
             });
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            await vm.RefreshAsync();
+            while (vm.Detail.IsBusy)
+            {
+                await Task.Delay(25, TestContext.Current.CancellationToken);
+            }
+
             appFixture.Invoke(() =>
             {
                 PumpUi(window!);
                 Assert.DoesNotContain(vm.Notices.Items, i => i.ButtonText == "Turn it off");
+                // Continue traversal from the current focused element (or window root if focus was on the removed button)
+                // without restarting at LayoutsList!
+                UIElement current = Keyboard.FocusedElement as UIElement ?? window!;
+                Assert.True(current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                PumpUi(window!);
+                string landed = FocusedName();
+                Assert.False(string.IsNullOrWhiteSpace(landed));
             });
 
             // 2. Clear remaining corrupt file + Undo status action -> Restore is enabled!
@@ -352,7 +375,7 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.True(listItems >= 2, $"Expected >= 2 list items, got {listItems}");
                 Assert.Equal(2, toggles);
 
-                // Audit More menu items (including disabled Revert) and Escape focus return.
+                // Audit More menu items via automation peers (including disabled Revert) and Escape focus return.
                 moreButton.Focus();
                 var invoke = (System.Windows.Automation.Provider.IInvokeProvider)morePeer.GetPattern(PatternInterface.Invoke);
                 invoke.Invoke();
@@ -360,48 +383,99 @@ public sealed class AccessibilityTests(AppFixture appFixture)
 
                 WpfContextMenu menu = moreButton.ContextMenu!;
                 Assert.True(menu.IsOpen);
-                Assert.Equal("Rename", AutomationProperties.GetName(w.DetailHeaderControl.RenameMenuItem));
-                Assert.Equal("Revert to previous save", AutomationProperties.GetName(w.DetailHeaderControl.RevertMenuItem));
+                Assert.Equal("Rename", UIElementAutomationPeer.CreatePeerForElement(w.DetailHeaderControl.RenameMenuItem)!.GetName());
+                Assert.Equal("Revert to previous save", UIElementAutomationPeer.CreatePeerForElement(w.DetailHeaderControl.RevertMenuItem)!.GetName());
                 Assert.False(w.DetailHeaderControl.RevertMenuItem.IsEnabled);
-                Assert.Equal("Delete", AutomationProperties.GetName(w.DetailHeaderControl.DeleteMenuItem));
-                menu.IsOpen = false;
+                Assert.Equal("Delete", UIElementAutomationPeer.CreatePeerForElement(w.DetailHeaderControl.DeleteMenuItem)!.GetName());
+                menu.Focus();
                 PumpUi(w);
+                SendKey(menu, Key.Escape, sendKeyUp: true);
+                PumpUi(w);
+                Assert.False(menu.IsOpen);
                 Assert.True(moreButton.IsKeyboardFocused);
 
-                // Audit RenameDialog controls, invalid-empty disabling Rename, and Escape dismissal.
-                var renameVm = new RenameViewModel("Laptop", ["Docked"]);
-                var renameDialog = new RenameDialog(renameVm, _ => true)
+                // Open RenameDialog modally through More -> Rename, audit its WindowAutomationPeer tree, dismiss with Escape,
+                // and verify focus returns to More!
+                bool renameRan = false;
+                w.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                 {
-                    Owner = w,
-                    WindowStartupLocation = WindowStartupLocation.Manual,
-                    Left = -10000,
-                    Top = -10000,
-                };
-                renameDialog.Show();
-                PumpUi(renameDialog);
-                Assert.Equal("Layout name", AutomationProperties.GetName(renameDialog.NameBox));
-                Assert.Equal("Rename", AutomationProperties.GetName(renameDialog.RenameButton));
-                Assert.Equal("Cancel", AutomationProperties.GetName(renameDialog.CancelButton));
-                renameVm.Name = "   ";
-                Assert.False(renameDialog.RenameButton.IsEnabled);
-                renameDialog.Close();
+                    RenameDialog? dlg = System.Windows.Application.Current.Windows.OfType<RenameDialog>().SingleOrDefault(d => d.IsVisible);
+                    if (dlg is null)
+                    {
+                        return;
+                    }
 
-                // Audit DeleteDialog controls and Cancel as safe default.
-                var deleteVm = new DeleteDialogViewModel("Laptop");
-                var deleteDialog = new DeleteDialog(deleteVm, () => true)
+                    try
+                    {
+                        renameRan = true;
+                        List<AutomationPeer> dlgPeers = CollectPeers(new WindowAutomationPeer(dlg));
+                        string[] dlgNames = [.. dlgPeers.Select(p => p.GetName()).Where(n => !string.IsNullOrWhiteSpace(n))];
+                        Assert.Contains("Layout name", dlgNames);
+                        Assert.Contains("Rename", dlgNames);
+                        Assert.Contains("Cancel", dlgNames);
+                        ((RenameViewModel)dlg.DataContext).Name = "   ";
+                        Assert.False(dlg.RenameButton.IsEnabled);
+                        SendKey(dlg.NameBox, Key.Escape, sendKeyUp: true);
+                        Assert.False(dlg.IsVisible);
+                    }
+                    finally
+                    {
+                        if (dlg.IsVisible)
+                        {
+                            dlg.Close();
+                        }
+                    }
+                }));
+                invoke.Invoke();
+                PumpUi(w);
+                var renameInvoke = (System.Windows.Automation.Provider.IInvokeProvider)
+                    UIElementAutomationPeer.CreatePeerForElement(w.DetailHeaderControl.RenameMenuItem)!
+                        .GetPattern(PatternInterface.Invoke);
+                renameInvoke.Invoke();
+                w.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
+                Assert.True(renameRan);
+                Assert.True(moreButton.IsKeyboardFocused);
+
+                // Open DeleteDialog modally through More -> Delete, audit its WindowAutomationPeer tree, dismiss with Escape,
+                // and verify focus returns to More!
+                bool deleteRan = false;
+                w.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                 {
-                    Owner = w,
-                    WindowStartupLocation = WindowStartupLocation.Manual,
-                    Left = -10000,
-                    Top = -10000,
-                };
-                deleteDialog.Show();
-                PumpUi(deleteDialog);
-                Assert.Equal("Delete", AutomationProperties.GetName(deleteDialog.DeleteButton));
-                Assert.Equal("Cancel", AutomationProperties.GetName(deleteDialog.CancelButton));
-                Assert.True(deleteDialog.CancelButton.IsDefault);
-                Assert.True(deleteDialog.CancelButton.IsKeyboardFocused);
-                deleteDialog.Close();
+                    DeleteDialog? dlg = System.Windows.Application.Current.Windows.OfType<DeleteDialog>().SingleOrDefault(d => d.IsVisible);
+                    if (dlg is null)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        deleteRan = true;
+                        List<AutomationPeer> dlgPeers = CollectPeers(new WindowAutomationPeer(dlg));
+                        string[] dlgNames = [.. dlgPeers.Select(p => p.GetName()).Where(n => !string.IsNullOrWhiteSpace(n))];
+                        Assert.Contains("Delete", dlgNames);
+                        Assert.Contains("Cancel", dlgNames);
+                        Assert.True(dlg.CancelButton.IsDefault);
+                        Assert.True(dlg.CancelButton.IsKeyboardFocused);
+                        SendKey(dlg.CancelButton, Key.Escape, sendKeyUp: true);
+                        Assert.False(dlg.IsVisible);
+                    }
+                    finally
+                    {
+                        if (dlg.IsVisible)
+                        {
+                            dlg.Close();
+                        }
+                    }
+                }));
+                invoke.Invoke();
+                PumpUi(w);
+                var deleteInvoke = (System.Windows.Automation.Provider.IInvokeProvider)
+                    UIElementAutomationPeer.CreatePeerForElement(w.DetailHeaderControl.DeleteMenuItem)!
+                        .GetPattern(PatternInterface.Invoke);
+                deleteInvoke.Invoke();
+                w.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
+                Assert.True(deleteRan);
+                Assert.True(moreButton.IsKeyboardFocused);
 
                 return w;
             });
@@ -680,6 +754,19 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 var fallbackContainer = (ListBoxItem)markers.ItemContainerGenerator.ContainerFromIndex(0);
                 Assert.NotNull(fallbackContainer);
                 Assert.True(fallbackContainer.IsKeyboardFocused);
+            });
+
+            // 3d. Remove the LAST focused marker ("B.txt") so the map becomes empty -> focus moves cleanly out of the map!
+            var emptyLayout = active with { Icons = [] };
+            layoutStore.Save(emptyLayout);
+            await vm.RefreshAsync();
+            appFixture.Invoke(() =>
+            {
+                PumpUi(window!);
+                WpfListBox markers = window!.PositionMapControl.MarkersList;
+                Assert.Empty(markers.Items);
+                Assert.False(markers.IsKeyboardFocusWithin);
+                Assert.NotNull(Keyboard.FocusedElement);
 
                 // Refresh while switch owns focus -> switch keeps focus!
                 ToggleButton restoreSwitch = window.LayoutsPaneControl.SettingsPanelControl.RestoreAutomaticallySwitch;
@@ -740,7 +827,7 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 MainWindow w = ShowOffScreen(vm);
                 SettingsPanel panel = w.LayoutsPaneControl.SettingsPanelControl;
 
-                // Focus Restore automatically switch -> uses native Fluent FocusVisualStyle with opaque theme focus brushes!
+                // Focus Restore automatically switch -> uses native Fluent FocusVisualStyle with opaque distinct theme brushes!
                 panel.RestoreAutomaticallySwitch.Focus();
                 PumpUi(w);
                 Assert.NotNull(panel.RestoreAutomaticallySwitch.FocusVisualStyle);
@@ -748,8 +835,9 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.True(panel.RestoreAutomaticallySwitch.IsKeyboardFocused);
                 var outerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorOuterBrush"));
                 var innerFocusBrush = Assert.IsType<SolidColorBrush>(w.TryFindResource("FocusStrokeColorInnerBrush"));
-                Assert.True(outerFocusBrush.Color.A > 0);
-                Assert.True(innerFocusBrush.Color.A > 0);
+                Assert.True(outerFocusBrush.Color.A >= 200, $"Expected opaque outer focus brush, got A={outerFocusBrush.Color.A}");
+                Assert.True(innerFocusBrush.Color.A >= 160, $"Expected visible inner focus brush, got A={innerFocusBrush.Color.A}");
+                Assert.NotEqual(outerFocusBrush.Color, innerFocusBrush.Color);
 
                 // Tab moves to Start with Windows without toggling Restore automatically!
                 panel.RestoreAutomaticallySwitch.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
@@ -810,14 +898,17 @@ public sealed class AccessibilityTests(AppFixture appFixture)
                 Assert.Equal(Visibility.Visible, markerFocusOuter.Visibility);
                 Assert.Equal(Visibility.Visible, markerFocusInner.Visibility);
                 Assert.Equal(23d, selectionRing.Width);
-                Assert.Equal(29d, markerFocusOuter.Width);
-                Assert.Equal(29d, markerFocusOuter.Height);
+                Assert.Equal(29d, markerFocusOuter.ActualWidth);
+                Assert.Equal(29d, markerFocusOuter.ActualHeight);
                 Assert.Equal(2d, markerFocusOuter.StrokeThickness);
-                Assert.True(Assert.IsType<SolidColorBrush>(markerFocusOuter.Stroke).Color.A > 0);
-                Assert.Equal(27d, markerFocusInner.Width);
-                Assert.Equal(27d, markerFocusInner.Height);
+                var markerOuterBrush = Assert.IsType<SolidColorBrush>(markerFocusOuter.Stroke);
+                Assert.True(markerOuterBrush.Color.A >= 200, $"Expected opaque marker outer focus ring, got A={markerOuterBrush.Color.A}");
+                Assert.Equal(27d, markerFocusInner.ActualWidth);
+                Assert.Equal(27d, markerFocusInner.ActualHeight);
                 Assert.Equal(1d, markerFocusInner.StrokeThickness);
-                Assert.True(Assert.IsType<SolidColorBrush>(markerFocusInner.Stroke).Color.A > 0);
+                var markerInnerBrush = Assert.IsType<SolidColorBrush>(markerFocusInner.Stroke);
+                Assert.True(markerInnerBrush.Color.A >= 160, $"Expected visible marker inner focus ring, got A={markerInnerBrush.Color.A}");
+                Assert.NotEqual(markerOuterBrush.Color, markerInnerBrush.Color);
 
                 // Move focus away -> SelectionRing stays Visible, FocusRingOuter/Inner hide!
                 window.DetailHeaderControl.MoreButton.Focus();

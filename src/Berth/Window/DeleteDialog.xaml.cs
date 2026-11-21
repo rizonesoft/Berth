@@ -89,6 +89,13 @@ internal sealed partial class DeleteDialog : System.Windows.Window
 
     private void OnDialogPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (e.Key == Key.Escape)
+        {
+            DialogResult = false;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Enter)
         {
             // Cancel is the default action (SPEC §10); Enter cancels even if Delete currently holds keyboard focus.

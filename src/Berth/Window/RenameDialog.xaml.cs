@@ -55,6 +55,13 @@ internal sealed partial class RenameDialog : System.Windows.Window
 
     private void OnDialogPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (e.Key == Key.Escape)
+        {
+            DialogResult = false;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Enter && !ViewModel.CanRename)
         {
             e.Handled = true;
