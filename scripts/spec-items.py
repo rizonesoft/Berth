@@ -14,6 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SPEC = ROOT / "design" / "SPEC.md"
 DEFAULT_SWEEP = ROOT / "docs" / "acceptance" / "2026-spec-sweep.md"
+OPERATOR_TODO = ROOT / "todo" / "99-manual" / "TODO-01-operator-steps.md"
+
+# Deferred SPEC items must map to an operator section in todo/99-manual/TODO-01-operator-steps.md
+# whose body actually addresses the deferred topic (preventing assignment to an unrelated section).
+DEFERRED_TOPIC_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "§9.5": ("auto arrange", "berth_test_allow_autoarrange"),
+    "§12.8": ("warning notification", "could not restore"),
+    "§16.2": ("dock", "undock"),
+}
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,14 @@ class SpecItem:
 def _digest(text: str) -> str:
     normalized = re.sub(r"\s+", " ", text.strip())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:8]
+
+
+def _strip_html_comments(text: str) -> str:
+    """Remove Markdown/HTML comments (<!-- ... -->) while preserving line count."""
+    def _replace(match: re.Match[str]) -> str:
+        return "\n" * match.group(0).count("\n")
+
+    return re.sub(r"<!--[\s\S]*?-->", _replace, text)
 
 
 def extract_spec_items(spec_text: str, min_section: int = 2, max_section: int = 19) -> list[SpecItem]:
@@ -116,7 +133,6 @@ def extract_spec_items(spec_text: str, min_section: int = 2, max_section: int = 
             i += 1
             continue
 
-        # Normative prose paragraph
         add_item("prose", line_no, stripped)
         i += 1
 
@@ -124,7 +140,7 @@ def extract_spec_items(spec_text: str, min_section: int = 2, max_section: int = 
 
 
 def _collect_existing_test_names(repo_root: Path) -> dict[str, set[str]]:
-    """Map repo-relative POSIX path -> set of test/function/symbol names found in that file."""
+    """Map repo-relative POSIX path -> set of test/method names found in that file."""
     cache: dict[str, set[str]] = {}
     for base, pattern in ((repo_root / "tests", "*.cs"), (repo_root / "scripts" / "tests", "test_*.py")):
         if not base.exists():
@@ -140,17 +156,99 @@ def _collect_existing_test_names(repo_root: Path) -> dict[str, set[str]]:
     return cache
 
 
+def _parse_operator_sections(repo_root: Path) -> dict[int, str]:
+    """Return {section_number: lowercase_body} for todo/99-manual/TODO-01-operator-steps.md."""
+    path = repo_root / "todo" / "99-manual" / "TODO-01-operator-steps.md"
+    if not path.exists():
+        return {}
+    sections: dict[int, list[str]] = {}
+    cur: int | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^##\s+(\d+)\.\s+", line.strip())
+        if m:
+            cur = int(m.group(1))
+            sections[cur] = [line]
+        elif cur is not None:
+            if line.strip().startswith("## "):
+                cur = None
+            else:
+                sections[cur].append(line)
+    return {k: "\n".join(v).lower() for k, v in sections.items()}
+
+
+def _parse_proof_catalog(sweep_text: str) -> dict[str, list[str]]:
+    """Parse '## Proof catalog' entries: `- `P-id`: `path::TestName`, ...`."""
+    catalog: dict[str, list[str]] = {}
+    in_catalog = False
+    for raw in sweep_text.splitlines():
+        stripped = raw.strip()
+        if stripped == "## Proof catalog":
+            in_catalog = True
+            continue
+        if in_catalog and stripped.startswith("## "):
+            break
+        if not in_catalog or not stripped.startswith("- "):
+            continue
+        m = re.match(r"^-\s+`(P[0-9A-Za-z._-]+)`:\s*(.+)$", stripped)
+        if m:
+            pid = m.group(1)
+            citations = re.findall(r"`((?:tests|scripts)/[^`]+::[^`]+)`", m.group(2))
+            catalog[pid] = citations
+    return catalog
+
+
+def _validate_citations(
+    ref: str,
+    proof_cell: str,
+    catalog: dict[str, list[str]],
+    test_index: dict[str, set[str]],
+    repo_root: Path,
+) -> list[str]:
+    errors: list[str] = []
+    citations = re.findall(r"`((?:tests|scripts)/[^`]+::[^`]+)`", proof_cell)
+    for pid in re.findall(r"`(P[0-9A-Za-z._-]+)`", proof_cell):
+        if pid not in catalog:
+            errors.append(f"sweep row {ref} references unknown proof catalog entry: {pid}")
+        else:
+            citations.extend(catalog[pid])
+
+    if not citations:
+        errors.append(f"sweep row {ref} must cite at least one `file::TestMethod` proof (got {proof_cell!r})")
+        return errors
+
+    for cit in citations:
+        file_path, _, symbol = cit.partition("::")
+        full = repo_root / file_path
+        if not full.exists():
+            errors.append(f"sweep row {ref} cites missing file: {file_path}")
+        elif not symbol:
+            errors.append(f"sweep row {ref} cites {file_path} without a test method name")
+        elif file_path not in test_index or symbol not in test_index[file_path]:
+            errors.append(f"sweep row {ref} cites missing test {symbol} in {file_path}")
+    return errors
+
+
 def check_sweep(spec_text: str, sweep_text: str, repo_root: Path = ROOT) -> list[str]:
     """Validate that sweep_text covers every §2..§19 SPEC item with matching digest, real proof, and valid status."""
     errors: list[str] = []
     expected_items = extract_spec_items(spec_text)
     expected_by_ref = {item.ref: item for item in expected_items}
     test_index = _collect_existing_test_names(repo_root)
+    operator_sections = _parse_operator_sections(repo_root)
+
+    cleaned_sweep = _strip_html_comments(sweep_text)
+    catalog = _parse_proof_catalog(cleaned_sweep)
 
     seen: dict[str, tuple[str, str, str]] = {}
     in_sweep_table = False
-    for line_no, raw in enumerate(sweep_text.splitlines(), start=1):
+    in_fence = False
+    for line_no, raw in enumerate(cleaned_sweep.splitlines(), start=1):
         stripped = raw.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         if not stripped.startswith("|"):
             if in_sweep_table and stripped.startswith("## "):
                 in_sweep_table = False
@@ -188,22 +286,25 @@ def check_sweep(spec_text: str, sweep_text: str, repo_root: Path = ROOT) -> list
 
         status = c3.strip()
         if status == "yes":
-            if not c2.strip():
-                errors.append(f"sweep row {ref} is 'yes' but has empty Proof")
-            else:
-                # Verify every cited file path (tests/... or scripts/...) exists and any named test exists in it.
-                for file_ref in re.findall(r"`((?:tests|scripts|design|docs|src)/[^`]+)`", c2):
-                    file_path, _, symbol = file_ref.partition("::")
-                    full = repo_root / file_path
-                    if not full.exists():
-                        errors.append(f"sweep row {ref} cites missing file: {file_path}")
-                    elif symbol and file_path in test_index and symbol not in test_index[file_path]:
-                        errors.append(f"sweep row {ref} cites missing test {symbol} in {file_path}")
-        elif re.fullmatch(r"deferred \(D99 T01 §[1-4]\)", status):
-            if not c2.strip():
-                errors.append(f"sweep row {ref} is deferred but has empty Proof/Owner note")
+            errors.extend(_validate_citations(ref, c2, catalog, test_index, repo_root))
         else:
-            errors.append(f"sweep row {ref} has invalid status {status!r} (must be 'yes' or 'deferred (D99 T01 §N)')")
+            dm = re.fullmatch(r"deferred \(D99 T01 §(\d+)\)", status)
+            if not dm:
+                errors.append(f"sweep row {ref} has invalid status {status!r} (must be 'yes' or 'deferred (D99 T01 §N)')")
+            else:
+                op_sec = int(dm.group(1))
+                errors.extend(_validate_citations(ref, c2, catalog, test_index, repo_root))
+                if op_sec not in operator_sections:
+                    errors.append(f"sweep row {ref} defers to nonexistent D99 T01 §{op_sec}")
+                elif ref not in DEFERRED_TOPIC_KEYWORDS:
+                    errors.append(f"sweep row {ref} is not an approved operator-deferred item")
+                else:
+                    body = operator_sections[op_sec]
+                    keywords = DEFERRED_TOPIC_KEYWORDS[ref]
+                    if not all(kw in body for kw in keywords):
+                        errors.append(
+                            f"sweep row {ref} defers to unrelated D99 T01 §{op_sec} (missing topic keywords {keywords})"
+                        )
 
     for item in expected_items:
         if item.ref not in seen:
