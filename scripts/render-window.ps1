@@ -105,7 +105,11 @@ try {
         'rename-taken-light.png',
         'rename-taken-dark.png',
         'delete-dialog-light.png',
-        'delete-dialog-dark.png'
+        'delete-dialog-dark.png',
+        'switches-on-off-light.png',
+        'switches-on-off-dark.png',
+        'switches-off-on-light.png',
+        'switches-off-on-dark.png'
     )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name

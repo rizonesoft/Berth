@@ -27,12 +27,17 @@
     <sys:Double x:Key="Berth.NoticesMaxHeight">128</sys:Double>
     <sys:Double x:Key="Berth.DialogWidth">400</sys:Double>
     <sys:Double x:Key="Berth.DialogButtonMinWidth">80</sys:Double>
+    <sys:Double x:Key="Berth.ToggleTrackWidth">40</sys:Double>
+    <sys:Double x:Key="Berth.ToggleTrackHeight">20</sys:Double>
+    <sys:Double x:Key="Berth.ToggleKnob">12</sys:Double>
     <CornerRadius x:Key="Berth.RadiusControl">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusCard">6</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarker">3</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarkerSelectedRing">6</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMonitor">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusBadge">10</CornerRadius>
+    <CornerRadius x:Key="Berth.RadiusToggleTrack">10</CornerRadius>
+    <CornerRadius x:Key="Berth.RadiusToggleKnob">6</CornerRadius>
     <Thickness x:Key="Berth.Space.None">0</Thickness>
     <Thickness x:Key="Berth.Space.BorderThin">1</Thickness>
     <Thickness x:Key="Berth.Space.PaneHeading">16,16,16,8</Thickness>
@@ -50,6 +55,8 @@
     <Thickness x:Key="Berth.Space.NoticesContainer">28,0,28,8</Thickness>
     <Thickness x:Key="Berth.Space.ItemGapBottom">0,0,0,8</Thickness>
     <Thickness x:Key="Berth.Space.NoticeGlyphOffset">0,8,0,0</Thickness>
+    <Thickness x:Key="Berth.Space.SettingsPanel">16,12,16,12</Thickness>
+    <Thickness x:Key="Berth.Space.ToggleKnobPadding">3</Thickness>
     <Thickness x:Key="Berth.Space.DialogPadding">24,20,24,20</Thickness>
     <Thickness x:Key="Berth.Space.ControlGapLeft">8,0,0,0</Thickness>
     <Thickness x:Key="Berth.Space.SectionGapLeft">16,0,0,0</Thickness>

@@ -294,7 +294,10 @@ internal static class TrayApp
             },
             service: composition.Service,
             folderOpener: new ShellFolderOpener(),
-            log: composition.Log);
+            log: composition.Log,
+            settingsStore: settingsStore,
+            runValue: new RunValue(),
+            settingChanges: new SettingChanges(settingsStore, composition.Log));
 
         double pollSeconds = app.TryFindResource("Berth.VisiblePollSeconds") is double s && s > 0d ? s : 5d;
         var poller = new DesktopPoller(

@@ -395,6 +395,8 @@ The two switches and the version at the bottom of the layouts pane (SPEC §11, �
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingsTests"` passes, and fails when a switch stays on after its write failed.
 
+> **Started:** 2026-11-21
+
 ## 12. Keyboard order and automation names
 
 Every control reachable and named, and the map readable as a list (SPEC §3, §7).

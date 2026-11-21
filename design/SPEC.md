@@ -136,7 +136,7 @@ A notice is a bar between the header and the map with an icon, a sentence and at
 
 ## 11. Settings switches
 
-Two switches at the bottom of the layouts pane, label on the left and switch on the right, with no On or Off text.
+Two switches at the bottom of the layouts pane, label on the left and switch on the right, with no On or Off text. Clarified 2026-11-21 (D05 T01 §11): WPF's shipped Fluent theme provides the official `ToggleSwitch*` theme brushes without a `ToggleSwitch` control, so Berth styles a `ToggleButton` using those Fluent `ToggleSwitch*` brushes with a 40 × 20 pill track, 12 px circular thumb, and 32 px minimum hit target.
 
 - **Restore automatically.** On: Berth restores the active layout when the monitor arrangement changes or Explorer restarts (§16). Off by default.
 - **Start with Windows.** On: the value `Berth` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holds the quoted path of the running `berth.exe`. Off: the value does not exist. The switch shows what the registry holds: On only when the value names the running executable. Off by default.

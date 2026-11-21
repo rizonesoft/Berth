@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using Berth.Core;
 using Berth.Core.Model;
+using Berth.Desktop;
 using Berth.Window.Mvvm;
 
 namespace Berth.Window;
@@ -48,7 +49,10 @@ internal sealed class MainViewModel : ObservableObject
         LayoutService? service = null,
         TimeZoneInfo? timeZone = null,
         IFolderOpener? folderOpener = null,
-        Log? log = null)
+        Log? log = null,
+        SettingsStore? settingsStore = null,
+        RunValue? runValue = null,
+        SettingChanges? settingChanges = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(desktop);
@@ -80,6 +84,16 @@ internal sealed class MainViewModel : ObservableObject
             retryDesktopAsync: RetryDesktopAsync,
             openFolder: OpenFolder,
             isBusyProvider: () => Detail.IsBusy);
+        if (settingsStore is not null && runValue is not null && settingChanges is not null)
+        {
+            Settings = new SettingsViewModel(
+                settingChanges,
+                settingsStore,
+                runValue,
+                Status,
+                _marshalToUiAsync,
+                () => Detail.IsBusy);
+        }
 
         Detail.PropertyChanged += (_, e) =>
         {
@@ -92,6 +106,7 @@ internal sealed class MainViewModel : ObservableObject
 
                 Status.SetBusyState(Detail.IsBusy);
                 Notices.RaiseCanExecuteChanged();
+                Settings?.OnBusyStateChanged(Detail.IsBusy);
             }
         };
         Status.PropertyChanged += (_, e) =>
@@ -116,6 +131,8 @@ internal sealed class MainViewModel : ObservableObject
     public StatusViewModel Status { get; }
 
     public NoticesViewModel Notices { get; }
+
+    public SettingsViewModel? Settings { get; }
 
     public ObservableCollection<LayoutRow> Rows { get; } = [];
 
@@ -269,11 +286,30 @@ internal sealed class MainViewModel : ObservableObject
         bool applied = false;
         try
         {
-            RefreshSnapshot? snapshot = await Task.Run(() => CaptureSnapshot(includeCanUndo)).ConfigureAwait(false);
-            if (snapshot is not null)
+            (long restoreEpoch, long startEpoch) = Settings?.CaptureEpochs() ?? (0L, 0L);
+            (RefreshSnapshot? snapshot, (bool? RestoreAuto, bool StartWithWindows)? settingsSnapshot) =
+                await Task.Run(() =>
+                {
+                    (bool? RestoreAuto, bool StartWithWindows)? readSettings = Settings?.ReadSources();
+                    RefreshSnapshot? snap = CaptureSnapshot(includeCanUndo);
+                    return (snap, readSettings);
+                }).ConfigureAwait(false);
+
+            if (snapshot is not null || settingsSnapshot is not null)
             {
-                await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
-                applied = true;
+                await _marshalToUiAsync(() =>
+                {
+                    if (settingsSnapshot is { } s)
+                    {
+                        Settings?.ApplyRefreshed(s.RestoreAuto, restoreEpoch, s.StartWithWindows, startEpoch);
+                    }
+
+                    if (snapshot is not null)
+                    {
+                        ApplySnapshot(snapshot);
+                        applied = true;
+                    }
+                }).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
