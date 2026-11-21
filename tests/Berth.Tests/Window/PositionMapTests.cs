@@ -91,7 +91,7 @@ public sealed class PositionMapTests(AppFixture appFixture)
         {
             int col = i % 8;
             int row = i / 8;
-            icons.Add(new IconPosition($"id-{i}", $"File{i}.txt", 80 + (col * 280), 80 + (row * 220)));
+            icons.Add(new IconPosition($"id-{i}", $"File{i}.txt", 120 + (col * 280), 120 + (row * 220)));
         }
 
         // Two off-screen icons that clamp to the exact same bottom-right corner so they overlap completely!

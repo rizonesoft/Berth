@@ -85,7 +85,7 @@ Decisions behind it were agreed with the owner on 2026-11-15: the "Grid" identit
 - The readout, bottom left of the panel: the icon's name (`monoStrong`), and under it "x 1436 · y 702 · monitor 1 · in place" (`mono`, secondary). With nothing selected it reads "Select an icon to see its position."
 - The count, bottom right (`mono`, secondary): "42 of 42 in place" for the active layout, "42 icons" otherwise.
 - The map is a list to assistive technology: each marker is an item named "Notes.txt, x 1436, y 702, monitor 1, in place", in reading order (top to bottom, then left to right).
-- An icon whose saved position lies outside every monitor of the arrangement is plotted at the nearest edge of the nearest monitor and its readout adds " · off screen".
+- An icon whose saved position lies outside every monitor of the arrangement is plotted at the nearest edge of the nearest monitor and its readout adds " · off screen". Plotted markers (including top-row and clamped off-screen icons) are inset from their monitor rectangle's edges by half `markerSelectedRing` plus `monitorStrokeThickness` so neither the marker nor its 23 px selection ring crosses the monitor border (clarified 2026-11-21, D05 T01 §5).
 
 ## 8. Status line
 

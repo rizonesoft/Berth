@@ -118,7 +118,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid x:Name="MapViewport" Grid.Row="0" SizeChanged="OnViewportSizeChanged">
+                <Grid x:Name="MapViewport" Grid.Row="0" ClipToBounds="True" SizeChanged="OnViewportSizeChanged">
                     <map:MapSurface x:Name="Surface"
                                     IsHitTestVisible="False"
                                     GridBrush="{DynamicResource Berth.MapGrid}"
@@ -185,6 +185,11 @@
                                         </ControlTemplate>
                                     </Setter.Value>
                                 </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Panel.ZIndex" Value="100000" />
+                                    </Trigger>
+                                </Style.Triggers>
                             </Style>
                         </ListBox.ItemContainerStyle>
                     </ListBox>
@@ -203,7 +208,7 @@
                         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
                             <TextBlock x:Name="ReadoutPrimaryText"
                                        Text="Select an icon to see its position."
-                                       Style="{DynamicResource Berth.Type.Mono}"
+                                       Style="{DynamicResource Berth.Type.MonoStrong}"
                                        Foreground="{DynamicResource Berth.TextSecondary}"
                                        TextWrapping="Wrap" />
                             <TextBlock x:Name="ReadoutSecondaryText"

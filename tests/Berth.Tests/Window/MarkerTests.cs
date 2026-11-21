@@ -81,6 +81,9 @@ public sealed class MarkerTests(AppFixture appFixture)
                 Assert.Equal(expectedCurrent.X, to.X, precision: 2);
                 Assert.Equal(expectedCurrent.Y, to.Y, precision: 2);
 
+                // Viewport must clip downward moved connectors so they never paint across the footer!
+                Assert.True(map.MapViewport.ClipToBounds);
+
                 // Missing: transparent fill, 1 px dashed Berth.MarkerMissing stroke, 3 px radii.
                 WpfRectangle rMissing = Assert.IsType<WpfRectangle>(FindDescendant<WpfRectangle>(items[2], "MarkerVisual"));
                 Assert.Equal(System.Windows.Media.Brushes.Transparent, rMissing.Fill);
@@ -136,7 +139,8 @@ public sealed class MarkerTests(AppFixture appFixture)
                 PositionMap map = w.PositionMapControl;
                 WpfListBoxItem[] items = RealizeItems(map.MarkersList);
 
-                // Before selection: no ring visible, no drop-line, empty readout prompt, partial count "1 of 3 in place".
+                // Before selection: record viewport height so we prove selection causes 0 px vertical shift.
+                double viewportHeightBefore = map.MapViewport.ActualHeight;
                 Assert.All(items, item =>
                     Assert.Equal(Visibility.Collapsed, FindDescendant<WpfRectangle>(item, "SelectionRing")!.Visibility));
                 Assert.Null(map.Surface.RenderedSelectionDropLine);
@@ -150,6 +154,8 @@ public sealed class MarkerTests(AppFixture appFixture)
                 var peer = (ISelectionItemProvider)itemPeer.GetPattern(PatternInterface.SelectionItem);
                 peer.Select();
                 RenderMeasureAndArrange(w);
+
+                Assert.Equal(viewportHeightBefore, map.MapViewport.ActualHeight, precision: 2);
 
                 WpfRectangle ring = Assert.IsType<WpfRectangle>(FindDescendant<WpfRectangle>(items[0], "SelectionRing"));
                 Assert.Equal(Visibility.Visible, ring.Visibility);
@@ -187,8 +193,37 @@ public sealed class MarkerTests(AppFixture appFixture)
                 Assert.Equal("2 of 3 in place", map.CountTextBlock.Text);
                 Assert.Empty(map.Surface.RenderedMovedLines);
                 Assert.NotNull(map.Surface.RenderedSelectionDropLine);
+            });
 
-                // Switch to "Laptop" (which also has "id-shared"): selection MUST clear on layout switch!
+            // Remove the selected parsing ID ("id-shared") from the SAME layout and refresh: selection must clear,
+            // prompt returns, ring & drop-line clear, and count reflects the remaining entries!
+            SaveLayout(store, [MonDualA, MonDualB], "Docked", savedB, savedC);
+            await vm.RefreshAsync();
+
+            appFixture.Invoke(() =>
+            {
+                RenderMeasureAndArrange(window!);
+                PositionMap map = window!.PositionMapControl;
+                Assert.Null(map.MarkersList.SelectedItem);
+                Assert.Null(map.Surface.RenderedSelectionDropLine);
+                Assert.Equal("Select an icon to see its position.", map.ReadoutPrimaryText.Text);
+                Assert.Equal("1 of 2 in place", map.CountTextBlock.Text);
+
+                // Restore "id-shared" in "Docked", select it, then switch to "Laptop" (which also has "id-shared"):
+                // selection MUST clear on layout switch!
+                SaveLayout(store, [MonDualA, MonDualB], "Docked", savedA, savedB, savedC);
+            });
+
+            await vm.RefreshAsync();
+
+            appFixture.Invoke(() =>
+            {
+                RenderMeasureAndArrange(window!);
+                PositionMap map = window!.PositionMapControl;
+                map.MarkersList.SelectedIndex = 0;
+                RenderMeasureAndArrange(window);
+                Assert.Equal("Notes.txt", map.ReadoutPrimaryText.Text);
+
                 vm.Selected = vm.Rows.Single(r => r.Name == "Laptop");
                 RenderMeasureAndArrange(window);
                 Assert.Null(map.MarkersList.SelectedItem);
@@ -204,6 +239,69 @@ public sealed class MarkerTests(AppFixture appFixture)
                 appFixture.Invoke(() => window.CloseForShutdown());
             }
         }
+    }
+
+    [Fact]
+    public async Task OverlappingMarkersRaiseSelectedAboveOverlapAndLongNameWrapsAt760DipWithCountVisible()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+
+        string longName = "VeryLongDesktopDocumentNameThatMustWrapCleanlyAtMinWidth.docx";
+        IconPosition first = new("id-ov-1", longName, 9000, 5000);
+        IconPosition second = new("id-ov-2", "SecondOverlap.txt", 9500, 5200);
+        SaveLayout(store, [MonDualA, MonDualB], "Docked", first, second);
+
+        var monitors = new FakeMonitors(MonDualA, MonDualB);
+        // Move second far downward (Y = 12000) so moved line heads straight down toward footer (must be clipped by MapViewport).
+        var desktop = new FakeDesktopIcons(first, new IconPosition("id-ov-2", "SecondOverlap.txt", 4000, 12000));
+        var vm = CreateViewModel(store, desktop, monitors);
+        await vm.RefreshAsync();
+
+        appFixture.Invoke(() =>
+        {
+            var window = new MainWindow { DataContext = vm };
+            try
+            {
+                RenderMeasureAndArrange(window, 760, 520);
+                PositionMap map = window.PositionMapControl;
+                WpfListBoxItem[] items = RealizeItems(map.MarkersList);
+                Assert.Equal(2, items.Length);
+
+                // Select earlier overlapping item (index 0): its Panel.ZIndex must rise ABOVE index 1 so it is never concealed!
+                map.MarkersList.SelectedIndex = 0;
+                RenderMeasureAndArrange(window, 760, 520);
+                Assert.True(System.Windows.Controls.Panel.GetZIndex(items[0]) > System.Windows.Controls.Panel.GetZIndex(items[1]));
+                Assert.Same(
+                    System.Windows.Application.Current.FindResource("Berth.MarkerSelected"),
+                    FindDescendant<WpfRectangle>(items[0], "MarkerVisual")!.Fill);
+                Assert.Equal(longName, map.ReadoutPrimaryText.Text);
+                Assert.Equal(TextWrapping.Wrap, map.ReadoutPrimaryText.TextWrapping);
+                Assert.Equal("1 of 2 in place", map.CountTextBlock.Text);
+                Assert.True(map.CountTextBlock.ActualWidth > 0d);
+                Assert.Equal(map.MapViewport.ActualHeight, map.Surface.RenderedSelectionDropLine!.Value.To.Y, precision: 2);
+
+                // Navigate to second coincident item: Panel.ZIndex flips so index 1 is on top and readout updates!
+                map.MarkersList.SelectedIndex = 1;
+                RenderMeasureAndArrange(window, 760, 520);
+                Assert.True(System.Windows.Controls.Panel.GetZIndex(items[1]) > System.Windows.Controls.Panel.GetZIndex(items[0]));
+                Assert.Same(
+                    System.Windows.Application.Current.FindResource("Berth.MarkerSelected"),
+                    FindDescendant<WpfRectangle>(items[1], "MarkerVisual")!.Fill);
+                Assert.Equal("SecondOverlap.txt", map.ReadoutPrimaryText.Text);
+                Assert.Contains("moved", map.ReadoutSecondaryText.Text, StringComparison.Ordinal);
+
+                // Downward moved connector extends past viewport bottom but MapViewport clips it before MapFooter!
+                Assert.True(map.MapViewport.ClipToBounds);
+                (WpfPoint from, WpfPoint to) = Assert.Single(map.Surface.RenderedMovedLines);
+                Assert.True(to.Y > map.MapViewport.ActualHeight);
+            }
+            finally
+            {
+                window.CloseForShutdown();
+            }
+        });
     }
 
     [Fact]

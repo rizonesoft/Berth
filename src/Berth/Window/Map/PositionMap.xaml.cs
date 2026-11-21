@@ -137,9 +137,9 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         double height = MapViewport.ActualHeight;
         double padding = ResolveDouble("Berth.MapPadding", 24d);
         double targetSize = ResolveDouble("Berth.MarkerTarget", 19d);
-        double markerSize = ResolveDouble("Berth.Marker", 11d);
+        double ringSize = ResolveDouble("Berth.MarkerSelectedRing", 23d);
         double strokeThickness = ResolveDouble("Berth.MonitorStrokeThickness", 1.5d);
-        double borderInset = (markerSize / 2d) + strokeThickness + 2d;
+        double borderInset = (ringSize / 2d) + strokeThickness;
         double labelHeight = Surface.MeasureLabelReserve();
 
         _geometry = MapGeometry.Fit(_orderedMonitors, width, height, padding, labelHeight);
@@ -183,14 +183,12 @@ internal sealed partial class PositionMap : System.Windows.Controls.UserControl
         ReadoutPrimaryText.Text = readout.Primary;
         if (readout.HasSelection)
         {
-            ReadoutPrimaryText.Style = TryFindResource("Berth.Type.MonoStrong") as Style ?? ReadoutPrimaryText.Style;
             ReadoutPrimaryText.ClearValue(TextBlock.ForegroundProperty);
             ReadoutSecondaryText.Text = readout.Secondary;
             ReadoutSecondaryText.Visibility = Visibility.Visible;
         }
         else
         {
-            ReadoutPrimaryText.Style = TryFindResource("Berth.Type.Mono") as Style ?? ReadoutPrimaryText.Style;
             ReadoutPrimaryText.SetResourceReference(TextBlock.ForegroundProperty, "Berth.TextSecondary");
             ReadoutSecondaryText.Text = " ";
             ReadoutSecondaryText.Visibility = Visibility.Hidden;
