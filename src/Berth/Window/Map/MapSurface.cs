@@ -210,41 +210,58 @@ internal sealed class MapSurface : FrameworkElement
                 labelX = _padding;
             }
 
-            double labelY = Math.Max(labelGap, rects[i].Y - labelHeight - labelGap);
-            var candidate = new Rect(labelX, labelY, labelWidth, labelHeight);
-
-            // Resolve horizontal/vertical collisions against previously placed labels by stepping upward cleanly.
-            bool moved;
-            int guard = 0;
-            do
-            {
-                moved = false;
-                foreach (Rect prev in placedBounds)
-                {
-                    if (candidate.IntersectsWith(prev))
-                    {
-                        double liftedY = prev.Top - labelHeight - labelGap;
-                        if (liftedY >= 0d)
-                        {
-                            candidate = new Rect(candidate.X, liftedY, labelWidth, labelHeight);
-                        }
-                        else
-                        {
-                            // Fallback if there is no room above: place below the previous label.
-                            candidate = new Rect(candidate.X, prev.Bottom + labelGap, labelWidth, labelHeight);
-                        }
-
-                        moved = true;
-                        break;
-                    }
-                }
-            }
-            while (moved && ++guard < 8);
+            double preferredY = Math.Clamp(rects[i].Y - labelHeight - labelGap, 0d, Math.Max(0d, height - labelHeight));
+            Rect candidate = FindFreeLabelRect(labelX, preferredY, labelWidth, labelHeight, labelGap, height, placedBounds);
 
             placedBounds.Add(candidate);
             dc.DrawText(formatted, new WpfPoint(candidate.X, candidate.Y));
             _renderedLabels.Add(new RenderedMonitorLabel(i + 1, text, candidate));
         }
+    }
+
+    private static Rect FindFreeLabelRect(
+        double x,
+        double preferredY,
+        double width,
+        double height,
+        double gap,
+        double viewportHeight,
+        List<Rect> placed)
+    {
+        double maxY = Math.Max(0d, viewportHeight - height);
+        var candidatesY = new List<double> { preferredY };
+        foreach (Rect prev in placed)
+        {
+            if (prev.Right <= x || prev.Left >= x + width)
+            {
+                continue;
+            }
+
+            double above = prev.Top - height - gap;
+            if (above >= 0d && above <= maxY)
+            {
+                candidatesY.Add(above);
+            }
+
+            double below = prev.Bottom + gap;
+            if (below >= 0d && below <= maxY)
+            {
+                candidatesY.Add(below);
+            }
+        }
+
+        // Order by closest distance to preferredY so we pick the nearest non-overlapping vertical interval inside the viewport.
+        candidatesY.Sort((a, b) => Math.Abs(a - preferredY).CompareTo(Math.Abs(b - preferredY)));
+        foreach (double y in candidatesY)
+        {
+            var rect = new Rect(x, y, width, height);
+            if (!placed.Any(p => p.IntersectsWith(rect)))
+            {
+                return rect;
+            }
+        }
+
+        return new Rect(x, Math.Clamp(preferredY, 0d, maxY), width, height);
     }
 
     private double ResolveLabelGap() =>

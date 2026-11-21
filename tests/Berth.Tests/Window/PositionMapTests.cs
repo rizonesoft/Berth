@@ -194,11 +194,20 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 Assert.InRange(Math.Abs(narrowVisualCenter96.X - expectedNarrow.X), 0d, 0.5d);
                 Assert.InRange(Math.Abs(narrowVisualCenter96.Y - expectedNarrow.Y), 0d, 0.5d);
 
-                // Verify rendered alignment at 150% DPI (144 DPI) as well.
-                RenderMeasureAndArrange(window, 760, 520, dpi: 144);
-                WpfPoint narrowVisualCenter144 = MeasureFirstMarkerCenterInViewport(map);
-                Assert.InRange(Math.Abs(narrowVisualCenter144.X - expectedNarrow.X), 0d, 0.5d);
-                Assert.InRange(Math.Abs(narrowVisualCenter144.Y - expectedNarrow.Y), 0d, 0.5d);
+                // Verify rendered alignment at genuine 150% DPI (144 DPI via SetRootDpi) as well.
+                try
+                {
+                    VisualTreeHelper.SetRootDpi(window.RootGrid, new DpiScale(1.5d, 1.5d));
+                    RenderMeasureAndArrange(window, 760, 520, dpi: 144);
+                    Assert.Equal(1.5d, VisualTreeHelper.GetDpi(map.Surface).DpiScaleX, precision: 3);
+                    WpfPoint narrowVisualCenter144 = MeasureFirstMarkerCenterInViewport(map);
+                    Assert.InRange(Math.Abs(narrowVisualCenter144.X - expectedNarrow.X), 0d, 0.5d);
+                    Assert.InRange(Math.Abs(narrowVisualCenter144.Y - expectedNarrow.Y), 0d, 0.5d);
+                }
+                finally
+                {
+                    VisualTreeHelper.SetRootDpi(window.RootGrid, new DpiScale(1.0d, 1.0d));
+                }
 
                 // All three labels must be inside the padded viewport and MUST NOT intersect one another.
                 Assert.Equal(3, map.Surface.RenderedLabels.Count);
@@ -206,6 +215,8 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 {
                     RenderedMonitorLabel a = map.Surface.RenderedLabels[i];
                     Assert.True(a.Bounds.Left >= 0d, $"Label '{a.Text}' clipped left at {a.Bounds.Left}.");
+                    Assert.True(a.Bounds.Top >= 0d && a.Bounds.Bottom <= map.MapViewport.ActualHeight,
+                        $"Label '{a.Text}' outside vertical viewport: {a.Bounds}.");
                     Assert.True(
                         a.Bounds.Right <= map.MapViewport.ActualWidth - 24d + 0.5d,
                         $"Label '{a.Text}' clipped right at {a.Bounds.Right} > {map.MapViewport.ActualWidth - 24d}.");
@@ -245,25 +256,20 @@ public sealed class PositionMapTests(AppFixture appFixture)
             Berth.App.ColorTheme originalTheme = berthApp.CurrentColorTheme;
             try
             {
-                // Switch theme on the SAME loaded control WITHOUT calling any manual refresh helper:
-                // DependencyProperty DynamicResource bindings must update every painted brush and repaint MapSurface!
+                // Switch theme on the SAME control WITHOUT calling any manual refresh helper:
+                // DependencyProperty DynamicResource bindings must match all 4 expected resources in every theme!
                 berthApp.ApplyColorTheme(Berth.App.ColorTheme.Light);
                 byte[] lightSurface = RenderSurfaceBytes(window);
-                var lightGrid = window.PositionMapControl.Surface.GridBrush;
-                var lightFill = window.PositionMapControl.Surface.MonitorFill;
-                var lightStroke = window.PositionMapControl.Surface.MonitorStroke;
-                var lightLabel = window.PositionMapControl.Surface.LabelBrush;
+                AssertSurfaceBrushesMatchTheme(window.PositionMapControl.Surface);
 
                 berthApp.ApplyColorTheme(Berth.App.ColorTheme.Dark);
                 byte[] darkSurface = RenderSurfaceBytes(window);
-                Assert.NotSame(lightGrid, window.PositionMapControl.Surface.GridBrush);
-                Assert.NotSame(lightFill, window.PositionMapControl.Surface.MonitorFill);
-                Assert.NotSame(lightStroke, window.PositionMapControl.Surface.MonitorStroke);
-                Assert.NotSame(lightLabel, window.PositionMapControl.Surface.LabelBrush);
+                AssertSurfaceBrushesMatchTheme(window.PositionMapControl.Surface);
                 Assert.False(lightSurface.AsSpan().SequenceEqual(darkSurface));
 
                 berthApp.ApplyColorTheme(Berth.App.ColorTheme.HighContrast);
                 byte[] hcSurface = RenderSurfaceBytes(window);
+                AssertSurfaceBrushesMatchTheme(window.PositionMapControl.Surface);
                 Assert.False(darkSurface.AsSpan().SequenceEqual(hcSurface));
             }
             finally
@@ -272,6 +278,14 @@ public sealed class PositionMapTests(AppFixture appFixture)
                 window.CloseForShutdown();
             }
         });
+    }
+
+    private static void AssertSurfaceBrushesMatchTheme(MapSurface surface)
+    {
+        Assert.Same(System.Windows.Application.Current.FindResource("Berth.MapGrid"), surface.GridBrush);
+        Assert.Same(System.Windows.Application.Current.FindResource("Berth.MonitorFill"), surface.MonitorFill);
+        Assert.Same(System.Windows.Application.Current.FindResource("Berth.MonitorStroke"), surface.MonitorStroke);
+        Assert.Same(System.Windows.Application.Current.FindResource("Berth.TextSecondary"), surface.LabelBrush);
     }
 
     [Fact]
