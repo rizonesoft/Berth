@@ -32,8 +32,10 @@ HIGH_CONTRAST_MAP: dict[str, str] = {
     "textSecondary": "WindowTextColorKey",
     "noticeWarningFill": "WindowColorKey",
     "noticeWarningBorder": "WindowTextColorKey",
+    "noticeWarningIcon": "WindowTextColorKey",
     "noticeErrorFill": "WindowColorKey",
     "noticeErrorBorder": "WindowTextColorKey",
+    "noticeErrorIcon": "WindowTextColorKey",
 }
 
 FONT_WEIGHT_MAP: dict[int, str] = {

@@ -284,13 +284,13 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
             {
                 vm.Detail.SetNoticeOverrides(
                     extraCanRestore: () => false,
-                    restoreToolTip: "Auto arrange icons is on.",
+                    restoreToolTip: NoticesViewModel.AutoArrangeText,
                     extraCanSave: () => true,
                     saveToolTip: null);
                 Assert.False(window!.DetailHeaderControl.RestoreButton.IsEnabled);
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.RestoreButton));
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.SaveButton));
-                Assert.Equal("Auto arrange icons is on.", window!.DetailHeaderControl.RestoreButton.ToolTip);
+                Assert.Equal(NoticesViewModel.AutoArrangeText, window!.DetailHeaderControl.RestoreButton.ToolTip);
                 Assert.True(window!.DetailHeaderControl.SaveButton.IsEnabled);
                 InvokeButton(window!.DetailHeaderControl.SaveButton);
             });
@@ -301,7 +301,7 @@ public sealed class DetailHeaderTests(AppFixture appFixture)
                 Assert.False(window!.DetailHeaderControl.RestoreButton.IsEnabled);
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.RestoreButton));
                 Assert.True(ToolTipService.GetShowOnDisabled(window!.DetailHeaderControl.SaveButton));
-                Assert.Equal("Auto arrange icons is on.", window!.DetailHeaderControl.RestoreButton.ToolTip);
+                Assert.Equal(NoticesViewModel.AutoArrangeText, window!.DetailHeaderControl.RestoreButton.ToolTip);
                 Assert.True(window!.DetailHeaderControl.SaveButton.IsEnabled);
             });
         }

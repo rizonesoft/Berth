@@ -243,6 +243,12 @@ internal sealed class DetailViewModel : ObservableObject
             return null;
         }
 
+        if (_externalBusy)
+        {
+            Volatile.Write(ref _operationInFlight, 0);
+            return null;
+        }
+
         OperationResult? result = null;
         try
         {
@@ -320,6 +326,47 @@ internal sealed class DetailViewModel : ObservableObject
         return RunOperationAsync(new WindowOperationRequest(
             WindowOperationKind.Undo,
             () => _service.Undo()));
+    }
+
+    /// <summary>
+    /// Runs a non-OperationResult action (such as §9 "Turn it off") under the same busy lock as Save/Restore/Undo so it
+    /// is mutually exclusive with window and tray operations, then invokes <paramref name="onFinishedOnUi"/> once idle.
+    /// </summary>
+    internal async Task RunBusyActionAsync(Func<Task> action, Action? onFinishedOnUi = null)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (Interlocked.CompareExchange(ref _operationInFlight, 1, 0) != 0)
+        {
+            return;
+        }
+
+        if (_externalBusy)
+        {
+            Volatile.Write(ref _operationInFlight, 0);
+            return;
+        }
+
+        try
+        {
+            await _main.MarshalToUiAsync(() =>
+            {
+                _localBusy = true;
+                IsBusy = true;
+            }).ConfigureAwait(false);
+
+            await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            await _main.MarshalToUiAsync(() =>
+            {
+                Volatile.Write(ref _operationInFlight, 0);
+                _localBusy = false;
+                IsBusy = _externalBusy;
+                onFinishedOnUi?.Invoke();
+            }).ConfigureAwait(false);
+        }
     }
 
     public Task<OperationResult?> RetryAsync(WindowOperationRequest request)

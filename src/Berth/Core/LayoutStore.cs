@@ -25,6 +25,9 @@ internal sealed record LayoutSnapshot(string Key, Layout? Layout, byte[]? Bytes)
 /// </summary>
 internal sealed class LayoutStore(BerthPaths paths)
 {
+    /// <summary>The layouts folder this store reads and writes, used by §9 "Open folder".</summary>
+    public string LayoutsFolder => paths.LayoutsFolder;
+
     /// <summary>The layout of <paramref name="key"/> as it is now, for <see cref="Save(Layout, LayoutSnapshot)"/>.</summary>
     /// <exception cref="UnreadableLayoutException">Its file cannot be read, so it must not be replaced.</exception>
     /// <exception cref="IOException">The layouts folder exists but cannot be read.</exception>

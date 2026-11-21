@@ -141,8 +141,10 @@ class BuildTokensTests(unittest.TestCase):
             "Berth.TextSecondary": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
             "Berth.NoticeWarningFill": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
             "Berth.NoticeWarningBorder": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.NoticeWarningIcon": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
             "Berth.NoticeErrorFill": "{DynamicResource {x:Static SystemColors.WindowColorKey}}",
             "Berth.NoticeErrorBorder": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
+            "Berth.NoticeErrorIcon": "{DynamicResource {x:Static SystemColors.WindowTextColorKey}}",
         }
         hc_root = ET.fromstring(out["Tokens.HighContrast.xaml"])
         hc_bindings = {el.attrib[KEY_ATTR]: el.attrib["Color"] for el in hc_root}

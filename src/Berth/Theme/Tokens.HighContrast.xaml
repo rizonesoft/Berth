@@ -16,6 +16,8 @@
     <SolidColorBrush x:Key="Berth.TextSecondary" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
     <SolidColorBrush x:Key="Berth.NoticeWarningFill" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
     <SolidColorBrush x:Key="Berth.NoticeWarningBorder" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="Berth.NoticeWarningIcon" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
     <SolidColorBrush x:Key="Berth.NoticeErrorFill" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
     <SolidColorBrush x:Key="Berth.NoticeErrorBorder" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="Berth.NoticeErrorIcon" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
 </ResourceDictionary>

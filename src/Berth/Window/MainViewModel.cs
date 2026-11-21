@@ -20,6 +20,8 @@ internal sealed class MainViewModel : ObservableObject
     private readonly TimeProvider _clock;
     private readonly Func<Action, Task> _marshalToUiAsync;
     private readonly LayoutService? _service;
+    private readonly IFolderOpener _folderOpener;
+    private readonly Log? _log;
     private readonly object _refreshGate = new();
 
     private Task? _activeRefreshTask;
@@ -44,7 +46,9 @@ internal sealed class MainViewModel : ObservableObject
         TimeProvider clock,
         Func<Action, Task>? marshalToUiAsync = null,
         LayoutService? service = null,
-        TimeZoneInfo? timeZone = null)
+        TimeZoneInfo? timeZone = null,
+        IFolderOpener? folderOpener = null,
+        Log? log = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(desktop);
@@ -56,6 +60,8 @@ internal sealed class MainViewModel : ObservableObject
         _monitors = monitors;
         _clock = clock;
         _service = service;
+        _folderOpener = folderOpener ?? new ShellFolderOpener();
+        _log = log;
         _marshalToUiAsync = marshalToUiAsync ?? (action =>
         {
             action();
@@ -68,6 +74,12 @@ internal sealed class MainViewModel : ObservableObject
             timeZone,
             undoHandler: service is not null ? () => Detail.UndoAsync() : null,
             retryHandler: request => Detail.RetryAsync(request));
+        Notices = new NoticesViewModel(
+            store.LayoutsFolder,
+            turnAutoArrangeOffAsync: TurnAutoArrangeOffAsync,
+            retryDesktopAsync: () => RefreshAfterOperationAsync(),
+            openFolder: OpenFolder,
+            isBusyProvider: () => Detail.IsBusy);
 
         Detail.PropertyChanged += (_, e) =>
         {
@@ -79,6 +91,7 @@ internal sealed class MainViewModel : ObservableObject
                 }
 
                 Status.SetBusyState(Detail.IsBusy);
+                Notices.RaiseCanExecuteChanged();
             }
         };
         Status.PropertyChanged += (_, e) =>
@@ -101,6 +114,8 @@ internal sealed class MainViewModel : ObservableObject
     public DetailViewModel Detail { get; }
 
     public StatusViewModel Status { get; }
+
+    public NoticesViewModel Notices { get; }
 
     public ObservableCollection<LayoutRow> Rows { get; } = [];
 
@@ -180,7 +195,7 @@ internal sealed class MainViewModel : ObservableObject
     /// </summary>
     public Task RefreshAsync()
     {
-        TaskCompletionSource gate;
+        TaskCompletionSource<bool> gate;
         lock (_refreshGate)
         {
             if (_activeRefreshTask is not null)
@@ -188,7 +203,7 @@ internal sealed class MainViewModel : ObservableObject
                 return Task.CompletedTask;
             }
 
-            gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _activeRefreshTask = gate.Task;
         }
 
@@ -201,18 +216,21 @@ internal sealed class MainViewModel : ObservableObject
     /// When <paramref name="selectKey"/> is given, publishes that saved arrangement key only after any older poll finishes,
     /// and retains it until a post-write snapshot selects that saved row.
     /// </summary>
-    public async Task RefreshAfterOperationAsync(string? selectKey = null)
+    public async Task RefreshAfterOperationAsync(string? selectKey = null) =>
+        _ = await RefreshAfterOperationCoreAsync(selectKey).ConfigureAwait(false);
+
+    private async Task<bool> RefreshAfterOperationCoreAsync(string? selectKey)
     {
         while (true)
         {
             Task? existing;
-            TaskCompletionSource? gate = null;
+            TaskCompletionSource<bool>? gate = null;
             lock (_refreshGate)
             {
                 existing = _activeRefreshTask;
                 if (existing is null)
                 {
-                    gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                     _activeRefreshTask = gate.Task;
                 }
             }
@@ -241,20 +259,21 @@ internal sealed class MainViewModel : ObservableObject
             }
 
             _ = RunRefreshCoreAsync(gate!, includeCanUndo: true);
-            await gate!.Task.ConfigureAwait(false);
-            return;
+            return await gate!.Task.ConfigureAwait(false);
         }
     }
 
-    private async Task RunRefreshCoreAsync(TaskCompletionSource gate, bool includeCanUndo)
+    private async Task RunRefreshCoreAsync(TaskCompletionSource<bool> gate, bool includeCanUndo)
     {
         Exception? failure = null;
+        bool applied = false;
         try
         {
             RefreshSnapshot? snapshot = await Task.Run(() => CaptureSnapshot(includeCanUndo)).ConfigureAwait(false);
             if (snapshot is not null)
             {
                 await _marshalToUiAsync(() => ApplySnapshot(snapshot)).ConfigureAwait(false);
+                applied = true;
             }
         }
         catch (Exception ex)
@@ -277,7 +296,7 @@ internal sealed class MainViewModel : ObservableObject
             }
             else
             {
-                gate.TrySetResult();
+                gate.TrySetResult(applied);
             }
         }
     }
@@ -450,6 +469,8 @@ internal sealed class MainViewModel : ObservableObject
         Desktop = snapshot.Desktop;
         Unreadable = snapshot.Unreadable;
         StoreReadError = snapshot.StoreReadError;
+        Notices.Update(Desktop, Unreadable);
+        ApplyNoticeOverrides();
 
         List<LayoutRow> nextRows = BuildRows(snapshot);
 
@@ -506,6 +527,97 @@ internal sealed class MainViewModel : ObservableObject
         else
         {
             RebuildComparison(snapshot.CanUndo);
+        }
+    }
+
+    private void ApplyNoticeOverrides()
+    {
+        if (Desktop.Unavailable)
+        {
+            Detail.SetNoticeOverrides(
+                extraCanRestore: static () => false,
+                restoreToolTip: NoticesViewModel.DesktopUnavailableText,
+                extraCanSave: static () => false,
+                saveToolTip: NoticesViewModel.DesktopUnavailableText);
+        }
+        else if (Desktop.AutoArrange)
+        {
+            Detail.SetNoticeOverrides(
+                extraCanRestore: static () => false,
+                restoreToolTip: NoticesViewModel.AutoArrangeText,
+                extraCanSave: null,
+                saveToolTip: null);
+        }
+        else
+        {
+            Detail.SetNoticeOverrides(null, null, null, null);
+        }
+    }
+
+    private Task TurnAutoArrangeOffAsync()
+    {
+        long epoch = 0;
+        bool writeUnavailable = false;
+        bool snapshotApplied = false;
+
+        return Detail.RunBusyActionAsync(
+            async () =>
+            {
+                epoch = Volatile.Read(ref _operationEpoch);
+                try
+                {
+                    await Task.Run(() => _desktop.TryTurnAutoArrangeOff()).ConfigureAwait(false);
+                }
+                catch (DesktopUnavailableException)
+                {
+                    writeUnavailable = true;
+                }
+
+                try
+                {
+                    snapshotApplied = await RefreshAfterOperationCoreAsync(selectKey: null).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    snapshotApplied = false;
+                }
+            },
+            onFinishedOnUi: () =>
+            {
+                if (Detail.IsBusy || Volatile.Read(ref _operationEpoch) != epoch)
+                {
+                    return;
+                }
+
+                if (writeUnavailable || Desktop.Unavailable)
+                {
+                    OperationResult unavailable = OperationResult.Refused(Refusal.DesktopUnavailable);
+                    _log?.Fail(Messages.Refusal(unavailable));
+                    Status.SetResult(unavailable);
+                }
+                else if (!snapshotApplied || Desktop.AutoArrange)
+                {
+                    _log?.Fail(Messages.AutoArrangeWouldNotTurnOff);
+                    Status.SetCustomMessage(Messages.AutoArrangeWouldNotTurnOff);
+                }
+            });
+    }
+
+    private void OpenFolder(string fullPath)
+    {
+        try
+        {
+            _folderOpener.OpenSelectFile(fullPath);
+        }
+        catch (Exception ex)
+        {
+            OperationResult failed = OperationResult.Failed(FailureKind.Unexpected, path: null, ex.Message, error: ex);
+            string message = Messages.Refusal(failed);
+            _log?.FailWithDetails(message, ex.ToString());
+            if (!Detail.IsBusy)
+            {
+                Status.SetCustomMessage(message);
+            }
         }
     }
 

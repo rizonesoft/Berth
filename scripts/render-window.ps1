@@ -85,7 +85,17 @@ try {
         'status-unsaved-light.png',
         'status-unsaved-dark.png',
         'status-other-light.png',
-        'status-other-dark.png'
+        'status-other-dark.png',
+        'notice-none-light.png',
+        'notice-none-dark.png',
+        'notice-auto-arrange-light.png',
+        'notice-auto-arrange-dark.png',
+        'notice-unreachable-light.png',
+        'notice-unreachable-dark.png',
+        'notice-unreadable-light.png',
+        'notice-unreadable-dark.png',
+        'notice-two-light.png',
+        'notice-two-dark.png'
     )
     foreach ($name in $expectedNames) {
         $stagedFile = Join-Path $stageDir $name

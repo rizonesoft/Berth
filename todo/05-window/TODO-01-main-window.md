@@ -275,6 +275,8 @@ The three notices of SPEC §9, their buttons, and what each one disables.
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*NoticesTests"` passes, and fails when "Restore" stays enabled while auto arrange is on.
 
+> **Started:** 2026-11-21
+
 ## 8. Rename dialog
 
 The More menu's Rename (SPEC §10, first bullet).

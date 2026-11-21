@@ -47,7 +47,9 @@
 
                 <ContentControl x:Name="NoticesHost"
                                 Grid.Row="1"
-                                Focusable="False" />
+                                Focusable="False">
+                    <local:Notices x:Name="NoticesControl" DataContext="{Binding Notices}" />
+                </ContentControl>
 
                 <ContentControl x:Name="MapHost"
                                 Grid.Row="2"

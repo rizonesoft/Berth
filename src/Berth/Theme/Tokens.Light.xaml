@@ -16,6 +16,8 @@
     <SolidColorBrush x:Key="Berth.TextSecondary" Color="#5C5C5C" />
     <SolidColorBrush x:Key="Berth.NoticeWarningFill" Color="#FFF4CE" />
     <SolidColorBrush x:Key="Berth.NoticeWarningBorder" Color="#E9D48A" />
+    <SolidColorBrush x:Key="Berth.NoticeWarningIcon" Color="#9D5D00" />
     <SolidColorBrush x:Key="Berth.NoticeErrorFill" Color="#FDE7E9" />
     <SolidColorBrush x:Key="Berth.NoticeErrorBorder" Color="#F1BBBC" />
+    <SolidColorBrush x:Key="Berth.NoticeErrorIcon" Color="#C42B1C" />
 </ResourceDictionary>
