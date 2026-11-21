@@ -120,3 +120,28 @@ RECONCILIATION: gaps
 
 
 - Implemented: updated `tests/Berth.Tests/Release/DocsRenderTests.cs` to show the live 980x640 `MainWindow`, measure its actual `GetWindowRect`/`GetClientRect`/`VisualTreeHelper.GetDpi`, assert `window.RootGrid.ActualWidth`/`ActualHeight` match the live client bounds, attempt live `PrintWindow(PW_RENDERFULLCONTENT)` (using it whenever DWM returns >= 8 distinct colors on an unlocked desktop, and honestly falling back to rendering `window.RootGrid` at the exact measured live client bounds inside the 980x640 frame when DWM returns a 1-color blank surface on a locked unattended desktop); replaced the operator-only `pwsh scripts/start-run.ps1` command in `README.md` with a file link `[scripts/start-run.ps1](scripts/start-run.ps1)`, ran `python assets/build.py` (exited 0), restored the verbatim bullet in `todo/07-release/TODO-01-packaging.md` without exclusions, and verified `pwsh scripts/render-docs-images.ps1` (1/1) and `scripts/tests/test_readme.py` (4/4).
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T12:03:30Z
+- Candidate: a84214408a116e40d03101a6681077e00230694d
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 11
+- Digest: 1e66125661971323
+
+1. **open, P2 (recurring: completion, reconciliation 1, reconciliation 2).** Both published screenshots still have a hand-drawn title bar and window controls. The writer’s implementation entry records the native capture attempt, but the build machine returned a blank surface and used the compositor. A successful renderer exit therefore does not establish the native frame required by the section. `docs/reviews/07-release/D07-T01-s3.md:122`, `docs/phase-runs/2026-11-21-phase-7.md:61`, `tests/Berth.Tests/Release/DocsRenderTests.cs:195`, `design/SPEC.md:42`.
+2. **open, P2 (recurring: completion, reconciliation 1, reconciliation 2).** The asset build now has a recorded exit code, and the checklist text matches the completion candidate. The remaining gap is evidence of an operator-started campaign. Replacing the command with a file link changes what the README displays, but supplies no run evidence for the obligation reconciliation 1 explicitly retained. `todo/07-release/TODO-01-packaging.md:114`, `README.md:130`, `docs/reviews/07-release/D07-T01-s3.md:110`, `docs/reviews/07-release/D07-T01-s3.md:122`, `docs/phase-runs/2026-11-21-phase-7.md:61`.
+3. **open, P2 (recurring: completion, reconciliation 1, reconciliation 2).** The repair measures the live client size and checks the WPF layout in both themes. The fallback used for the published images still places that client at an inferred position, leaving exactly one pixel below it. It never measures the client origin relative to the outer window, so the bottom resize border is effectively assigned to the caption area. The 980×640 output dimensions do not establish the required live layout. `tests/Berth.Tests/Release/DocsRenderTests.cs:175`, `tests/Berth.Tests/Release/DocsRenderTests.cs:180`, `tests/Berth.Tests/Release/DocsRenderTests.cs:297`, `docs/reviews/07-release/D07-T01-s3.md:122`.
+
+LENS adversarial: clean
+LENS integration: clean
+LENS plan-delivery: findings
+LENS record: findings
+HIGHEST: P2
+RECURRING: 3
+RECONCILIATION: gaps
+
+
+- Filed: D99 T01 §4

@@ -168,13 +168,24 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
 
-            // Measure the live framed window's actual client and outer dimensions in DIPs.
+            // Measure the live framed window's actual client size and client origin relative to the visible outer frame.
             Assert.True(GetWindowRect(hwnd, out RECT winRect), "GetWindowRect failed for MainWindow.");
             Assert.True(GetClientRect(hwnd, out RECT clientRect), "GetClientRect failed for MainWindow.");
+            var clientOrigin = new POINT { X = 0, Y = 0 };
+            Assert.True(ClientToScreen(hwnd, ref clientOrigin), "ClientToScreen failed for MainWindow.");
+            RECT outerRef = winRect;
+            if (DwmGetWindowAttribute(hwnd, DwmwaExtendedFrameBounds, out RECT extRect, Marshal.SizeOf<RECT>()) == 0
+                && (extRect.Right - extRect.Left) >= clientRect.Right
+                && (extRect.Bottom - extRect.Top) >= clientRect.Bottom)
+            {
+                outerRef = extRect;
+            }
+
             DpiScale dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
             int measuredClientW = Math.Clamp((int)Math.Round(clientRect.Right / dpi.DpiScaleX), 800, OuterWidth - 2);
             int measuredClientH = Math.Clamp((int)Math.Round(clientRect.Bottom / dpi.DpiScaleY), 500, OuterHeight - 24);
-            int measuredTitleBarH = Math.Clamp(OuterHeight - measuredClientH - 2, 24, 48);
+            int measuredClientLeft = Math.Clamp((int)Math.Round((clientOrigin.X - outerRef.Left) / dpi.DpiScaleX), 1, Math.Max(1, OuterWidth - measuredClientW - 1));
+            int measuredClientTop = Math.Clamp((int)Math.Round((clientOrigin.Y - outerRef.Top) / dpi.DpiScaleY), 24, Math.Max(24, OuterHeight - measuredClientH - 1));
 
             // Verify live WPF RootGrid actually laid out inside the measured client bounds.
             Assert.InRange(window.RootGrid.ActualWidth, measuredClientW - 4, measuredClientW + 4);
@@ -187,12 +198,12 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             }
 
             // Locked/headless desktops return a 1-color blank DWM surface from PrintWindow; render the live
-            // MainWindow's RootGrid at its exact measured client dimensions and frame it to 980x640.
+            // MainWindow's RootGrid at its exact measured client dimensions and origin inside the 980x640 frame.
             window.RootGrid.Measure(new WpfSize(measuredClientW, measuredClientH));
             window.RootGrid.Arrange(new Rect(0, 0, measuredClientW, measuredClientH));
             window.RootGrid.UpdateLayout();
             WindowRenderer.Render(window.RootGrid, measuredClientW, measuredClientH, clientTempPath, theme);
-            CompositeMeasuredFrame(clientTempPath, iconPath, outputPath, measuredClientW, measuredClientH, measuredTitleBarH, theme == RenderTheme.Dark);
+            CompositeMeasuredFrame(clientTempPath, iconPath, outputPath, measuredClientW, measuredClientH, measuredClientLeft, measuredClientTop, theme == RenderTheme.Dark);
         }
         finally
         {
@@ -279,7 +290,8 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         string outputPath,
         int clientW,
         int clientH,
-        int titleBarH,
+        int clientLeft,
+        int clientTop,
         bool dark)
     {
         DrawingColor titleBg = dark ? DrawingColor.FromArgb(0x20, 0x20, 0x20) : DrawingColor.FromArgb(0xF3, 0xF3, 0xF3);
@@ -293,13 +305,12 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         g.Clear(titleBg);
 
-        int leftPad = (OuterWidth - clientW) / 2;
-        int clientTop = OuterHeight - clientH - 1;
         using (var client = new Bitmap(clientPngPath))
         {
-            g.DrawImage(client, new Rectangle(leftPad, clientTop, clientW, clientH));
+            g.DrawImage(client, new Rectangle(clientLeft, clientTop, clientW, clientH));
         }
 
+        int titleBarH = clientTop;
         int iconY = Math.Max(4, (titleBarH - 16) / 2);
         using (var icon = new Icon(iconPath, new System.Drawing.Size(16, 16)))
         {
@@ -409,6 +420,17 @@ public sealed class DocsRenderTests(AppFixture appFixture)
         public int Right;
         public int Bottom;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(nint hWnd, ref POINT lpPoint);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
