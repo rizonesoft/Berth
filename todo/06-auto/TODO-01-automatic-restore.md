@@ -2,7 +2,7 @@
 schema_version: 1
 id: automatic-restore
 domain: 06-auto
-status: active
+status: done
 title: "TODO-01 -- Automatic restore"
 depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"]
 ---
@@ -41,7 +41,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 | 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [x] |
 | 3 | §3 | Failure balloon | §2, D04 T01 §7 | [x] |
 | 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [x] |
-| 5 | §5 | Result shown in the open window and the tooltip | §2, D05 T01 §6 | [ ] |
+| 5 | §5 | Result shown in the open window and the tooltip | §2, D05 T01 §6 | [x] |
 
 ## 1. Message window for display change and Explorer restart
 
@@ -176,11 +176,14 @@ An automatic restore is visible afterwards: in the status line with "Undo" when 
 - [x] After a monitor change, refresh the tray tooltip so it names the new arrangement's layout or says there is none. Done when: a test changes the fake monitors, triggers, and reads the new tooltip. Cheaper substitute: a tooltip that keeps naming the old arrangement.
 - [x] Add a render test writing `status-auto-restored` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes both. Cheaper substitute: none needed.
 - [x] Add `tests/Berth.Tests/App/AutoRestoreWindowTests.cs`. Done when: all pass, and the status test fails when the result is not routed to the window. Cheaper substitute: none needed.
-- [ ] Commit: `app: automatic restore shown in the window and tooltip`
+- [x] Commit: `app: automatic restore shown in the window and tooltip`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*AutoRestoreWindowTests"` passes, and fails when an automatic restore leaves the open window's status line unchanged.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §5 | 7be3afe15a950aea2be49ced4ef4a4ce0906b7f4
+> **Review:** `docs/reviews/d06-t01-s5.json`
 
 ## Verification
 

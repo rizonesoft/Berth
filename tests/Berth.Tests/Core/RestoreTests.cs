@@ -263,7 +263,9 @@ public sealed class RestoreTests
     {
         using Rig rig = Saved([A, B, C], A with { X = 1 }, B with { X = 2 });
 
-        Assert.Equal(OperationResult.Restored("2 monitors", 3, 2, 0, 1), rig.Service().Restore());
+        Assert.Equal(
+            OperationResult.Restored("2 monitors", 3, 2, 0, 1, arrangementKey: ArrangementKey.From(rig.Monitors.Monitors)),
+            rig.Service().Restore());
     }
 
     [Fact]
@@ -294,11 +296,15 @@ public sealed class RestoreTests
     {
         using (Rig empty = Saved([], A))
         {
-            Assert.Equal(OperationResult.Restored("2 monitors", 0, 0, 0, 0), empty.Service().Restore());
+            Assert.Equal(
+                OperationResult.Restored("2 monitors", 0, 0, 0, 0, arrangementKey: ArrangementKey.From(empty.Monitors.Monitors)),
+                empty.Service().Restore());
         }
 
         using Rig gone = Saved([A, B]);
-        Assert.Equal(OperationResult.Restored("2 monitors", 2, 0, 0, 2), gone.Service().Restore());
+        Assert.Equal(
+            OperationResult.Restored("2 monitors", 2, 0, 0, 2, arrangementKey: ArrangementKey.From(gone.Monitors.Monitors)),
+            gone.Service().Restore());
     }
 
     [Fact]

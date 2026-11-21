@@ -87,7 +87,9 @@ public sealed class UndoTests
         Assert.Equal([movedA, movedB], ((IDesktopIcons)rig.Desktop).ReadIcons());
 
         OperationResult restored = rig.Service().Restore();
-        Assert.Equal(OperationResult.Restored("2 monitors", 2, 2, 0, 0), restored);
+        Assert.Equal(
+            OperationResult.Restored("2 monitors", 2, 2, 0, 0, arrangementKey: ArrangementKey.From(rig.Monitors.Monitors)),
+            restored);
         Assert.Equal([savedA, savedB], ((IDesktopIcons)rig.Desktop).ReadIcons());
 
         OperationResult undone = rig.Service().Undo();

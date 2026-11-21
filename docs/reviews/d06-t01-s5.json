@@ -1,0 +1,84 @@
+{
+  "ref": "D06 T01 \u00a75",
+  "title": "Result shown in the open window and the tooltip",
+  "implementation_sha": "7be3afe15a950aea2be49ced4ef4a4ce0906b7f4",
+  "date": "2026-11-21",
+  "reviews": [
+    {
+      "round": 1,
+      "report": "docs/reviews/06-auto/D06-T01-s5.md",
+      "verdict": "fixed"
+    }
+  ],
+  "checks": [
+    "dotnet test --solution Berth.slnx -c Release --filter-class *AutoRestoreWindowTests"
+  ],
+  "completion": {
+    "report": "docs/reviews/06-auto/D06-T01-s5.md",
+    "verdict": "reconciled",
+    "candidate": "7be3afe15a950aea2be49ced4ef4a4ce0906b7f4",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "filed": []
+  },
+  "rounds_spent": 1,
+  "round_cap": 33,
+  "plan": {
+    "report": "docs/reviews/06-auto/D06-T01-s5.md",
+    "candidate": "10c8a1ee7862a114e0c61406d9c6359e6be745b8",
+    "reviewer": "astra",
+    "model": "gpt-6.2-astra",
+    "effort": "medium",
+    "lenses": [
+      "plan"
+    ]
+  },
+  "schedule_sha": "10c8a1ee7862a114e0c61406d9c6359e6be745b8",
+  "schedule": {
+    "policy": "three-pass",
+    "pass_cap": 33,
+    "blocking": [
+      "P1",
+      "P2"
+    ],
+    "recurrence_cap": 3,
+    "plan": {
+      "effort": "medium",
+      "lenses": [
+        "plan"
+      ]
+    },
+    "rounds": [
+      {
+        "effort": "medium",
+        "lenses": [
+          "adversarial",
+          "integration",
+          "source-defect",
+          "consistency",
+          "quality",
+          "optimization",
+          "design"
+        ]
+      }
+    ],
+    "completion": {
+      "effort": "low",
+      "lenses": [
+        "plan-delivery",
+        "record"
+      ]
+    },
+    "reconciliation": {
+      "effort": "low",
+      "lenses": [
+        "adversarial",
+        "integration",
+        "plan-delivery",
+        "record"
+      ]
+    }
+  },
+  "passes_spent": 5,
+  "pass_cap": 33
+}
