@@ -47,7 +47,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell"]
 | 8 | §8 | Rename dialog | §3 | [x] |
 | 9 | §9 | Revert to previous save and delete | §8 | [x] |
 | 10 | §10 | Start with Windows registry value | D00 T01 §3 | [x] |
-| 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [ ] |
+| 11 | §11 | Settings switches and version caption | §2, §6, §10, D01 T01 §18 | [x] |
 | 12 | §12 | Keyboard order and automation names | §5, §7, §9, §11 | [ ] |
 | 13 | §13 | High contrast and 150% scale | §12 | [ ] |
 | 14 | §14 | UI Automation smoke of the running window | §13 | [ ] |
@@ -386,16 +386,19 @@ The two switches and the version at the bottom of the layouts pane (SPEC §11, �
 1. Add `SettingsViewModel` (pure). Done when: each switch writes, reads back and reverts on failure.
 2. Add `SettingsPanel.xaml` at the bottom of the layouts pane. Done when: both switches and the caption render.
 
-- [ ] Add `SettingsViewModel(SettingChanges changes, SettingsStore store, RunValue run, StatusViewModel status)` with `RestoreAutomatically` and `StartWithWindows` (**Corrected 2026-11-18:** "Restore automatically" goes through `SettingChanges.SetRestoreAutomatically` and the `Run` value result through `SettingChanges.RecordStartWithWindows`, `D01 T01 §18`, which own the SPEC §18 log lines): a change writes through `SettingChanges` or `RunValue.Set`, reads back, and on failure returns the property to its old value and puts the SPEC §18 message in the status line. Done when: unit tests cover a successful change of each, a failing store, and a failing `RunValue` (a key the test made read-only or a fake). Cheaper substitute: an optimistic switch.
-- [ ] Load both from their sources on every `Refresh`, so a change made by the tray menu or outside Berth shows. Done when: a test changes `settings.json` on disk, refreshes, and reads the new switch state. Cheaper substitute: reading once at startup.
-- [ ] Add `src/Berth/Window/SettingsPanel.xaml` pinned to the bottom of the layouts pane under a 1 px divider: `Restore automatically` and `Start with Windows`, each a label on the left and the switch on the right, then the caption `Berth ` plus `AppInfo.Version` in `caption` with `Berth.TextSecondary`. Done when: a test finds two switches with those automation names and the caption text `Berth 0.1.0`. Cheaper substitute: a settings dialog, which SPEC §11 does not describe.
-- [ ] Add render tests writing `switches-on-off` and `switches-off-on` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes the four files. Cheaper substitute: none needed.
-- [ ] Add `tests/Berth.Tests/Window/SettingsTests.cs`. Done when: all pass, and the failure test fails when the switch stays flipped after a failed write. Cheaper substitute: none needed.
-- [ ] Commit: `window: settings switches and version caption`
+- [x] Add `SettingsViewModel(SettingChanges changes, SettingsStore store, RunValue run, StatusViewModel status)` with `RestoreAutomatically` and `StartWithWindows` (**Corrected 2026-11-18:** "Restore automatically" goes through `SettingChanges.SetRestoreAutomatically` and the `Run` value result through `SettingChanges.RecordStartWithWindows`, `D01 T01 §18`, which own the SPEC §18 log lines): a change writes through `SettingChanges` or `RunValue.Set`, reads back, and on failure returns the property to its old value and puts the SPEC §18 message in the status line. Done when: unit tests cover a successful change of each, a failing store, and a failing `RunValue` (a key the test made read-only or a fake). Cheaper substitute: an optimistic switch.
+- [x] Load both from their sources on every `Refresh`, so a change made by the tray menu or outside Berth shows. Done when: a test changes `settings.json` on disk, refreshes, and reads the new switch state. Cheaper substitute: reading once at startup.
+- [x] Add `src/Berth/Window/SettingsPanel.xaml` pinned to the bottom of the layouts pane under a 1 px divider: `Restore automatically` and `Start with Windows`, each a label on the left and the switch on the right, then the caption `Berth ` plus `AppInfo.Version` in `caption` with `Berth.TextSecondary`. Done when: a test finds two switches with those automation names and the caption text `Berth 0.1.0`. Cheaper substitute: a settings dialog, which SPEC §11 does not describe.
+- [x] Add render tests writing `switches-on-off` and `switches-off-on` in light and dark. Done when: `pwsh scripts/render-window.ps1` writes the four files. Cheaper substitute: none needed.
+- [x] Add `tests/Berth.Tests/Window/SettingsTests.cs`. Done when: all pass, and the failure test fails when the switch stays flipped after a failed write. Cheaper substitute: none needed.
+- [x] Commit: `window: settings switches and version caption`
 
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*SettingsTests"` passes, and fails when a switch stays on after its write failed.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §11 | e26e6d5e7a5a86db61e269af999297648f37a658
+> **Review:** `docs/reviews/d05-t01-s11.json`
 
 ## 12. Keyboard order and automation names
 
