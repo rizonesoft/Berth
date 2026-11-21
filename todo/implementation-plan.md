@@ -131,7 +131,7 @@ Sections: 5 | Checklist items: 30
 | [x]    | D06 T01 §1 | Message window for display change and Explorer restart | windows-host, display-session | 7     |
 | [x]    | D06 T01 §2 | Settle timer and the automatic restore                 | none                          | 7     |
 | [x]    | D06 T01 §3 | Failure balloon                                        | windows-host, display-session | 6     |
-| [ ]    | D06 T01 §4 | Tray icon added again after Explorer restarts          | windows-host, display-session | 4     |
+| [x]    | D06 T01 §4 | Tray icon added again after Explorer restarts          | windows-host, display-session | 4     |
 | [ ]    | D06 T01 §5 | Result shown in the open window and the tooltip        | windows-host, display-session | 6     |
 
 ### Phase 7: Release
@@ -157,6 +157,6 @@ Sections: 4 | Checklist items: 17
 | [ ]    | D99 T01 §3 | First release tagged and published              | operator           | 4     |
 | [ ]    | D99 T01 §4 | Auto arrange round trip on a disposable desktop | attended, operator | 4     |
 
-Progress: 77/88 verified sections, 2 ready to run now.
+Progress: 78/88 verified sections, 1 ready to run now.
 
 Checklist: 473/522 items completed (includes Commit items).

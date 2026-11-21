@@ -40,7 +40,7 @@ depends_on: ["layout-core", "desktop-access", "application-shell", "main-window"
 | 1 | §1 | Message window for display change and Explorer restart | D04 T01 §5 | [x] |
 | 2 | §2 | Settle timer and the automatic restore | §1, D01 T01 §10, D02 T01 §6 | [x] |
 | 3 | §3 | Failure balloon | §2, D04 T01 §7 | [x] |
-| 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [ ] |
+| 4 | §4 | Tray icon added again after Explorer restarts | §1, D04 T01 §7 | [x] |
 | 5 | §5 | Result shown in the open window and the tooltip | §2, D05 T01 §6 | [ ] |
 
 ## 1. Message window for display change and Explorer restart
@@ -150,6 +150,9 @@ When Explorer restarts, the notification area is rebuilt empty: Berth puts its i
 **Test checkpoint:** `dotnet test --solution Berth.slnx --filter-class "*TrayIconTests"` passes, and fails when `TaskbarCreated` does not lead to `TrayIcon.Readd`.
 
 > **Started:** 2026-11-21
+
+> **Verified:** 2026-11-21 | §4 | 6bcfddb179aa587f582930fb55f402d2873e8aa1
+> **Review:** `docs/reviews/d06-t01-s4.json`
 
 ## 5. Result shown in the open window and the tooltip
 
