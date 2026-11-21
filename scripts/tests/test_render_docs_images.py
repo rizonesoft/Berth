@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 import time
@@ -21,6 +20,26 @@ def _write_pair(directory: Path, tag: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for name in IMAGES:
         (directory / name).write_bytes(f"{tag}:{name}".encode("ascii"))
+
+
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is None:
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=CREATE_NO_WINDOW,
+            check=False,
+        )
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+    if proc.stdout:
+        proc.stdout.close()
+    if proc.stderr:
+        proc.stderr.close()
 
 
 def _start_publish(
@@ -54,6 +73,14 @@ def _start_publish(
     )
 
 
+def _communicate_with_teardown(proc: subprocess.Popen[str], timeout: float) -> tuple[int, str, str]:
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode, stdout, stderr
+    finally:
+        _kill_process_tree(proc)
+
+
 class RenderDocsImagesTests(unittest.TestCase):
     def test_interrupted_publish_preserves_canonical_readme_images_and_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -75,31 +102,27 @@ class RenderDocsImagesTests(unittest.TestCase):
             try:
                 deadline = time.monotonic() + 15.0
                 while not signal.exists() and time.monotonic() < deadline:
-                    self.assertIsNone(proc.poll(), f"publisher exited early: {proc.stderr.read() if proc.stderr else ''}")
+                    rc = proc.poll()
+                    if rc is not None:
+                        err = proc.stderr.read() if proc.stderr else ""
+                        self.fail(f"publisher exited early ({rc}): {err}")
                     time.sleep(0.05)
                 self.assertTrue(signal.exists(), "publisher did not reach mid-publish pause point")
-                proc.kill()
-                proc.wait(timeout=10)
+                self.assertIsNone(proc.poll(), "publisher exited before termination")
+                _kill_process_tree(proc)
+                self.assertNotEqual(proc.returncode, 0, "terminated publisher must exit non-zero")
             finally:
-                if proc.poll() is None:
-                    proc.kill()
-                    proc.wait(timeout=10)
-                if proc.stdout:
-                    proc.stdout.close()
-                if proc.stderr:
-                    proc.stderr.close()
+                _kill_process_tree(proc)
 
-            # Before any retry, both canonical paths exist and resolve under the README checker.
-            for name in IMAGES:
-                path = dest / name
-                self.assertTrue(path.is_file(), f"{name} disappeared during interrupted publish")
-                self.assertGreater(path.stat().st_size, 0)
+            # Confirm the kill landed between light and dark, while BOTH canonical paths remained present.
+            self.assertEqual((dest / IMAGES[0]).read_bytes(), f"new:{IMAGES[0]}".encode("ascii"))
+            self.assertEqual((dest / IMAGES[1]).read_bytes(), f"old:{IMAGES[1]}".encode("ascii"))
             self.assertEqual(check_readme_links(readme.read_text(encoding="utf-8"), root), [])
 
-            # A subsequent publish recovers from the abandoned mutex, cleans orphaned temp files, and writes a matched pair.
+            # A subsequent publish acquires the released kernel file lock, cleans orphans, and writes a matched pair.
             retry = _start_publish(stage_new, dest)
-            stdout, stderr = retry.communicate(timeout=20)
-            self.assertEqual(retry.returncode, 0, f"retry failed: {stderr}\n{stdout}")
+            rc, stdout, stderr = _communicate_with_teardown(retry, timeout=20.0)
+            self.assertEqual(rc, 0, f"retry failed: {stderr}\n{stdout}")
             for name in IMAGES:
                 self.assertEqual((dest / name).read_bytes(), f"new:{name}".encode("ascii"))
             leftovers = [p.name for p in dest.iterdir() if p.name not in IMAGES]
@@ -117,10 +140,15 @@ class RenderDocsImagesTests(unittest.TestCase):
 
             proc_a = _start_publish(stage_a, dest)
             proc_b = _start_publish(stage_b, dest)
-            out_a, err_a = proc_a.communicate(timeout=30)
-            out_b, err_b = proc_b.communicate(timeout=30)
-            self.assertEqual(proc_a.returncode, 0, f"publisher A failed: {err_a}\n{out_a}")
-            self.assertEqual(proc_b.returncode, 0, f"publisher B failed: {err_b}\n{out_b}")
+            try:
+                rc_a, out_a, err_a = _communicate_with_teardown(proc_a, timeout=30.0)
+                rc_b, out_b, err_b = _communicate_with_teardown(proc_b, timeout=30.0)
+            finally:
+                _kill_process_tree(proc_a)
+                _kill_process_tree(proc_b)
+
+            self.assertEqual(rc_a, 0, f"publisher A failed: {err_a}\n{out_a}")
+            self.assertEqual(rc_b, 0, f"publisher B failed: {err_b}\n{out_b}")
 
             light = (dest / IMAGES[0]).read_bytes().decode("ascii")
             dark = (dest / IMAGES[1]).read_bytes().decode("ascii")

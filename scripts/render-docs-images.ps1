@@ -47,24 +47,34 @@ try {
     }
 
     New-Item -ItemType Directory -Path $resolvedDestDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $scratchBase -Force | Out-Null
     $destFull = [System.IO.Path]::GetFullPath($resolvedDestDir).TrimEnd('\', '/').ToLowerInvariant()
     $destHash = [System.BitConverter]::ToString(
         [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($destFull))
     ).Replace('-', '').Substring(0, 16)
-    $mutex = [System.Threading.Mutex]::new($false, "Local\Berth.RenderDocsImages.$destHash")
-    $mutexAcquired = $false
-    try {
+    # Cross-session exclusive lock file in scratch: works across interactive and non-interactive Windows sessions,
+    # requires no SeCreateGlobalPrivilege, and is released automatically by the OS kernel if the process is killed.
+    $lockPath = Join-Path $scratchBase "berth-docs-images-$destHash.lock"
+    $lockStream = $null
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ($null -eq $lockStream) {
         try {
-            $mutexAcquired = $mutex.WaitOne(30000)
+            $lockStream = [System.IO.FileStream]::new(
+                $lockPath,
+                [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite,
+                [System.IO.FileShare]::None
+            )
         }
-        catch [System.Threading.AbandonedMutexException] {
-            # A previously hard-killed publisher abandoned the mutex; this process now owns it.
-            $mutexAcquired = $true
+        catch [System.IO.IOException] {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "Timed out waiting for docs image publish lock '$lockPath' for '$resolvedDestDir'."
+            }
+            Start-Sleep -Milliseconds 50
         }
-        if (-not $mutexAcquired) {
-            throw "Timed out waiting for docs image publish lock on '$resolvedDestDir'."
-        }
+    }
 
+    try {
         # Clean up orphaned staging or backup files from any previously terminated publisher.
         foreach ($name in $expected) {
             foreach ($orphan in (Get-ChildItem -LiteralPath $resolvedDestDir -Filter "$name.*.next" -File)) {
@@ -86,7 +96,7 @@ try {
             $backupPaths[$name] = "$dst.$runId.prev"
         }
 
-        # Use File.Replace (Win32 ReplaceFileW) under the destination mutex so canonical paths never disappear.
+        # Use File.Replace (Win32 ReplaceFileW) under the cross-session lock so canonical paths never disappear.
         $replaced = @()
         try {
             foreach ($name in $expected) {
@@ -130,10 +140,7 @@ try {
         }
     }
     finally {
-        if ($mutexAcquired) {
-            $mutex.ReleaseMutex()
-        }
-        $mutex.Dispose()
+        $lockStream.Dispose()
     }
 
     $modesFile = Join-Path $resolvedStageDir 'capture-modes.txt'

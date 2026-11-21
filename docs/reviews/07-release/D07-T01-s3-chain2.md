@@ -108,3 +108,35 @@ RECONCILIATION: gaps
 
 
 - Implemented: serialized publication in `scripts/render-docs-images.ps1` with a per-destination named `System.Threading.Mutex` (handling `AbandonedMutexException`) plus per-run unique `$runId` `.next`/`.prev` filenames and orphaned temp cleanup under the lock; added `scripts/tests/test_render_docs_images.py` proving both (a) hard-killing the publisher (`TerminateProcess`) after the first `File.Replace` preserves both canonical `docs/images/main-window-{light,dark}.png` paths so `test_readme.py` resolves cleanly before any retry, and a subsequent retry recovers from the abandoned mutex, cleans orphaned temp files, and restores a matched pair, and (b) two concurrent publishers serialize without clobbering each other's temp files and finish with a matched pair. Note on Finding 3 (matched-pair under `TerminateProcess`): NTFS TxF (`MoveFileTransactedW`) is disabled on Windows 11 (`ERROR_RM_NOT_ACTIVE = 6832`), so no Windows user-space script updating two git-tracked regular files can simultaneously eliminate both the missing-path window (directory swap) and the single-file window between two `ReplaceFileW` calls under `TerminateProcess`; per-file `ReplaceFileW` under a destination mutex with unique `$runId` temp files is the industry-standard choice that preserves both canonical paths at all times, rolls back cleanly on normal exceptions, and restores a matched pair on retry.
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T12:28:08Z
+- Candidate: e1237ddc310421a322dc473af1bc82164b9274f5
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 21
+- Digest: 1a1222b3c7b49b6f
+
+1. **closed, P2. Exact compositor bounds.** The renderer converts the Win32 origin and size without clamping, reports all four values if the rectangle cannot fit, and passes those same values to the compositor. The repair matches the writer’s entry. `tests/Berth.Tests/Release/DocsRenderTests.cs:185`, `tests/Berth.Tests/Release/DocsRenderTests.cs:197`, `tests/Berth.Tests/Release/DocsRenderTests.cs:222`, `docs/reviews/07-release/D07-T01-s3.md:82`.
+
+2. **open, P2. Interruption verification** (recurring: completion, reconciliation 1, reconciliation 2). Python evaluates the assertion message on every poll. Its `proc.stderr.read()` blocks until the publisher closes stderr. During that wait, the publisher can finish its pause, replace the dark image, and exit. The signal file persists, so `proc.kill()` can target an already-exited process and the link check still passes. The supplied green test therefore does not establish the mid-publication kill claimed in the record. `scripts/tests/test_render_docs_images.py:78`, `scripts/tests/test_render_docs_images.py:81`, `scripts/tests/test_render_docs_images.py:97`, `docs/reviews/07-release/D07-T01-s3.md:110`.
+
+3. **open, P2. Matched pair after termination** (recurring: reconciliation 1, reconciliation 2). Each `File.Replace` publishes one image. Termination after the first leaves the new light image beside the old dark image until another successful run. The writer explicitly records recovery on retry, while the obligation applies before retry. `scripts/render-docs-images.ps1:95`, `scripts/tests/test_render_docs_images.py:101`, `docs/reviews/07-release/D07-T01-s3.md:110`.
+
+4. **closed, P2. Shared staging and backup names.** Each invocation now allocates its own filenames, and publishers in the same Windows session acquire the destination mutex before cleanup or replacement. This closes the original shared-name collision. `scripts/render-docs-images.ps1:54`, `scripts/render-docs-images.ps1:58`, `scripts/render-docs-images.ps1:78`, `docs/reviews/07-release/D07-T01-s3.md:110`.
+
+5. **New, open, P2. Publishers in different Windows sessions can delete each other’s files** (recurring: reconciliation 2 only). The `Local\` mutex is session-scoped. An interactive publisher and an automation session targeting the same checkout can both acquire it. Each then deletes every matching `.next` and `.prev` file, including the other publisher’s active staged image or rollback copy. `scripts/render-docs-images.ps1:54`, `scripts/render-docs-images.ps1:70`, `scripts/render-docs-images.ps1:73`.
+
+6. **New, open, P2. Test timeouts leave publishers running** (recurring: reconciliation 2 only). The retry and concurrent-test publishers have no teardown around `communicate(timeout=...)`. A timeout raises while the child is still running and temporary-directory cleanup begins. `scripts/tests/test_render_docs_images.py:101`, `scripts/tests/test_render_docs_images.py:119`, `scripts/tests/test_render_docs_images.py:120`.
+
+The repair range leaves the section contract unchanged at `todo/07-release/TODO-01-packaging.md:112`. Interruption verification has now been reported open in three passes, reaching the redesign threshold.
+
+LENS adversarial: findings
+LENS integration: findings
+LENS plan-delivery: findings
+LENS record: findings
+HIGHEST: P2
+RECURRING: 3
+RECONCILIATION: gaps
