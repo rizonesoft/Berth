@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import struct
-import tempfile
 import unittest
 import zlib
 from pathlib import Path
@@ -109,11 +108,10 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     return errors
 
 
-def read_png_dimensions(path: Path) -> tuple[int, int]:
+def validate_png_bytes(data: bytes, label: str = "<bytes>") -> tuple[int, int]:
     """Validate PNG signature, chunk CRCs, decompressed IDAT payload, and IEND, returning (width, height)."""
-    data = path.read_bytes()
     if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
-        raise ValueError(f"{path} is not a valid PNG")
+        raise ValueError(f"{label} is not a valid PNG")
     pos = 8
     width = height = 0
     bit_depth = color_type = 0
@@ -127,15 +125,15 @@ def read_png_dimensions(path: Path) -> tuple[int, int]:
         payload_end = payload_start + length
         crc_end = payload_end + 4
         if crc_end > len(data):
-            raise ValueError(f"{path} has a truncated {tag!r} chunk")
+            raise ValueError(f"{label} has a truncated {tag!r} chunk")
         payload = data[payload_start:payload_end]
         expected_crc = struct.unpack(">I", data[payload_end:crc_end])[0]
         actual_crc = zlib.crc32(tag + payload) & 0xFFFFFFFF
         if actual_crc != expected_crc:
-            raise ValueError(f"{path} failed CRC check on chunk {tag!r}")
+            raise ValueError(f"{label} failed CRC check on chunk {tag!r}")
         if tag == b"IHDR":
             if length != 13:
-                raise ValueError(f"{path} has invalid IHDR length {length}")
+                raise ValueError(f"{label} has invalid IHDR length {length}")
             width, height, bit_depth, color_type = struct.unpack(">IIBB", payload[:10])
             saw_ihdr = True
         elif tag == b"IDAT":
@@ -146,14 +144,18 @@ def read_png_dimensions(path: Path) -> tuple[int, int]:
             break
         pos = crc_end
     if not saw_ihdr or not saw_iend or not idat_parts:
-        raise ValueError(f"{path} is missing required PNG chunks (IHDR/IDAT/IEND)")
+        raise ValueError(f"{label} is missing required PNG chunks (IHDR/IDAT/IEND)")
     raw = zlib.decompress(b"".join(idat_parts))
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color_type)
     if channels is not None and bit_depth in (8, 16):
         expected_len = height * (1 + width * channels * (bit_depth // 8))
         if len(raw) != expected_len:
-            raise ValueError(f"{path} decoded to {len(raw)} bytes, expected {expected_len}")
+            raise ValueError(f"{label} decoded to {len(raw)} bytes, expected {expected_len}")
     return width, height
+
+
+def read_png_dimensions(path: Path) -> tuple[int, int]:
+    return validate_png_bytes(path.read_bytes(), str(path))
 
 
 class ReadmeTests(unittest.TestCase):
@@ -178,11 +180,8 @@ class ReadmeTests(unittest.TestCase):
 
     def test_truncated_png_fails_decoder_check(self) -> None:
         light_path = ROOT / "docs" / "images" / "main-window-light.png"
-        with tempfile.TemporaryDirectory() as tmp:
-            truncated = Path(tmp) / "truncated.png"
-            truncated.write_bytes(light_path.read_bytes()[:40])
-            with self.assertRaises(ValueError):
-                read_png_dimensions(truncated)
+        with self.assertRaises(ValueError):
+            validate_png_bytes(light_path.read_bytes()[:40], "truncated.png")
 
     def test_broken_linked_badge_and_missing_md_fragment_fail_check(self) -> None:
         broken_badge = "[![License](https://img.shields.io/example)](LICENCE-MISSING)\n"

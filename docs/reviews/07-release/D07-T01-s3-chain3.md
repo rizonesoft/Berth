@@ -112,3 +112,28 @@ COMPLETION: gaps
 
 
 - Implemented: updated `todo/07-release/TODO-01-packaging.md:112` to name `%ProgramData%\Berth\locks` as the machine-wide lock location (with staging in scratch), closing Gap 3. Verified `-RequireNative` on this unattended locked desktop (`pwsh scripts/render-docs-images.ps1 -RequireNative` exited 1 with `live PrintWindow returned a blank DWM surface` and left `docs/images/*.png` untouched), confirming Gaps 1 and 4 are satisfied by the active Chain 3 contract in `todo/07-release/TODO-01-packaging.md:112` which routes the unlocked-desktop native-DWM refresh to `D99 T01 §4` (`todo/99-manual/TODO-01-operator-steps.md:118`). For Gap 2, `D07-T01-s3-chain2.md` was superseded by `todo-graph.py replan` because NTFS TxF (`MoveFileTransactedW`) returns `ERROR_RM_NOT_ACTIVE (6832)` on Windows 11, so no Windows user-space script updating two regular git-tracked files can simultaneously eliminate both the missing-path window and the single-file window under `TerminateProcess`; the active Chain 3 contract in `todo/07-release/TODO-01-packaging.md:112` explicitly specifies per-file `File.Replace` (`ReplaceFileW`) under the machine-wide lock with rollback on errors and orphan cleanup plus matched-pair recovery on retry, proven by `scripts/tests/test_render_docs_images.py` (4/4 passing) and `scripts/tests/test_readme.py` (6/6 passing).
+
+## Reconciliation review: astra (`gpt-6.2-astra` via `codex`)
+
+- Writer: agy
+- Run: 2026-11-21T12:50:02Z
+- Candidate: bc2c495049b9217fad22ced869e2269f33c71df9
+- Effort: low
+- Lenses: adversarial, integration, plan-delivery, record
+- Lines: 14
+- Digest: 7a8673a6acdd85df
+
+1. open P2 (recurring: completion, reconciliation 1). The repair produced neither native screenshot. The writer records that `-RequireNative` exited 1 and left both PNGs untouched. The unlocked capture has an owner, but its acceptance item remains open. `docs/reviews/07-release/D07-T01-s3.md:103`, `docs/reviews/07-release/D07-T01-s3.md:114`, `todo/99-manual/TODO-01-operator-steps.md:118`
+2. open P2 (recurring: completion, reconciliation 1). The interruption test explicitly expects the new light image and the old dark image before retry. It verifies a matched pair only after retry. That satisfies the documented Chain 3 retry behavior, but the completion review explicitly required a matched pair before retry. `scripts/tests/test_render_docs_images.py:146`, `scripts/tests/test_render_docs_images.py:147`, `scripts/tests/test_render_docs_images.py:155`, `docs/reviews/07-release/D07-T01-s3.md:92`
+3. closed P3. The corrected TODO identifies `%ProgramData%\Berth\locks` as the lock directory and scratch as staging, consistent with the publisher and the writer’s implementation record. `todo/07-release/TODO-01-packaging.md:112`, `scripts/render-docs-images.ps1:54`, `docs/reviews/07-release/D07-T01-s3.md:114`
+4. open P2 (recurring: completion, reconciliation 1). The fidelity finding required two committed 980 × 640 native captures and an acceptance note from a successful run. The repair records a blank DWM surface and supplies no such acceptance evidence. `docs/reviews/07-release/D07-T01-s3.md:99`, `docs/reviews/07-release/D07-T01-s3.md:114`, `todo/99-manual/TODO-01-operator-steps.md:118`
+
+The repair changed no executable code, tests or images. Its only section edit was inside a dated correction, which the stamp excludes from its contract comparison. The section promise is unchanged. `todo/07-release/TODO-01-packaging.md:112`, `scripts/lib/todo_graph.py:802`
+
+LENS adversarial: findings
+LENS integration: clean
+LENS plan-delivery: findings
+LENS record: findings
+HIGHEST: P2
+RECURRING: 2
+RECONCILIATION: gaps
