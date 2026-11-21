@@ -124,9 +124,9 @@ if ($Published) {
     $env:BERTH_EXE = (Resolve-Path -LiteralPath $publishedExe).Path
     try {
         $publishedSuites = @(
-            @{ Name = 'published-artifact'; FilterArgs = @('--filter-trait', 'Category=Published'); AllowSkipped = $false }
-            @{ Name = 'published-real-desktop'; FilterArgs = @('--filter-trait', 'Category=RealDesktop', '--filter-not-trait', 'Category=Smoke'); AllowSkipped = $true }
-            @{ Name = 'published-smoke'; FilterArgs = @('--filter-trait', 'Category=Smoke'); AllowSkipped = $false }
+            @{ Name = 'published-artifact'; FilterArgs = @('--filter-trait', 'Category=Published'); AllowedSkips = @() }
+            @{ Name = 'published-real-desktop'; FilterArgs = @('--filter-trait', 'Category=RealDesktop', '--filter-not-trait', 'Category=Smoke'); AllowedSkips = @('Berth.Tests.Desktop.AutoArrangeTests.OptInRoundTripTurnsAutoArrangeOffReadsBackAndRestores') }
+            @{ Name = 'published-smoke'; FilterArgs = @('--filter-trait', 'Category=Smoke'); AllowedSkips = @() }
         )
 
         foreach ($suite in $publishedSuites) {
@@ -161,9 +161,14 @@ if ($Published) {
                 exit 1
             }
 
-            if (-not $suite.AllowSkipped -and $skippedMatch.Success -and [int]$skippedMatch.Groups[1].Value -gt 0) {
-                Write-Output "FAILED $($suite.Name): required published suite skipped $($skippedMatch.Groups[1].Value) test(s)"
-                exit 1
+            $skippedCount = if ($skippedMatch.Success) { [int]$skippedMatch.Groups[1].Value } else { 0 }
+            if ($skippedCount -gt 0) {
+                $skippedNames = @([regex]::Matches($joined, '(?m)^\s*skipped\s+(\S+)') | ForEach-Object { $_.Groups[1].Value })
+                $disallowed = @($skippedNames | Where-Object { $suite.AllowedSkips -notcontains $_ })
+                if ($disallowed.Count -gt 0 -or $skippedNames.Count -ne $skippedCount) {
+                    Write-Output "FAILED $($suite.Name): disallowed skipped test(s): $($disallowed -join ', ') (skipped=$skippedCount)"
+                    exit 1
+                }
             }
         }
     }
