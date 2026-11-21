@@ -182,10 +182,10 @@ public sealed class DocsRenderTests(AppFixture appFixture)
             }
 
             DpiScale dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
-            int measuredClientW = Math.Clamp((int)Math.Round(clientRect.Right / dpi.DpiScaleX), 800, OuterWidth - 2);
+            int measuredClientW = Math.Clamp((int)Math.Round(clientRect.Right / dpi.DpiScaleX), 800, OuterWidth);
             int measuredClientH = Math.Clamp((int)Math.Round(clientRect.Bottom / dpi.DpiScaleY), 500, OuterHeight - 24);
-            int measuredClientLeft = Math.Clamp((int)Math.Round((clientOrigin.X - outerRef.Left) / dpi.DpiScaleX), 1, Math.Max(1, OuterWidth - measuredClientW - 1));
-            int measuredClientTop = Math.Clamp((int)Math.Round((clientOrigin.Y - outerRef.Top) / dpi.DpiScaleY), 24, Math.Max(24, OuterHeight - measuredClientH - 1));
+            int measuredClientLeft = Math.Clamp((int)Math.Round((clientOrigin.X - outerRef.Left) / dpi.DpiScaleX), 0, Math.Max(0, OuterWidth - measuredClientW));
+            int measuredClientTop = Math.Clamp((int)Math.Round((clientOrigin.Y - outerRef.Top) / dpi.DpiScaleY), 24, Math.Max(24, OuterHeight - measuredClientH));
 
             // Verify live WPF RootGrid actually laid out inside the measured client bounds.
             Assert.InRange(window.RootGrid.ActualWidth, measuredClientW - 4, measuredClientW + 4);

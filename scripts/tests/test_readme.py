@@ -48,7 +48,17 @@ def check_readme_links(markdown: str, base_dir: Path) -> list[str]:
     # HTML img/a attributes: src="..." and href="..."
     html_targets = re.findall(r'(?:src|href)="([^"]+)"', markdown)
 
+    workflow_url_re = re.compile(
+        r"^https://github\.com/rizonesoft/Berth/actions/workflows/([^/?#]+?)(?:/badge\.svg)?(?:\?.*)?$"
+    )
+
     for target in [*badge_targets, *md_targets, *html_targets]:
+        wf_match = workflow_url_re.match(target)
+        if wf_match:
+            wf_file = (base_dir / ".github" / "workflows" / wf_match.group(1)).resolve()
+            if not wf_file.exists():
+                errors.append(f"missing GitHub workflow referenced by badge/link: {target}")
+            continue
         if target.startswith(("http://", "https://", "mailto:")):
             continue
         if target.startswith("#"):
@@ -99,6 +109,13 @@ class ReadmeTests(unittest.TestCase):
         frag_errors = check_readme_links(broken_frag, ROOT)
         self.assertTrue(any("design/SPEC.md#missing-heading" in err for err in frag_errors))
 
+        broken_wf = (
+            "[![Build](https://github.com/rizonesoft/Berth/actions/workflows/missing.yml/badge.svg?branch=main)]"
+            "(https://github.com/rizonesoft/Berth/actions/workflows/missing.yml)\n"
+        )
+        wf_errors = check_readme_links(broken_wf, ROOT)
+        self.assertTrue(any("missing.yml" in err for err in wf_errors))
+
     def test_readme_screenshots_badge_sections_and_limits(self) -> None:
         text = README.read_text(encoding="utf-8")
         self.assertNotIn("not built", text.lower())
@@ -109,6 +126,10 @@ class ReadmeTests(unittest.TestCase):
         self.assertEqual(imgs[0], "assets/icon/berth-icon-256.png")
         self.assertEqual(imgs[1], "docs/images/main-window-light.png")
         self.assertEqual(imgs[2], "docs/images/main-window-dark.png")
+
+        # Verify each screenshot is paired with its own sample-data caption.
+        self.assertRegex(text, r'main-window-light\.png"[^>]*>\s*\n\s*\n<sub>[^<]*sample data')
+        self.assertRegex(text, r'main-window-dark\.png"[^>]*>\s*\n\s*\n<sub>[^<]*sample data')
 
         light_path = ROOT / "docs" / "images" / "main-window-light.png"
         dark_path = ROOT / "docs" / "images" / "main-window-dark.png"

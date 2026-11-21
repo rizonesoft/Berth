@@ -59,7 +59,7 @@ Put `berth.exe` in any folder you choose and run `.\berth.exe`. To start Berth a
 
 ## How do I use it?
 
-Run `.\berth.exe` from the folder where you placed it (or using its full path). On the very first run, Berth opens its main window and adds its icon to the notification area; on later runs, it starts in the tray only.
+Run `.\berth.exe` from the folder where you placed it (or using its full path). On the very first run, Berth opens its main window and adds its icon to the notification area; on later runs, it starts in the tray only. Launching `.\berth.exe` again while Berth is already running brings the existing main window to the front instead of starting a second copy.
 
 - **Left-click** the tray icon to open the main window with your saved layouts, the position map, **Save current layout**, **Restore**, **Undo** and the **Restore automatically** and **Start with Windows** switches.
 - **Right-click** the tray icon for the menu: **Save layout**, **Restore layout**, **Restore automatically**, **Open Berth** and **Exit**.
