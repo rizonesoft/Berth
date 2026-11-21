@@ -177,7 +177,9 @@ The plan's acceptance bar, checked line by line: every control, state and comman
 
 **Test checkpoint:** `python scripts/spec-items.py --check docs/acceptance/2026-spec-sweep.md` exits 0 (every SPEC item has a row and every row says `yes`), and exits 1 when a SPEC bullet is added without a row. **Corrected 2026-11-21:** `scripts/spec-items.py` covers bullets, table rows, normative prose paragraphs, and the §14 JSON schema block with per-item content digests, accepting `yes` for proven automated items and `deferred (D99 T01 §N)` for operator-owned live-hardware/unlocked-desktop observations (`D99 T01 §2` and `D99 T01 §4`).
 
-> **Started:** 2026-11-21
+> **Started:** 2026-11-21T14:55Z
+
+**Corrected 2026-11-21:** re-planned with `todo-graph.py replan`; the build first began at 2026-11-21; its review chain is kept as `docs/reviews/07-release/D07-T01-s5-chain1.md`.
 
 ## Verification
 
