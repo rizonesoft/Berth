@@ -194,6 +194,9 @@ try {
             )
         }
         catch [System.IO.IOException], [System.UnauthorizedAccessException] {
+            if (-not [string]::IsNullOrWhiteSpace($env:BERTH_DOCS_TEST_LOCK_WAIT_SIGNAL) -and -not (Test-Path -LiteralPath $env:BERTH_DOCS_TEST_LOCK_WAIT_SIGNAL)) {
+                Set-Content -LiteralPath $env:BERTH_DOCS_TEST_LOCK_WAIT_SIGNAL -Value 'waiting' -Encoding ascii
+            }
             if ([DateTime]::UtcNow -ge $deadline) {
                 throw "Timed out waiting for docs image publish lock '$lockPath' for '$resolvedDestDir'."
             }

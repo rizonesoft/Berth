@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import tempfile
@@ -99,6 +100,7 @@ def _start_publish(
     stage_dir: Path | str,
     dest_dir: Path | str,
     pause_signal: Path | None = None,
+    lock_wait_signal: Path | None = None,
     cwd: Path | None = None,
 ) -> subprocess.Popen[str]:
     env = os.environ.copy()
@@ -106,6 +108,10 @@ def _start_publish(
         env["BERTH_DOCS_TEST_PAUSE_AFTER_FIRST"] = str(pause_signal)
     else:
         env.pop("BERTH_DOCS_TEST_PAUSE_AFTER_FIRST", None)
+    if lock_wait_signal is not None:
+        env["BERTH_DOCS_TEST_LOCK_WAIT_SIGNAL"] = str(lock_wait_signal)
+    else:
+        env.pop("BERTH_DOCS_TEST_LOCK_WAIT_SIGNAL", None)
     return subprocess.Popen(
         [
             "pwsh",
@@ -264,11 +270,19 @@ class RenderDocsImagesTests(unittest.TestCase):
                 self.assertTrue(signal.exists(), "lock holder did not reach pause point")
 
                 # Start waiter while holder owns the destination lock and stage_waiter holds valid PNGs.
-                waiter = _start_publish(stage_waiter, dest)
-                time.sleep(0.5)
+                wait_signal = root / "waiter-blocked.flag"
+                waiter = _start_publish(stage_waiter, dest, lock_wait_signal=wait_signal)
+                wait_deadline = time.monotonic() + 15.0
+                while not wait_signal.exists() and time.monotonic() < wait_deadline:
+                    wrc = waiter.poll()
+                    if wrc is not None:
+                        werr = waiter.stderr.read() if waiter.stderr else ""
+                        self.fail(f"waiter exited before blocking on lock ({wrc}): {werr}")
+                    time.sleep(0.05)
+                self.assertTrue(wait_signal.exists(), "waiter did not reach lock-wait contention point")
                 self.assertIsNone(waiter.poll(), "waiter should still be blocked waiting for the lock")
 
-                # Mutate stage_waiter's dark image to a blank-map PNG while waiter is waiting on the lock.
+                # Mutate stage_waiter's dark image to a blank-map PNG after waiter has blocked on the lock.
                 (stage_waiter / IMAGES[1]).write_bytes(_make_png(980, 640, (32, 32, 32), populate_map=False))
                 expected_light = (dest / IMAGES[0]).read_bytes()
                 expected_dark = (dest / IMAGES[1]).read_bytes()
@@ -277,6 +291,9 @@ class RenderDocsImagesTests(unittest.TestCase):
                 _kill_process_tree(holder)
                 rc_w, out_w, err_w = _communicate_with_teardown(waiter, timeout=20.0)
                 self.assertNotEqual(rc_w, 0, f"mutated blank PNG should have been rejected: {out_w}\n{err_w}")
+                plain_err = re.sub(r"\x1b\[[0-9;]*m", "", err_w + out_w)
+                collapsed = re.sub(r"\s*\|\s*|\s+", " ", plain_err).lower()
+                self.assertIn("blank or unpopulated position map", collapsed)
                 self.assertEqual((dest / IMAGES[0]).read_bytes(), expected_light)
                 self.assertEqual((dest / IMAGES[1]).read_bytes(), expected_dark)
                 leftovers = [p.name for p in dest.iterdir() if p.name not in IMAGES]
