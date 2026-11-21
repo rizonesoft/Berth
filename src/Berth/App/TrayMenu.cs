@@ -33,6 +33,7 @@ internal sealed class TrayMenu : IDisposable
     private readonly Lock _sync = new();
     private int _inFlightCount;
     private int _activeOperations;
+    private Func<bool>? _externalBusy;
     private long _openGeneration;
     private Task _lastRefreshTask = Task.CompletedTask;
     private bool _exiting;
@@ -432,12 +433,21 @@ internal sealed class TrayMenu : IDisposable
         }
     }
 
+    /// <summary>Shares window-side busy state so tray Save/Restore never overlaps a running window action.</summary>
+    internal void SetExternalBusyProvider(Func<bool>? isBusy)
+    {
+        lock (_sync)
+        {
+            _externalBusy = isBusy;
+        }
+    }
+
     private void RunOperationOffUiThread(Window.WindowOperationKind kind, Func<OperationResult> operation)
     {
         bool becameBusy;
         lock (_sync)
         {
-            if (_disposed || _exiting)
+            if (_disposed || _exiting || (_externalBusy?.Invoke() ?? false))
             {
                 return;
             }

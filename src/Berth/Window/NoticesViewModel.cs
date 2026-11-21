@@ -133,7 +133,9 @@ internal sealed class NoticesViewModel : ObservableObject
     {
         NoticeKind.AutoArrange => _turnAutoArrangeOffAsync is not null && !(_isBusyProvider?.Invoke() ?? false),
         NoticeKind.DesktopUnavailable => _retryDesktopAsync is not null,
-        NoticeKind.UnreadableFile => _openFolder is not null && !string.IsNullOrWhiteSpace(notice.FilePath),
+        NoticeKind.UnreadableFile => _openFolder is not null
+            && !string.IsNullOrWhiteSpace(notice.FilePath)
+            && !(_isBusyProvider?.Invoke() ?? false),
         _ => false,
     };
 

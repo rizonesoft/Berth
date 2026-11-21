@@ -558,6 +558,7 @@ internal sealed class MainViewModel : ObservableObject
     {
         long epoch = 0;
         bool writeUnavailable = false;
+        Exception? unexpectedError = null;
         bool snapshotApplied = false;
 
         return Detail.RunBusyActionAsync(
@@ -572,13 +573,18 @@ internal sealed class MainViewModel : ObservableObject
                 {
                     writeUnavailable = true;
                 }
+                catch (Exception ex)
+                {
+                    unexpectedError = ex;
+                }
 
                 try
                 {
                     snapshotApplied = await RefreshAfterOperationCoreAsync(selectKey: null).ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    unexpectedError ??= ex;
                     snapshotApplied = false;
                 }
             },
@@ -589,7 +595,18 @@ internal sealed class MainViewModel : ObservableObject
                     return;
                 }
 
-                if (writeUnavailable || Desktop.Unavailable)
+                if (unexpectedError is not null)
+                {
+                    OperationResult failed = OperationResult.Failed(
+                        FailureKind.Unexpected,
+                        path: null,
+                        unexpectedError.Message,
+                        error: unexpectedError);
+                    string message = Messages.Refusal(failed);
+                    _log?.FailWithDetails(message, unexpectedError.ToString());
+                    Status.SetCustomMessage(message);
+                }
+                else if (writeUnavailable || Desktop.Unavailable)
                 {
                     OperationResult unavailable = OperationResult.Refused(Refusal.DesktopUnavailable);
                     _log?.Fail(Messages.Refusal(unavailable));

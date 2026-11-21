@@ -23,6 +23,7 @@
     <sys:Double x:Key="Berth.Divider">1</sys:Double>
     <sys:Double x:Key="Berth.SelectionMarker">3</sys:Double>
     <sys:Double x:Key="Berth.StatusSquare">10</sys:Double>
+    <sys:Double x:Key="Berth.NoticeGlyph">16</sys:Double>
     <CornerRadius x:Key="Berth.RadiusControl">4</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusCard">6</CornerRadius>
     <CornerRadius x:Key="Berth.RadiusMarker">3</CornerRadius>

@@ -314,6 +314,7 @@ internal static class TrayApp
         if (trayMenu is not null)
         {
             viewModel.Detail.SetExternalBusy(trayMenu.IsOperationBusy);
+            trayMenu.SetExternalBusyProvider(() => viewModel.Detail.IsLocalBusy);
             void OnTrayBusyChanged(bool busy) => viewModel.Detail.SetExternalBusy(busy);
             void OnTrayCompleted(WindowOperationKind kind, OperationResult result) =>
                 _ = viewModel.OnExternalOperationFinishedAsync(kind, result);
@@ -321,6 +322,7 @@ internal static class TrayApp
             trayMenu.OperationCompleted += OnTrayCompleted;
             window.Closed += (_, _) =>
             {
+                trayMenu.SetExternalBusyProvider(null);
                 trayMenu.OperationBusyChanged -= OnTrayBusyChanged;
                 trayMenu.OperationCompleted -= OnTrayCompleted;
             };

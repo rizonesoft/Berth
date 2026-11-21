@@ -157,6 +157,9 @@ internal sealed class DetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>Whether a window-initiated operation (Save, Restore, Undo, Turn it off) is running.</summary>
+    internal bool IsLocalBusy => _localBusy;
+
     /// <summary>
     /// Shares in-process operation busy state from the tray menu so a slow tray Save or Restore disables the open
     /// window's header actions until it completes.

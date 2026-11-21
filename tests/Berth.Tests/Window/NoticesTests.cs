@@ -155,7 +155,7 @@ public sealed class NoticesTests(AppFixture appFixture)
         SaveLayout(store, [MonSingle], "Laptop", FixedNow, new IconPosition("id-1", "One", 100, 100));
 
         string badA = Path.Combine(paths.LayoutsFolder, "a-bad.json");
-        string badB = Path.Combine(paths.LayoutsFolder, "z-bad.json");
+        string badB = Path.Combine(paths.LayoutsFolder, "z-very-long-monitor-arrangement-corrupt-layout-file-name.json");
         File.WriteAllText(badA, "{ not json");
         File.WriteAllText(badB, "{ also bad");
 
@@ -175,21 +175,45 @@ public sealed class NoticesTests(AppFixture appFixture)
                 var w = new MainWindow { DataContext = vm };
                 MeasureAndArrange(w, width: 760, height: 560);
 
-                // Expect 3 stacked bars: 2 errors (a-bad, z-bad) then 1 warning (auto arrange)!
+                // Expect 3 stacked bars: 2 errors (a-bad, z-very-long...) then 1 warning (auto arrange)!
                 ItemsControl items = w.NoticesControl.NoticesItems;
                 Assert.Equal(3, items.Items.Count);
 
+                string[] expectedTexts =
+                [
+                    "The layout file a-bad.json could not be read. It was left untouched.",
+                    "The layout file z-very-long-monitor-arrangement-corrupt-layout-file-name.json could not be read. It was left untouched.",
+                    NoticesViewModel.AutoArrangeText,
+                ];
+                string[] expectedButtons = ["Open folder", "Open folder", "Turn it off"];
+                string[] expectedSeverities = ["Error", "Error", "Warning"];
+
+                for (int idx = 0; idx < 3; idx++)
+                {
+                    ContentPresenter container = (ContentPresenter)items.ItemContainerGenerator.ContainerFromIndex(idx);
+                    Border bar = FindVisualChildren<Border>(container).First();
+                    TextBlock[] texts = [.. FindVisualChildren<TextBlock>(bar)];
+                    WpfButton button = FindVisualChildren<WpfButton>(bar).Single();
+                    TextBlock sentenceTb = texts.Single(tb => tb.Text == expectedTexts[idx]);
+
+                    Assert.Contains(texts, tb => AutomationProperties.GetName(tb) == expectedSeverities[idx]);
+                    Assert.Equal(expectedButtons[idx], button.Content);
+                    Assert.True(button.ActualHeight >= 32d);
+
+                    Rect barBounds = new(0, 0, bar.ActualWidth, bar.ActualHeight);
+                    Rect sentenceBounds = sentenceTb.TransformToAncestor(bar)
+                        .TransformBounds(new Rect(0, 0, sentenceTb.ActualWidth, sentenceTb.ActualHeight));
+                    Rect buttonBounds = button.TransformToAncestor(bar)
+                        .TransformBounds(new Rect(0, 0, button.ActualWidth, button.ActualHeight));
+                    Assert.True(sentenceBounds.Bottom <= barBounds.Height + 0.5d);
+                    Assert.True(buttonBounds.Right <= barBounds.Right + 0.5d);
+                    Assert.True(sentenceBounds.Right <= buttonBounds.Left + 0.5d);
+                }
+
                 ContentPresenter secondContainer = (ContentPresenter)items.ItemContainerGenerator.ContainerFromIndex(1);
                 WpfButton secondButton = FindVisualChildren<WpfButton>(secondContainer).Single();
-                Assert.Equal("Open folder", secondButton.Content);
                 InvokeButton(secondButton);
                 Assert.Equal([badB], opener.OpenedPaths);
-
-                // Severity automation names present (Error on bar 0, Warning on bar 2).
-                ContentPresenter firstContainer = (ContentPresenter)items.ItemContainerGenerator.ContainerFromIndex(0);
-                ContentPresenter thirdContainer = (ContentPresenter)items.ItemContainerGenerator.ContainerFromIndex(2);
-                Assert.Contains(FindVisualChildren<TextBlock>(firstContainer), tb => AutomationProperties.GetName(tb) == "Error");
-                Assert.Contains(FindVisualChildren<TextBlock>(thirdContainer), tb => AutomationProperties.GetName(tb) == "Warning");
 
                 // Auto arrange disables Restore with tooltip repeating notice, while Save stays enabled!
                 Assert.False(w.DetailHeaderControl.RestoreButton.IsEnabled);
@@ -269,6 +293,94 @@ public sealed class NoticesTests(AppFixture appFixture)
 
         Assert.Contains(vm.Notices.Items, i => i.Kind == NoticeKind.DesktopUnavailable);
         Assert.Equal(NoticesViewModel.DesktopUnavailableText, vm.Status.Sentence);
+
+        // 4. Unexpected exception from TryTurnAutoArrangeOff does not fault task, logs FAIL, and shows §18 message.
+        desktop.GoUnavailableOnTurnOff = false;
+        inner.Unavailable = false;
+        inner.SetAutoArrange(true);
+        await vm.RefreshAsync();
+        desktop.UnexpectedExceptionOnTurnOff = new InvalidOperationException("Shell COM fault");
+        vm.Notices.Items.Single(i => i.Kind == NoticeKind.AutoArrange).ActionCommand.Execute(null);
+        await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Contains("Something went wrong: Shell COM fault.", vm.Status.Sentence);
+        Assert.Contains("Shell COM fault", File.ReadAllText(paths.LogFile));
+    }
+
+    [Fact]
+    public async Task TraySaveIsBlockedWhileTurnAutoArrangeOffIsRunning()
+    {
+        using var data = new TestData();
+        BerthPaths paths = BerthPaths.ForRoot(data.Root);
+        var store = new LayoutStore(paths);
+        var monitors = new FakeMonitors(MonSingle);
+        var inner = new FakeDesktopIcons(new IconPosition("id-1", "One", 100, 100));
+        inner.SetAutoArrange(true);
+        var desktop = new GatedTurnOffDesktopIcons(inner);
+        var log = new Log(paths, new FixedClock(FixedNow));
+        var settingsStore = new SettingsStore(paths);
+        LayoutService service = CreateService(paths, store, desktop, monitors, log);
+
+        TrayMenu? trayMenu = null;
+        MainWindow? window = null;
+        MainViewModel? vm = null;
+        bool trayFinished = false;
+        try
+        {
+            (window, trayMenu, vm) = appFixture.Invoke(() =>
+            {
+                var menu = new TrayMenu(
+                    service,
+                    store,
+                    monitors,
+                    desktop,
+                    settingsStore,
+                    log,
+                    (action, _) => System.Windows.Application.Current.Dispatcher.BeginInvoke(action));
+                menu.OperationFinished += _ => trayFinished = true;
+                var composition = Composition.ForTest(
+                    paths,
+                    log,
+                    monitors,
+                    desktop,
+                    store,
+                    new OperationLock(paths, TimeSpan.FromSeconds(5)),
+                    service);
+                MainWindow w = TrayApp.CreateProductionMainWindow(
+                    (BerthApplication)System.Windows.Application.Current,
+                    settingsStore,
+                    composition,
+                    monitors,
+                    new FixedClock(FixedNow),
+                    menu);
+                return (w, menu, Assert.IsType<MainViewModel>(w.DataContext));
+            });
+
+            await vm!.RefreshAsync();
+
+            desktop.ArmGate();
+            appFixture.Invoke(() => vm.Notices.Items.Single(i => i.Kind == NoticeKind.AutoArrange).ActionCommand.Execute(null));
+            await desktop.EnteredGate.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            // While Turn it off is in flight, invoking tray Save MUST NOT start a tray operation!
+            appFixture.Invoke(() => trayMenu!.Strip.Items[0].PerformClick()); // "Save layout"
+            Assert.False(trayMenu!.IsOperationBusy);
+            Assert.False(trayFinished);
+            Assert.Empty(store.LoadAll().Layouts);
+
+            desktop.ReleaseGate();
+            await vm.Notices.LastActionTask.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Empty(vm.Notices.Items);
+            Assert.False(trayFinished);
+        }
+        finally
+        {
+            desktop.ReleaseGate();
+            appFixture.Invoke(() =>
+            {
+                window?.CloseForShutdown();
+                trayMenu?.Dispose();
+            });
+        }
     }
 
     [Fact]
@@ -512,6 +624,8 @@ public sealed class NoticesTests(AppFixture appFixture)
     {
         public bool GoUnavailableOnTurnOff { get; set; }
 
+        public Exception? UnexpectedExceptionOnTurnOff { get; set; }
+
         public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)inner).ReadIcons();
 
         public void SetPositions(IReadOnlyList<IconPosition> positions) => ((IDesktopIcons)inner).SetPositions(positions);
@@ -522,10 +636,54 @@ public sealed class NoticesTests(AppFixture appFixture)
 
         public bool TryTurnAutoArrangeOff()
         {
+            if (UnexpectedExceptionOnTurnOff is { } ex)
+            {
+                throw ex;
+            }
+
             if (GoUnavailableOnTurnOff)
             {
                 inner.Unavailable = true;
                 throw new DesktopUnavailableException("Explorer disappeared");
+            }
+
+            return ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
+        }
+    }
+
+    private sealed class GatedTurnOffDesktopIcons(FakeDesktopIcons inner) : IDesktopIcons
+    {
+        private TaskCompletionSource? _pendingGate;
+        private TaskCompletionSource? _activeGate;
+
+        public TaskCompletionSource EnteredGate { get; private set; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ArmGate()
+        {
+            EnteredGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeGate = tcs;
+            _pendingGate = tcs;
+        }
+
+        public void ReleaseGate() => _activeGate?.TrySetResult();
+
+        public IReadOnlyList<IconPosition> ReadIcons() => ((IDesktopIcons)inner).ReadIcons();
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions) => ((IDesktopIcons)inner).SetPositions(positions);
+
+        public void SetPositions(IReadOnlyList<IconPosition> positions, Action beforeMove) => ((IDesktopIcons)inner).SetPositions(positions, beforeMove);
+
+        public bool AutoArrange => ((IDesktopIcons)inner).AutoArrange;
+
+        public bool TryTurnAutoArrangeOff()
+        {
+            TaskCompletionSource? gate = Interlocked.Exchange(ref _pendingGate, null);
+            if (gate is not null)
+            {
+                EnteredGate.TrySetResult();
+                gate.Task.GetAwaiter().GetResult();
             }
 
             return ((IDesktopIcons)inner).TryTurnAutoArrangeOff();
