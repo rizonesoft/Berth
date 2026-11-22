@@ -53,7 +53,7 @@ jobs:
           }
           Write-Output "Verified $versionOut ($actualHash)"
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: berth-win-x64
           path: |
